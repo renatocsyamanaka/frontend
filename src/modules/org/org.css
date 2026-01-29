@@ -1,0 +1,189 @@
+.org-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+/* wrapper com scroll horizontal */
+.orgchart-wrapper { overflow-x: auto; padding-bottom: 12px; }
+
+/* irmãos sempre na mesma linha */
+.orgchart ul { white-space: nowrap; }
+
+.orgchart, .orgchart ul {
+  padding-left: 0;
+  padding-top: 20px;
+  position: relative;
+  text-align: center;
+}
+
+.orgchart li {
+  list-style: none;
+  display: inline-block;
+  vertical-align: top;
+  position: relative;
+  padding: 20px 20px 0 20px;
+  white-space: normal; /* texto pode quebrar dentro do card */
+}
+
+/* conectores entre irmãos */
+.orgchart li::before, .orgchart li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 20px;
+  border-top: 2px solid #e5e7eb;
+}
+.orgchart li::before { right: 50%; }
+.orgchart li::after  { left: 50%; }
+
+.orgchart li:only-child::before,
+.orgchart li:only-child::after { display: none; }
+.orgchart li:only-child { padding-top: 0; }
+
+.orgchart li:first-child::before { border: 0; }
+.orgchart li:last-child::after   { border: 0; }
+
+.orgchart li:last-child::before {
+  border-right: 2px solid #e5e7eb; border-radius: 0 6px 0 0;
+}
+.orgchart li:first-child::after {
+  border-left: 2px solid #e5e7eb; border-radius: 6px 0 0 0;
+}
+
+/* conector vertical para a linha de filhos */
+.orgchart ul::before {
+  content: ''; position: absolute; top: 0; left: 50%; height: 20px; border-left: 2px solid #e5e7eb;
+}
+
+/* ----- CARTÕES ----- */
+.org-head { display: inline-flex; align-items: center; gap: 8px; }
+
+.org-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 280px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+  transition: transform .2s ease, opacity .2s ease, filter .2s ease;
+  transform-origin: center center;
+}
+
+.org-node.muted {
+  transform: scale(0.9);
+  opacity: 0.7;
+  filter: saturate(0.85);
+}
+
+.org-meta { text-align: left; }
+.org-name { font-weight: 600; line-height: 1.1; }
+.org-role { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+/* reduzir espaço REAL quando fora do foco */
+.li-muted { padding: 14px 10px 0 10px; }         /* menos espaço ao redor do card */
+.li-muted .org-node { min-width: 180px; padding: 8px 10px; }
+.li-muted .org-name { font-size: 14px; }
+.li-muted .org-role { font-size: 11px; }
+
+/* botão toggle com contador */
+.org-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 9999px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.org-toggle:hover { background: #f3f4f6; }
+.org-toggle.muted { transform: scale(0.9); opacity: .7; }
+
+.org-count {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* colapsado: esconde os filhos e o conector vertical */
+.orgchart li.collapsed > ul,
+.orgchart li.collapsed > ul::before { display: none !important; }
+/* 🔽 compacta somente a linha de filhos que não coube */
+.row-compact li { padding: 16px 12px 0 12px; }
+.row-compact .org-node {
+  min-width: 200px;
+  padding: 10px 40px 10px 12px; /* reserva pro toggle dentro do card */
+}
+.row-compact .org-name { font-size: 14px; }
+.row-compact .org-role { font-size: 11px; }
+
+/* avatar um pouco menor na linha compacta */
+.row-compact .ant-avatar {
+  width: 56px !important;
+  height: 56px !important;
+  line-height: 56px !important;
+  font-size: 20px !important;
+}
+
+/* 1) grid não usa white-space */
+.orgchart ul.grid-children-3 {
+  white-space: normal !important;
+  position: relative;
+  padding-top: 26px; /* espaço para os conectores do grid */
+}
+
+/* 2) DESLIGA os conectores "de irmãos" do modo inline dentro do grid */
+.orgchart ul.grid-children-3 > li::before,
+.orgchart ul.grid-children-3 > li::after {
+  display: none !important;
+}
+
+/* 3) DESLIGA o conector vertical padrão do UL (aquele do left:50%) dentro do grid */
+.orgchart li > ul.grid-children-3::before {
+  display: none !important;
+}
+
+/* 4) Cria um “barramento” horizontal no topo do grid (conecta o pai aos filhos) */
+.orgchart li > ul.grid-children-3::after {
+  content: '';
+  position: absolute;
+  top: 10px;                 /* linha no topo do grid */
+  left: 8%;
+  width: 84%;
+  border-top: 2px solid #e5e7eb;
+}
+
+/* 5) Cria a linha vertical que desce do barramento até cada técnico */
+.orgchart ul.grid-children-3 > li {
+  position: relative; /* necessário para o pseudo-elemento abaixo */
+  padding-top: 0;     /* o grid já controla espaçamento */
+}
+
+.orgchart ul.grid-children-3 > li::after {
+  content: '';
+  position: absolute;
+  top: 10px;          /* começa exatamente na linha horizontal */
+  left: 50%;
+  transform: translateX(-50%);
+  height: 16px;       /* desce até perto do card */
+  border-left: 2px solid #e5e7eb;
+}
+
+/* 6) (opcional) deixa o card um pouco afastado da linha vertical */
+.orgchart ul.grid-children-3 > li [data-node-card] {
+  margin-top: 10px;
+}
