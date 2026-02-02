@@ -67,7 +67,7 @@ const REGIOES = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'] as const
 const { Title, Text } = Typography;
 
 /** ===== Helpers globais (ABS URL) ===== */
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online';
 const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;

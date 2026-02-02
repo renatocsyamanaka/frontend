@@ -10,7 +10,7 @@ function normalizeBaseUrl(url?: string) {
   return url.replace(/\/+$/, '')
 }
 
-export const API_URL = normalizeBaseUrl(RAW_API_URL) || 'http://localhost:3000/api'
+export const API_URL = normalizeBaseUrl(RAW_API_URL) || 'https://api.projetos-rc.online/api'
 console.log('[API_URL]', API_URL)
 
 export const api = axios.create({
