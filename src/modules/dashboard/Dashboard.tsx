@@ -3,8 +3,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import {
-  Button, Card, Divider, Image, List, Skeleton,
-  Space, Switch, Tag, Typography, message
+  Button,
+  Card,
+  Divider,
+  Image,
+  List,
+  Skeleton,
+  Space,
+  Switch,
+  Tag,
+  Typography,
+  message,
+  Grid,
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -12,14 +22,12 @@ import dayjs from 'dayjs';
 type News = {
   id: number;
   title: string;
-  body: string;
-  audience: 'ALL' | 'ROLE' | 'USER';
-  targetRoleLevel?: number | null;
-  targetUserId?: number | null;
-  pinned: boolean;
-  publishedAt: string;
-  expiresAt?: string | null;
+  content: string;
   imageUrl?: string | null;
+  category?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
   author?: { id: number; name: string };
   read?: boolean;
 };
@@ -30,9 +38,15 @@ export default function Dashboard() {
   const qc = useQueryClient();
   const [hideRead, setHideRead] = useState(false);
 
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+
   const newsQuery = useQuery<News[]>({
-    queryKey: ['news', { includeExpired: false }],
-    queryFn: async () => (await api.get('/news', { params: { includeExpired: false } })).data,
+    queryKey: ['news'],
+    queryFn: async () => {
+      const res = await api.get('/news');
+      return res.data?.data ?? res.data;
+    },
     retry: false,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
@@ -40,30 +54,51 @@ export default function Dashboard() {
 
   const markRead = useMutation({
     mutationFn: async (id: number) => (await api.post(`/news/${id}/read`)).data,
-    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['news'] }); },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao marcar como lida'),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['news'] });
+    },
+    onError: (e: any) => {
+      const msg =
+        e?.response?.status === 404
+          ? 'Seu backend ainda não tem /news/:id/read. (Remova esse botão ou implemente.)'
+          : e?.response?.data?.error || 'Falha ao marcar como lida';
+      message.error(msg);
+    },
   });
 
   const items = useMemo(() => {
     const src = newsQuery.data || [];
-    return hideRead ? src.filter((n) => !n.read) : src;
+    const activeOnly = src.filter((n) => n.isActive !== false);
+    if (!hideRead) return activeOnly;
+    return activeOnly.filter((n) => !n.read);
   }, [hideRead, newsQuery.data]);
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Title level={2} style={{ margin: 0 }}>Bem-vindo!</Title>
-        <Space>
-          <span style={{ color: '#94a3b8' }}>
-            {newsQuery.isFetching ? 'Atualizando…' : ''}
-          </span>
-          <Switch
-            checked={hideRead}
-            onChange={setHideRead}
-            size="small"
-            checkedChildren="Ocultar lidas"
-            unCheckedChildren="Mostrar lidas"
-          />
+    <div style={{ display: 'grid', gap: isMobile ? 12 : 16 }}>
+      {/* ✅ HEADER responsivo */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: isMobile ? 'flex-start' : 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
+        <Title level={2} style={{ margin: 0 }}>
+          Bem-vindo!
+        </Title>
+
+        <Space
+          wrap
+          style={{
+            width: isMobile ? '100%' : 'auto',
+            justifyContent: isMobile ? 'space-between' : 'flex-end',
+          }}
+        >
+          <span style={{ color: '#94a3b8' }}>{newsQuery.isFetching ? 'Atualizando…' : ''}</span>
+
+
           <Link to="/news-admin">Gerenciar notícias</Link>
         </Space>
       </div>
@@ -71,6 +106,7 @@ export default function Dashboard() {
       <Card
         title="Notícias"
         extra={<Button icon={<ReloadOutlined />} onClick={() => newsQuery.refetch()} />}
+        bodyStyle={{ padding: isMobile ? 12 : 24 }}
       >
         {newsQuery.isLoading ? (
           <div>
@@ -78,44 +114,41 @@ export default function Dashboard() {
             <Skeleton active paragraph={{ rows: 1 }} />
           </div>
         ) : newsQuery.isError ? (
-          <Typography.Text type="danger">
+          <Text type="danger">
             Falha ao carregar notícias. {(newsQuery.error as any)?.message || ''}
-          </Typography.Text>
+          </Text>
         ) : (
           <List
+            itemLayout="vertical"
             dataSource={items}
             locale={{ emptyText: 'Sem notícias por aqui.' }}
             renderItem={(n) => (
               <List.Item
-                // ações continuam do lado direito do item
-                actions={[
-                  <Button
-                    size="small"
-                    disabled={n.read}
-                    onClick={() => markRead.mutate(n.id)}
-                  >
-                    {n.read ? 'Lida' : 'Marcar como lida'}
-                  </Button>,
-                ]}
+                style={{ paddingInline: 0 }}
               >
-                {/* layout: imagem à esquerda / texto à direita */}
+                {/* ✅ layout responsivo: PC lado a lado / mobile empilha */}
                 <div
                   style={{
                     display: 'flex',
                     gap: 16,
                     alignItems: 'flex-start',
                     width: '100%',
-                    flexWrap: 'wrap', // em telas muito estreitas, quebra para baixo
+                    flexDirection: isMobile ? 'column' : 'row',
                   }}
                 >
                   {n.imageUrl && (
-                    <div style={{ flex: '0 0 320px' }}>
+                    <div
+                      style={{
+                        width: isMobile ? '100%' : 320,
+                        flex: isMobile ? '1 1 auto' : '0 0 320px',
+                      }}
+                    >
                       <Image
                         src={n.imageUrl}
-                        width={320}                 // imagem maior
+                        // ✅ mobile: ocupa 100%
+                        width={isMobile ? '100%' : 320}
                         style={{
-                          borderRadius: 8,
-                          marginBottom: 8,
+                          borderRadius: 10,
                           objectFit: 'cover',
                         }}
                         preview={false}
@@ -124,35 +157,26 @@ export default function Dashboard() {
                     </div>
                   )}
 
-                  <div style={{ flex: '1 1 360px', minWidth: 260 }}>
+                  <div style={{ width: '100%' }}>
                     <Space wrap>
-                      {n.pinned && <Tag color="gold">Fixada</Tag>}
+                      {n.category && <Tag>{n.category}</Tag>}
+                      {!n.isActive && <Tag color="red">Inativa</Tag>}
                       <Text strong>{n.title}</Text>
-                      <Text type="secondary">
-                        {dayjs(n.publishedAt).format('DD/MM/YYYY HH:mm')}
-                      </Text>
-                      {n.expiresAt && (
-                        <Tag>{`expira em ${dayjs(n.expiresAt).format('DD/MM')}`}</Tag>
-                      )}
+                      <Text type="secondary">{dayjs(n.createdAt).format('DD/MM/YYYY HH:mm')}</Text>
                     </Space>
 
-                    <Paragraph style={{ whiteSpace: 'pre-wrap', marginTop: 8, marginBottom: 8 }}>
-                      {n.body}
+                    <Paragraph style={{ whiteSpace: 'pre-wrap', marginTop: 10, marginBottom: 10 }}>
+                      {n.content || <Text type="secondary">Sem conteúdo</Text>}
                     </Paragraph>
 
-                    <div style={{ color: '#8893a0' }}>
-                      <Text type="secondary">
-                        {n.audience === 'ALL' && 'Público: Todos'}
-                        {n.audience === 'ROLE' && `Público: nível >= ${n.targetRoleLevel}`}
-                        {n.audience === 'USER' && `Público: usuário específico`}
-                      </Text>
-                      {n.author?.name && (
-                        <>
-                          <Divider type="vertical" />
-                          <Text type="secondary">por {n.author.name}</Text>
-                        </>
-                      )}
-                    </div>
+                    {/* ✅ botão no mobile vai pra baixo, full width */}
+
+                    {n.author?.name && (
+                      <div style={{ color: '#8893a0', marginTop: 10 }}>
+                        <Divider type="vertical" />
+                        <Text type="secondary">por {n.author.name}</Text>
+                      </div>
+                    )}
                   </div>
                 </div>
               </List.Item>

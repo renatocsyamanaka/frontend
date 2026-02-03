@@ -9,14 +9,39 @@ import type { OrgNode as ModalNode } from './OrgChildrenModal';
 
 type Node = ModalNode;
 
+/* ---------------- hook mobile ---------------- */
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const m = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setIsMobile(m.matches);
+
+    // safari fallback
+    if ((m as any).addEventListener) (m as any).addEventListener('change', onChange);
+    else (m as any).addListener(onChange);
+
+    setIsMobile(m.matches);
+
+    return () => {
+      if ((m as any).removeEventListener) (m as any).removeEventListener('change', onChange);
+      else (m as any).removeListener(onChange);
+    };
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 /* ---------------- helpers ---------------- */
 function normalizeRole(role?: string | null) {
   return String(role || '').trim().toLowerCase();
 }
-
 function shouldHideFromOrg(role?: string | null) {
   const r = normalizeRole(role);
-  // ✅ esconder Analista e Admin (e variantes)
   if (r.includes('analist')) return true;
   if (r.includes('admin')) return true;
   return false;
@@ -25,7 +50,6 @@ function isCoordinator(role?: string | null) {
   const r = normalizeRole(role);
   return r.includes('coorden') || r.includes('coordinator');
 }
-
 function isSupervisor(role?: string | null) {
   const r = normalizeRole(role);
   return r.includes('supervis');
@@ -40,16 +64,15 @@ function collectIdsByPredicate(root: Node, pred: (n: Node) => boolean) {
   walk(root);
   return ids;
 }
-/** ✅ Filtra a árvore inteira removendo nós e “promovendo” filhos quando necessário */
+
+/** Filtra árvore removendo nós e promovendo filhos */
 function filterTree(arr: Node[]): Node[] {
   const walk = (n: Node): Node[] => {
     const nextChildren = (n.children || []).flatMap(walk);
 
     if (shouldHideFromOrg(n.role)) {
-      // promove filhos
-      return nextChildren;
+      return nextChildren; // promove filhos
     }
-
     return [{ ...n, children: nextChildren }];
   };
 
@@ -62,7 +85,6 @@ function countDesc(n?: Node): number {
   for (const ch of n.children) c += countDesc(ch);
   return c;
 }
-
 function collectDescCounts(arr: Node[]): Map<number, number> {
   const map = new Map<number, number>();
   const walk = (n: Node) => {
@@ -73,14 +95,12 @@ function collectDescCounts(arr: Node[]): Map<number, number> {
   return map;
 }
 
-/** ✅ encontra o caminho (ids) até um nó: [root, ..., target] */
+/** encontra caminho até o id */
 function findPathToId(roots: Node[], targetId: number): number[] | null {
   const stack: { node: Node; path: number[] }[] = roots.map((r) => ({ node: r, path: [r.id] }));
-
   while (stack.length) {
     const { node, path } = stack.pop()!;
     if (node.id === targetId) return path;
-
     const kids = node.children || [];
     for (let i = kids.length - 1; i >= 0; i--) {
       stack.push({ node: kids[i], path: [...path, kids[i].id] });
@@ -89,12 +109,7 @@ function findPathToId(roots: Node[], targetId: number): number[] | null {
   return null;
 }
 
-/**
- * ✅ Constrói um “mapa de seleção por nível”
- * Ex: drillPath [gerente, coordX, supY] vira:
- *   parent(gerente)->coordX
- *   parent(coordX)->supY
- */
+/** drill map parent -> selected child */
 function buildSelectedChildMap(drillPath: number[]) {
   const map = new Map<number, number>();
   for (let i = 0; i < drillPath.length - 1; i++) {
@@ -103,7 +118,7 @@ function buildSelectedChildMap(drillPath: number[]) {
   return map;
 }
 
-/** ✅ aplica o “drill-down”: se existe seleção para este pai, mostra só o filho selecionado */
+/** aplica drill: se existe seleção para este pai, mostra só o filho selecionado */
 function applyDrill(children: Node[] | undefined, selectedChildMap: Map<number, number>, parentId: number) {
   const list = children || [];
   const selected = selectedChildMap.get(parentId);
@@ -127,7 +142,7 @@ function OrgCard({
 }) {
   return (
     <div className="org-node" data-node-card>
-      <Avatar size={72} src={n.avatarUrl || undefined}>
+      <Avatar size={64} src={n.avatarUrl || undefined}>
         {n.name?.[0]}
       </Avatar>
 
@@ -164,6 +179,7 @@ function Branch({
   selectedChildMap,
   onDrillExpand,
   onDrillCollapse,
+  isMobile,
 }: {
   n: Node;
   collapsed: Set<number>;
@@ -171,10 +187,11 @@ function Branch({
   descCounts: Map<number, number>;
   wrapRef: React.RefObject<HTMLDivElement>;
 
-  // drill
   selectedChildMap: Map<number, number>;
   onDrillExpand: (id: number) => void;
   onDrillCollapse: (id: number) => void;
+
+  isMobile: boolean;
 }) {
   const childrenCount = n.children?.length ?? 0;
   const hasChildren = childrenCount > 0;
@@ -184,10 +201,12 @@ function Branch({
   const ulRef = useRef<HTMLUListElement>(null);
   const [rowCompact, setRowCompact] = useState(false);
 
-  // ✅ anti-tremor: mede só o wrapper com histerese + rAF
-  const COMPACT_MARGIN_PX = 24;
-
+  // ✅ no MOBILE não mede rowCompact (evita “tremedeira” e overflow)
   useEffect(() => {
+    if (isMobile) {
+      setRowCompact(false);
+      return;
+    }
     if (isCollapsed || !ulRef.current || !wrapRef.current) {
       setRowCompact(false);
       return;
@@ -197,6 +216,7 @@ function Branch({
       return;
     }
 
+    const COMPACT_MARGIN_PX = 24;
     let raf = 0;
 
     const check = () => {
@@ -207,7 +227,6 @@ function Branch({
 
         const rowWidth = ul.scrollWidth;
         const wrapWidth = wrap.clientWidth - 60;
-
         const overflow = rowWidth - wrapWidth;
 
         setRowCompact((prev) => {
@@ -227,12 +246,11 @@ function Branch({
       ro.disconnect();
       window.removeEventListener('resize', check);
     };
-  }, [isCollapsed, childrenCount, wrapRef]);
+  }, [isMobile, isCollapsed, childrenCount, wrapRef]);
 
   const handleToggle = () => {
     const willExpand = isCollapsed;
 
-    // expand
     if (willExpand) {
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -243,7 +261,6 @@ function Branch({
       return;
     }
 
-    // collapse
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.add(n.id);
@@ -253,82 +270,74 @@ function Branch({
   };
 
   const drilledChildren = applyDrill(n.children, selectedChildMap, n.id);
+
+  // desktop: supervisor com muitos vira grid 3; mobile: sempre coluna
   const isSup = isSupervisor(n.role);
-  const grid3 = isSup && drilledChildren.length > 3;
+  const grid3 = !isMobile && isSup && drilledChildren.length > 3;
+
   return (
     <li className={isCollapsed ? 'collapsed' : ''} data-node-id={n.id}>
       <div className="org-head">
-        <OrgCard
-          n={n}
-          hasChildren={hasChildren}
-          isCollapsed={isCollapsed}
-          qty={qtyDesc}
-          onToggle={handleToggle}
-        />
+        <OrgCard n={n} hasChildren={hasChildren} isCollapsed={isCollapsed} qty={qtyDesc} onToggle={handleToggle} />
       </div>
 
-    {hasChildren && !isCollapsed && (
-      <ul
-        ref={ulRef}
-        className={[
-          (!grid3 && rowCompact) ? 'row-compact' : '',
-          grid3 ? 'grid-children-3' : '',
-        ].filter(Boolean).join(' ')}
-      >
-        {drilledChildren.map((c) => (
-          <Branch
-            key={c.id}
-            n={c}
-            collapsed={collapsed}
-            setCollapsed={setCollapsed}
-            descCounts={descCounts}
-            wrapRef={wrapRef}
-            selectedChildMap={selectedChildMap}
-            onDrillExpand={onDrillExpand}
-            onDrillCollapse={onDrillCollapse}
-          />
-        ))}
-      </ul>
-    )}
+      {hasChildren && !isCollapsed && (
+        <ul
+          ref={ulRef}
+          className={[
+            isMobile ? 'children-mobile' : '',
+            !isMobile && !grid3 && rowCompact ? 'row-compact' : '',
+            !isMobile && grid3 ? 'grid-children-3' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {drilledChildren.map((c) => (
+            <Branch
+              key={c.id}
+              n={c}
+              collapsed={collapsed}
+              setCollapsed={setCollapsed}
+              descCounts={descCounts}
+              wrapRef={wrapRef}
+              selectedChildMap={selectedChildMap}
+              onDrillExpand={onDrillExpand}
+              onDrillCollapse={onDrillCollapse}
+              isMobile={isMobile}
+            />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
 
 /* ---------------- Página ---------------- */
 export function OrgPage() {
+  const isMobile = useIsMobile(768);
+
   const { data, isLoading } = useQuery<Node[]>({
     queryKey: ['org'],
     queryFn: async () => (await api.get('/org/tree')).data,
   });
 
-  // ✅ filtra (remove analista/admin)
   const filteredData = useMemo(() => filterTree(data || []), [data]);
 
-  // colapso/expansão
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-
-  // ✅ drill-down (controla “sumir irmãos” por nível)
   const [drillPath, setDrillPath] = useState<number[]>([]);
-
-  // mapa parent -> child selecionado
   const selectedChildMap = useMemo(() => buildSelectedChildMap(drillPath), [drillPath]);
-
-  // descendentes
   const descCounts = useMemo(() => collectDescCounts(filteredData || []), [filteredData]);
 
-  // wrapper p/ medidas e scroll
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // ✅ inicia colapsando filhos dos coordenadores (mantém sua regra)
+  // inicia colapsando filhos dos coordenadores
   const [didInitCollapse, setDidInitCollapse] = useState(false);
   useEffect(() => {
     if (!filteredData?.length || didInitCollapse) return;
 
     const toCollapse = new Set<number>();
     const walk = (n: Node) => {
-      const role = normalizeRole(n.role);
-      const isCoordinator = role.includes('coorden') || role.includes('coordinator');
-      if (isCoordinator && n.children?.length) toCollapse.add(n.id);
+      if (isCoordinator(n.role) && n.children?.length) toCollapse.add(n.id);
       n.children?.forEach(walk);
     };
     filteredData.forEach(walk);
@@ -337,56 +346,46 @@ export function OrgPage() {
     setDidInitCollapse(true);
   }, [filteredData, didInitCollapse]);
 
-  // ✅ quando expandir um nó: cria/atualiza drillPath até ele
-const onDrillExpand = (id: number) => {
-  const path = findPathToId(filteredData, id);
-  if (!path) return;
+  const onDrillExpand = (id: number) => {
+    const path = findPathToId(filteredData, id);
+    if (!path) return;
 
-  // ✅ trava drill até este nó
-  setDrillPath(path);
+    setDrillPath(path);
 
-  // ✅ se o nó expandido é COORDENADOR: colapsa supervisores abaixo dele
-  const expandedNodeId = id;
+    // se expandiu COORDENADOR: colapsa supervisores abaixo dele
+    const findNode = (roots: Node[], targetId: number): Node | null => {
+      const stack = [...roots];
+      while (stack.length) {
+        const n = stack.pop()!;
+        if (n.id === targetId) return n;
+        (n.children || []).forEach((c) => stack.push(c));
+      }
+      return null;
+    };
 
-  const findNode = (roots: Node[], targetId: number): Node | null => {
-    const stack = [...roots];
-    while (stack.length) {
-      const n = stack.pop()!;
-      if (n.id === targetId) return n;
-      (n.children || []).forEach((c) => stack.push(c));
+    const node = findNode(filteredData, id);
+    if (!node) return;
+
+    if (isCoordinator(node.role)) {
+      const supervisorIds = collectIdsByPredicate(node, (x) => isSupervisor(x.role));
+      if (supervisorIds.length) {
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          supervisorIds.forEach((sid) => next.add(sid));
+          return next;
+        });
+      }
     }
-    return null;
   };
 
-  const node = findNode(filteredData, expandedNodeId);
-  if (!node) return;
-
-  if (isCoordinator(node.role)) {
-    const supervisorIds = collectIdsByPredicate(node, (x) => isSupervisor(x.role));
-
-    if (supervisorIds.length) {
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        // ✅ garante supervisor COLAPSADO (pra não mostrar técnicos)
-        supervisorIds.forEach((sid) => next.add(sid));
-        return next;
-      });
-    }
-  }
-};
-
-  // ✅ quando recolher um nó: remove ele e tudo abaixo do drillPath
   const onDrillCollapse = (id: number) => {
     setDrillPath((prev) => {
       const idx = prev.indexOf(id);
       if (idx === -1) return prev;
-
-      // volta para o pai (ou vazio)
       return prev.slice(0, idx);
     });
   };
 
-  // expandir / recolher tudo
   const idsComFilhos = useMemo(() => {
     const s = new Set<number>();
     (filteredData || []).forEach(function walk(n: Node) {
@@ -398,45 +397,31 @@ const onDrillExpand = (id: number) => {
 
   const collapseAll = () => {
     setCollapsed(new Set(idsComFilhos));
-    setDrillPath([]); // ✅ limpa drill
+    setDrillPath([]);
   };
   const expandAll = () => {
     setCollapsed(new Set());
-    setDrillPath([]); // ✅ limpa drill
+    setDrillPath([]);
   };
 
-  // roots também sofrem drill, usando um “pai virtual” = 0
   const virtualRootId = 0;
   const drilledRoots = useMemo(() => {
     const selected = selectedChildMap.get(virtualRootId);
     if (!selected) return filteredData;
-
-    // se você tiver múltiplas raízes e quiser drill nelas também:
     return filteredData.filter((r) => r.id === selected);
   }, [filteredData, selectedChildMap]);
 
-  // se quiser drill nas raízes, precisamos setar virtualRoot -> root ao expandir root
-  // (normalmente você só tem 1 root, então é irrelevante)
-
-  // Modal para grupos > 4 (mantive seu modal)
+  // modal (mantido)
   const [modalOpen, setModalOpen] = useState(false);
   const [modalParent, setModalParent] = useState<Node | null>(null);
-  const openChildrenModal = (parent: Node) => {
-    setModalParent(parent);
-    setModalOpen(true);
-  };
-
-  // OBS: com drill-down, geralmente não precisa abrir modal para >4,
-  // mas se você quiser manter: você teria que disparar openChildrenModal
-  // dentro do Branch (quando willExpand && childrenCount > 4). Aqui eu mantive
-  // o componente pronto, mas o gatilho não está sendo usado.
-  // Se você quiser, eu adapto o gatilho com drillPath também.
 
   return (
     <div>
       <div className="org-title-row">
         <h2>Organograma</h2>
-        <Space>
+
+        {/* ✅ wrap no mobile */}
+        <Space wrap>
           {drillPath.length > 0 && <Button onClick={() => setDrillPath([])}>Limpar foco</Button>}
           <Button onClick={expandAll}>Expandir tudo</Button>
           <Button onClick={collapseAll}>Recolher tudo</Button>
@@ -446,8 +431,8 @@ const onDrillExpand = (id: number) => {
       {isLoading ? (
         'Carregando...'
       ) : (
-        <div className="orgchart-wrapper" ref={wrapRef}>
-          <ul className="orgchart">
+        <div className={`orgchart-wrapper ${isMobile ? 'is-mobile' : ''}`} ref={wrapRef}>
+          <ul className={`orgchart ${isMobile ? 'orgchart-mobile' : ''}`}>
             {drilledRoots.map((root) => (
               <Branch
                 key={root.id}
@@ -457,13 +442,9 @@ const onDrillExpand = (id: number) => {
                 descCounts={descCounts}
                 wrapRef={wrapRef}
                 selectedChildMap={selectedChildMap}
-                onDrillExpand={(id) => {
-                  // se você tiver várias raízes e clicar para expandir a raiz,
-                  // você pode “travar” a raiz selecionada assim:
-                  // setDrillPath([root.id]) ...
-                  onDrillExpand(id);
-                }}
+                onDrillExpand={onDrillExpand}
                 onDrillCollapse={onDrillCollapse}
+                isMobile={isMobile}
               />
             ))}
           </ul>

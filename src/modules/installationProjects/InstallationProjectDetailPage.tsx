@@ -37,7 +37,19 @@ import { api } from '../../lib/api';
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
 
 type Client = { id: number; name: string };
-type UserLite = { id: number; name: string };
+
+type RoleLite = { id: number; name: string; level: number };
+
+type UserLite = {
+  id: number;
+  name: string;
+
+  role?: RoleLite;
+  roleId?: number;
+  roleLevel?: number;
+};
+
+type UserOption = { id: number; name: string };
 
 type ClientRow = {
   id: number;
@@ -104,13 +116,11 @@ type InstallationProject = {
   clientId: number | null;
   client?: Client | null;
 
-  // ✅ NOVO (supervisor/coordenador)
   supervisorId?: number | null;
   coordinatorId?: number | null;
   supervisor?: UserLite | null;
   coordinator?: UserLite | null;
 
-  // ✅ NOVO (técnico / prestador)
   technicianId?: number | null;
   technician?: UserLite | null;
 
@@ -140,9 +150,6 @@ type InstallationProject = {
   progress?: ProjectProgress[];
 };
 
-type UserOption = { id: number; name: string };
-type TechnicianOption = { id: number; name: string };
-
 // ✅ se seu backend devolver "data", isso ajuda
 function unwrap<T>(resData: any): T {
   return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
@@ -152,6 +159,53 @@ function statusTag(s: Status) {
   if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
   if (s === 'INICIADO') return <Tag color="blue">Iniciado</Tag>;
   return <Tag color="green">Finalizado</Tag>;
+}
+
+// ✅ roles conforme seu print do banco
+const ROLE_ID_TECNICO = 1;
+const ROLE_ID_SUPERVISOR = 3;
+const ROLE_ID_PSO = 8;
+
+function getRoleId(u?: UserLite | null) {
+  return u?.role?.id ?? u?.roleId;
+}
+function getRoleName(u?: UserLite | null) {
+  return u?.role?.name;
+}
+function getRoleLevel(u?: UserLite | null) {
+  return u?.role?.level ?? u?.roleLevel;
+}
+
+function isSupervisor(u: UserLite) {
+  const id = getRoleId(u);
+  const name = getRoleName(u);
+  const level = getRoleLevel(u);
+  return id === ROLE_ID_SUPERVISOR || name === 'Supervisor' || level === 3;
+}
+
+function isTechnicianOrPSO(u: UserLite) {
+  const id = getRoleId(u);
+  const name = getRoleName(u);
+  // ✅ estrito
+  return id === ROLE_ID_TECNICO || id === ROLE_ID_PSO || name === 'Tecnico' || name === 'PSO';
+}
+
+// ✅ helpers para LINK DE GRUPO (não é número)
+function safeUrl(value?: string | null) {
+  const v = String(value || '').trim();
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isWhatsAppGroupLink(value?: string | null) {
+  const url = safeUrl(value);
+  if (!url) return false;
+  return url.includes('chat.whatsapp.com/');
 }
 
 export default function InstallationProjectDetailPage() {
@@ -167,8 +221,9 @@ export default function InstallationProjectDetailPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressListOpen, setProgressListOpen] = useState(false);
 
-  // ✅ busca de técnicos
+  // ✅ buscas independentes pros selects do EDIT
   const [techSearch, setTechSearch] = useState('');
+  const [supervisorSearch, setSupervisorSearch] = useState('');
 
   const [editForm] = Form.useForm();
   const [waForm] = Form.useForm();
@@ -177,19 +232,35 @@ export default function InstallationProjectDetailPage() {
 
   const watchedVehicles = Form.useWatch('vehicles', progressForm) as any[] | undefined;
 
-  // ✅ lista de técnicos (com busca no backend)
-  const techsQuery = useQuery<TechnicianOption[]>({
-    queryKey: ['users', 'technicians', techSearch],
+  // ✅ BUSCA USERS (um único endpoint)
+  const usersQuery = useQuery<UserLite[]>({
+    queryKey: ['users', { techSearch, supervisorSearch }],
     queryFn: async () => {
-      const res = await api.get('/users/technicians', { params: { q: techSearch } });
-      return unwrap<TechnicianOption[]>(res.data);
+      const q = (techSearch || supervisorSearch || '').trim();
+      const params = q ? { q } : {}; // ✅ não manda q vazio
+      const res = await api.get('/users', { params });
+      return unwrap<UserLite[]>(res.data);
     },
     staleTime: 60_000,
     retry: false,
     refetchOnWindowFocus: false,
   });
 
-  const techs = techsQuery.data || [];
+  const allUsers = usersQuery.data || [];
+
+  const technicianOptions = useMemo(() => {
+    return allUsers
+      .filter(isTechnicianOrPSO)
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allUsers]);
+
+  const supervisorOptions = useMemo(() => {
+    return allUsers
+      .filter(isSupervisor)
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allUsers]);
 
   const projectQuery = useQuery<InstallationProject>({
     queryKey: ['installation-project', projectId],
@@ -213,16 +284,7 @@ export default function InstallationProjectDetailPage() {
     retry: false,
   });
 
-  // ✅ lista de supervisores (level >= 3)
-  const supervisorsQuery = useQuery<UserOption[]>({
-    queryKey: ['users', 'supervisors'],
-    queryFn: async () => (await api.get('/users', { params: { minLevel: 3 } })).data,
-    staleTime: 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-
-  // ✅ lista de coordenadores (level >= 4)
+  // ✅ lista de coordenadores (level >= 4) - fica como está
   const coordinatorsQuery = useQuery<UserOption[]>({
     queryKey: ['users', 'coordinators'],
     queryFn: async () => (await api.get('/users', { params: { minLevel: 4 } })).data,
@@ -242,22 +304,22 @@ export default function InstallationProjectDetailPage() {
     retry: false,
   });
 
-  // ✅ helper pra achar nome por ID (quando backend não retorna supervisor/coordinator)
+  // ✅ helper pra achar nome por ID (fallback)
+  const technicianNameById = (id?: number | null) => {
+    if (!id) return null;
+    const u = technicianOptions.find((x) => x.id === id);
+    return u?.name || `#${id}`;
+  };
+
   const supervisorNameById = (id?: number | null) => {
     if (!id) return null;
-    const u = (supervisorsQuery.data || []).find((x) => x.id === id);
+    const u = supervisorOptions.find((x) => x.id === id);
     return u?.name || `#${id}`;
   };
 
   const coordinatorNameById = (id?: number | null) => {
     if (!id) return null;
     const u = (coordinatorsQuery.data || []).find((x) => x.id === id);
-    return u?.name || `#${id}`;
-  };
-
-  const technicianNameById = (id?: number | null) => {
-    if (!id) return null;
-    const u = (techsQuery.data || []).find((x) => x.id === id);
     return u?.name || `#${id}`;
   };
 
@@ -740,8 +802,8 @@ export default function InstallationProjectDetailPage() {
               title: v.title,
               af: v.af ?? null,
               clientId: v.clientId ?? null,
-              technicianId: v.technicianId ? Number(v.technicianId) : null, // ✅ manda técnico
-              supervisorId: v.supervisorId ? Number(v.supervisorId) : null, // ✅ manda supervisor
+              technicianId: v.technicianId ? Number(v.technicianId) : null,
+              supervisorId: v.supervisorId ? Number(v.supervisorId) : null,
               trucksTotal: v.trucksTotal ?? 0,
               equipmentsPerDay: v.equipmentsPerDay ?? null,
               startPlannedAt: v.startPlannedAt ? (v.startPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
@@ -755,6 +817,9 @@ export default function InstallationProjectDetailPage() {
         }}
         afterOpenChange={(o) => {
           if (o) {
+            setTechSearch('');
+            setSupervisorSearch('');
+
             editForm.setFieldsValue({
               title: p.title,
               af: p.af ?? null,
@@ -796,16 +861,19 @@ export default function InstallationProjectDetailPage() {
             <Form.Item
               name="technicianId"
               label="Técnico / Prestador (obrigatório)"
-              rules={[{ required: true, message: 'Selecione o técnico' }]}
+              rules={[{ required: true, message: 'Selecione o técnico/prestador' }]}
             >
               <Select
                 showSearch
-                placeholder="Selecione o técnico"
-                loading={techsQuery.isLoading}
+                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                loading={usersQuery.isLoading}
                 filterOption={false}
                 onSearch={(v) => setTechSearch(v)}
-                options={techs.map((t) => ({ label: t.name, value: t.id }))}
-                notFoundContent={techsQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico encontrado'}
+                onDropdownVisibleChange={(isOpen) => {
+                  if (isOpen) setTechSearch('');
+                }}
+                options={technicianOptions.map((t) => ({ label: t.name, value: t.id }))}
+                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'}
               />
             </Form.Item>
 
@@ -816,11 +884,15 @@ export default function InstallationProjectDetailPage() {
             >
               <Select
                 showSearch
-                placeholder="Selecione um supervisor"
-                loading={supervisorsQuery.isLoading}
-                optionFilterProp="label"
-                filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
-                options={(supervisorsQuery.data || []).map((u) => ({ value: u.id, label: u.name }))}
+                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                loading={usersQuery.isLoading}
+                filterOption={false}
+                onSearch={(v) => setSupervisorSearch(v)}
+                onDropdownVisibleChange={(isOpen) => {
+                  if (isOpen) setSupervisorSearch('');
+                }}
+                options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
+                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'}
               />
             </Form.Item>
 
@@ -928,6 +1000,7 @@ export default function InstallationProjectDetailPage() {
           <Form.Item name="whatsappGroupName" label="Nome do grupo (opcional)">
             <Input />
           </Form.Item>
+
           <Form.Item
             name="whatsappGroupLink"
             label="Link do grupo (opcional)"
@@ -935,16 +1008,28 @@ export default function InstallationProjectDetailPage() {
               {
                 validator: async (_, value) => {
                   if (!value) return;
-                  try {
-                    new URL(value);
-                  } catch {
-                    throw new Error('Informe uma URL válida');
+                  if (!isWhatsAppGroupLink(value)) {
+                    throw new Error('Informe um link válido de grupo do WhatsApp (ex: https://chat.whatsapp.com/...)');
                   }
                 },
               },
             ]}
           >
-            <Input placeholder="https://chat.whatsapp.com/..." />
+            <Input
+              placeholder="https://chat.whatsapp.com/..."
+              addonAfter={
+                <Button
+                  type="text"
+                  aria-label="Abrir link do grupo no WhatsApp"
+                  icon={<WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} />}
+                  disabled={!safeUrl(waForm.getFieldValue('whatsappGroupLink'))}
+                  onClick={() => {
+                    const link = safeUrl(waForm.getFieldValue('whatsappGroupLink'));
+                    if (link) window.open(link, '_blank');
+                  }}
+                />
+              }
+            />
           </Form.Item>
         </Form>
       </Modal>

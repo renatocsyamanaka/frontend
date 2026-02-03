@@ -1,3 +1,4 @@
+import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
@@ -21,6 +22,7 @@ import {
   Spin,
   Row,
   Col,
+  Grid,
 } from 'antd';
 import {
   EditOutlined,
@@ -32,15 +34,14 @@ import {
   EyeOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
-import { useMemo, useState } from 'react';
 import { UserSelect } from '../shared/UserSelect';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
-import { useNavigate } from 'react-router-dom';
 import UserMapModal from './UserMapModal';
 import { MaskedInput } from 'antd-mask-input';
 
 const { Title, Text } = Typography;
+const { useBreakpoint } = Grid;
 
 /** ===== Helpers globais (ABS URL) ===== */
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online/api';
@@ -50,15 +51,13 @@ const abs = (url?: string | null) => {
   return `${API_URL}/${String(url).replace(/^\/+/, '')}`;
 };
 
+const initial = (s?: string | null) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
+
 /** ===== Helpers telefone (MASK dinâmico) ===== */
 const onlyDigits = (v?: string) => String(v || '').replace(/\D/g, '');
 
 const phoneMask = (value?: string) => {
   const digits = onlyDigits(value);
-
-  // digits inclui DDD
-  // 10 dígitos => (11) 9999-9999  (fixo)
-  // 11 dígitos => (11) 99999-9999 (celular)
   return digits.length > 10 ? '(00) 00000-0000' : '(00) 0000-0000';
 };
 
@@ -77,8 +76,8 @@ type User = {
   role?: Role;
   manager?: SimpleUser | null;
   location?: Location | null;
+  estoqueAvancado?: boolean | null;
 
-  // endereço + coords (visualização e modal de endereço)
   addressStreet?: string | null;
   addressNumber?: string | null;
   addressComplement?: string | null;
@@ -90,7 +89,6 @@ type User = {
   lat?: number | null;
   lng?: number | null;
 
-  // extras
   phone?: string | null;
   vendorCode?: string | null;
   serviceAreaCode?: string | null;
@@ -106,11 +104,75 @@ const BASE_ROLE_OPTIONS = [
   { value: 6, label: 'Diretor' },
   { value: 7, label: 'Admin' },
   { value: 8, label: 'PSO' },
+  { value: 9, label: 'SPOT' },
+  { value: 10, label: 'PRP' },
 ];
+
+function OrgCard({
+  title,
+  person,
+  highlight,
+  badge,
+}: {
+  title: string;
+  person: any;
+  highlight?: boolean;
+  badge?: string;
+}) {
+  return (
+    <Card
+      size="small"
+      style={{
+        width: 320,
+        maxWidth: '100%',
+        borderRadius: 12,
+        border: highlight ? '1px solid #93c5fd' : '1px solid #f0f0f0',
+        boxShadow: highlight ? '0 6px 18px rgba(59,130,246,0.12)' : undefined,
+      }}
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>{title}</span>
+          {badge ? <Tag color={highlight ? 'blue' : 'default'}>{badge}</Tag> : null}
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <Avatar src={abs(person?.avatarUrl)} size={44}>
+          {initial(person?.nome)}
+        </Avatar>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {person?.nome || '—'}
+          </div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>{person?.cargo || '—'}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function OrgMiniCard({ person }: { person: any }) {
+  return (
+    <Card size="small" style={{ borderRadius: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <Avatar src={abs(person?.avatarUrl)} size={36}>
+          {initial(person?.nome)}
+        </Avatar>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {person?.nome || '—'}
+          </div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>{person?.cargo || '—'}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export function UsersPage() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
 
   // listagem
   const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
@@ -124,22 +186,20 @@ export function UsersPage() {
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [fManagerId, setFManagerId] = useState<number | undefined>(undefined);
   const [fLocationId, setFLocationId] = useState<number | undefined>(undefined);
+
+  // mapa modal
   const [mapOpen, setMapOpen] = useState(false);
 
   const roleOptions = useMemo(() => {
     const fromData = (data || []).map((u) => u.role).filter(Boolean) as Role[];
-
     const uniqById = new Map<number, Role>();
     fromData.forEach((r) => {
       if (!uniqById.has(r.id)) uniqById.set(r.id, r);
     });
 
-    const dynamic = Array.from(uniqById.values()).map((r) => ({
-      value: r.id,
-      label: r.name,
-    }));
-
+    const dynamic = Array.from(uniqById.values()).map((r) => ({ value: r.id, label: r.name }));
     const merged = [...dynamic];
+
     BASE_ROLE_OPTIONS.forEach((base) => {
       if (!merged.find((x) => x.value === base.value)) merged.push(base);
     });
@@ -169,12 +229,10 @@ export function UsersPage() {
     });
   }, [data, fSearch, fRoles, fActive, fManagerId, fLocationId]);
 
-  // ======= criar técnico/pso =======
+  // ======= criar prestador =======
   const [workerOpen, setWorkerOpen] = useState(false);
   const [workerForm] = Form.useForm();
   const [workerAvatarFile, setWorkerAvatarFile] = useState<File | null>(null);
-
-  // 👇 watch telefone worker
   const workerPhone = Form.useWatch('phone', workerForm);
 
   const createWorker = useMutation({
@@ -203,30 +261,11 @@ export function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm] = Form.useForm();
   const [createAvatarFile, setCreateAvatarFile] = useState<File | null>(null);
-
-  // 👇 watch telefone create
   const createPhone = Form.useWatch('phone', createForm);
-
-  const [structureOpen, setStructureOpen] = useState(false);
-  const [structure, setStructure] = useState<any | null>(null);
-  const [loadingStructure, setLoadingStructure] = useState(false);
-
-  async function fetchStructure(userId: number) {
-    setLoadingStructure(true);
-    try {
-      const res = await api.get(`/users/${userId}/structure`);
-      setStructure(res.data);
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Erro ao buscar estrutura');
-    } finally {
-      setLoadingStructure(false);
-    }
-  }
 
   const createUser = useMutation({
     mutationFn: async (payload: any) => (await api.post('/users', payload)).data,
     onSuccess: async (user: User) => {
-      // se houver endereço mínimo, faz PATCH /users/:id/address
       const v = createForm.getFieldsValue();
       const hasAddr = v.addressStreet && v.addressCity && v.addressState;
 
@@ -250,7 +289,6 @@ export function UsersPage() {
         }
       }
 
-      // avatar
       if (createAvatarFile) {
         const fd = new FormData();
         fd.append('file', createAvatarFile);
@@ -261,21 +299,18 @@ export function UsersPage() {
       }
 
       message.success('Usuário criado');
-      qc.invalidateQueries({ queryKey: ['users'] });
+      await qc.invalidateQueries({ queryKey: ['users'] });
       setCreateOpen(false);
       createForm.resetFields();
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao criar'),
   });
 
-  // ======= editar (SEM endereço aqui) =======
+  // ======= editar =======
   const [editOpen, setEditOpen] = useState(false);
   const [editForm] = Form.useForm();
   const [editing, setEditing] = useState<User | null>(null);
   const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
-
-  // 👇 watch telefone edit
-  const editPhone = Form.useWatch('phone', editForm);
 
   const updateUser = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
@@ -291,20 +326,37 @@ export function UsersPage() {
       }
 
       message.success('Usuário atualizado');
-      qc.invalidateQueries({ queryKey: ['users'] });
+      await qc.invalidateQueries({ queryKey: ['users'] });
       setEditOpen(false);
       setEditing(null);
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao atualizar'),
   });
 
-  // ======= endereço (EDITA SÓ NO MODAL) =======
+  // ======= endereço =======
   const [addrOpen, setAddrOpen] = useState(false);
   const [addrUser, setAddrUser] = useState<User | null>(null);
 
   // ======= visualizar =======
   const [viewOpen, setViewOpen] = useState(false);
   const [viewUser, setViewUser] = useState<User | null>(null);
+
+  // ======= estrutura =======
+  const [structureOpen, setStructureOpen] = useState(false);
+  const [structure, setStructure] = useState<any | null>(null);
+  const [loadingStructure, setLoadingStructure] = useState(false);
+
+  async function fetchStructure(userId: number) {
+    setLoadingStructure(true);
+    try {
+      const res = await api.get(`/users/${userId}/structure`);
+      setStructure(res.data);
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || 'Erro ao buscar estrutura');
+    } finally {
+      setLoadingStructure(false);
+    }
+  }
 
   // ======= GEOCODE (somente CREATE e WORKER) =======
   const [geoOpen, setGeoOpen] = useState(false);
@@ -340,214 +392,178 @@ export function UsersPage() {
     setGeoOpen(false);
   };
 
-  // helper puxa inicial do nome
-  const initial = (s?: string) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
-
-  const PersonLine: React.FC<{ p: any }> = ({ p }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-      <Avatar src={abs(p.avatarUrl)} size={28}>
-        {initial(p.nome)}
-      </Avatar>
-      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Text strong ellipsis style={{ lineHeight: 1.1 }}>
-          {p.nome}
-        </Text>
-        <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.1 }}>
-          {p.cargo || '—'}
-        </Text>
-      </div>
-    </div>
-  );
-type PhoneInputProps = {
-  form: any; // FormInstance
-  name?: string;
-  placeholder?: string;
-};
-
-function PhoneInput({ form, name = "phone", placeholder = "(11) 99999-9999" }: PhoneInputProps) {
-  const watched = Form.useWatch(name, form) as string | undefined;
-
-  const digits = String(watched ?? "").replace(/\D/g, "");
-
-  // Regra BR: celular normalmente começa com 9 após o DDD.
-  // digits[0..1] = DDD, digits[2] = primeiro díito do número.
-  const isMobile = digits.length >= 3 && digits[2] === "9";
-
-  const mask = isMobile ? "(00) 00000-0000" : "(00) 0000-0000";
-
-  return (
-    <MaskedInput
-      mask={mask}
-      inputMode="tel"
-      placeholder={placeholder}
-      onBlur={() => {
-        // só para "ajeitar" o texto caso o usuário cole sem máscara
-        const d = String(form.getFieldValue(name) ?? "").replace(/\D/g, "");
-
-        // fixo: 10 dígitos (2 DDD + 8)
-        if (d.length === 10) {
-          form.setFieldsValue({
-            [name]: d.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3"),
-          });
-        }
-
-        // celular: 11 dígitos (2 DDD + 9)
-        if (d.length === 11) {
-          form.setFieldsValue({
-            [name]: d.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3"),
-          });
-        }
-      }}
-    />
-  );
-}
-  // ======= UI =======
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {/* Header + ações */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Colaboradores</h2>
-        <Space>
-          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
-            Atualizar
-          </Button>
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            Novo usuário
-          </Button>
-          <Button onClick={() => setWorkerOpen(true)}>Cadastrar técnico/PSO</Button>
-        </Space>
-      </div>
+      {/* ===== Header Responsivo ===== */}
+      <Row gutter={[12, 12]} align="middle" justify="space-between">
+        <Col xs={24} md="auto">
+          <h2 style={{ margin: 0 }}>Colaboradores</h2>
+        </Col>
 
-      {/* Filtros */}
+        <Col xs={24} md="auto">
+          <Space
+            wrap
+            style={{
+              width: '100%',
+              justifyContent: isMobile ? 'flex-start' : 'flex-end',
+            }}
+          >
+            <Button block={isMobile} icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
+              Atualizar
+            </Button>
+            <Button block={isMobile} type="primary" onClick={() => setCreateOpen(true)}>
+              Novo usuário
+            </Button>
+            <Button block={isMobile} onClick={() => setWorkerOpen(true)}>
+              Cadastrar prestador
+            </Button>
+          </Space>
+        </Col>
+      </Row>
+
+      {/* ===== Filtros Responsivos ===== */}
       <Card size="small">
-        <Space wrap>
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Buscar por nome ou e-mail"
-            style={{ width: 260 }}
-            value={fSearch}
-            onChange={(e) => setFSearch(e.target.value)}
-          />
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={8} lg={6}>
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Buscar por nome ou e-mail"
+              value={fSearch}
+              onChange={(e) => setFSearch(e.target.value)}
+            />
+          </Col>
 
-          <Select
-            mode="multiple"
-            allowClear
-            style={{ minWidth: 280 }}
-            placeholder="Filtrar por cargo (Gerente, Coordenador, Supervisor, Técnico, PSO...)"
-            value={fRoles}
-            onChange={(vals) => setFRoles(vals as number[] | undefined)}
-            options={roleOptions}
-            optionFilterProp="label"
-          />
+          <Col xs={24} md={8} lg={6}>
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="Filtrar por cargo"
+              value={fRoles}
+              onChange={(vals) => setFRoles(vals as number[] | undefined)}
+              options={roleOptions}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
+            />
+          </Col>
 
-          <Select
-            value={fActive}
-            onChange={(v) => setFActive(v)}
-            style={{ width: 180 }}
-            options={[
-              { value: 'ALL', label: 'Todos' },
-              { value: 'ACTIVE', label: 'Ativos' },
-              { value: 'INACTIVE', label: 'Inativos' },
-            ]}
-          />
+          <Col xs={24} md={8} lg={4}>
+            <Select
+              value={fActive}
+              onChange={(v) => setFActive(v)}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'ALL', label: 'Todos' },
+                { value: 'ACTIVE', label: 'Ativos' },
+                { value: 'INACTIVE', label: 'Inativos' },
+              ]}
+            />
+          </Col>
 
-          <div style={{ minWidth: 260 }}>
+          <Col xs={24} md={12} lg={4}>
             <UserSelect
               allowClear
               onlyManagers
               placeholder="Filtrar por gestor"
               onChange={(v) => setFManagerId(v as number | undefined)}
+              style={{ width: '100%' } as any}
             />
-          </div>
+          </Col>
 
-          <div style={{ minWidth: 260 }}>
+          <Col xs={24} md={12} lg={4}>
             <LocationSelect
               allowClear
               placeholder="Filtrar por local"
               onChange={(v) => setFLocationId(v as number | undefined)}
+              style={{ width: '100%' } as any}
             />
-          </div>
+          </Col>
 
-          <Button
-            onClick={() => {
-              setFSearch('');
-              setFRoles(undefined);
-              setFActive('ALL');
-              setFManagerId(undefined);
-              setFLocationId(undefined);
-            }}
-          >
-            Limpar
-          </Button>
-        </Space>
+          <Col xs={24} md={6} lg={4}>
+            <Button
+              block
+              onClick={() => {
+                setFSearch('');
+                setFRoles(undefined);
+                setFActive('ALL');
+                setFManagerId(undefined);
+                setFLocationId(undefined);
+              }}
+            >
+              Limpar
+            </Button>
+          </Col>
+        </Row>
       </Card>
 
-      {/* Grade de cards */}
-<List
-  loading={isLoading}
-  grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4, xxl: 4 }}
-  dataSource={filtered}
-  rowKey={(u) => u.id}
-renderItem={(u) => (
-  <List.Item>
-    <Card hoverable bodyStyle={{ padding: 16, position: 'relative' }}>
-      {/* ✅ TAGS coladas na borda superior direita */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          right: 10,
-          display: 'flex',
-          gap: 8,
-          alignItems: 'center',
-          zIndex: 2,
-        }}
-      >
-        {u.loginEnabled === false && <Tag color="blue">Sem login</Tag>}
-        {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
-      </div>
+      {/* ===== Grade de cards ===== */}
+      <List
+        loading={isLoading}
+        grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4, xxl: 4 }}
+        dataSource={filtered}
+        rowKey={(u) => u.id}
+        renderItem={(u) => (
+          <List.Item>
+            <Card hoverable bodyStyle={{ padding: 16 }}>
+              {/* TAGS (sem absolute, não quebra no mobile) */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-end',
+                  marginBottom: 10,
+                }}
+              >
+                {u.loginEnabled === false && <Tag color="blue">Sem login</Tag>}
+                {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
+                {!!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+              </div>
 
-      {/* ✅ Conteúdo com espaço no topo pra não bater nas tags */}
-      <div style={{ paddingTop: 26 }}>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <Avatar src={abs(u.avatarUrl)} size={64}>
-            {u.name?.[0]}
-          </Avatar>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <Avatar src={abs(u.avatarUrl)} size={56}>
+                  {u.name?.[0]}
+                </Avatar>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Title level={5} style={{ margin: 0 }}>
-              {u.name}
-            </Title>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Title level={5} style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {u.name}
+                  </Title>
 
-            <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
-            <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
-          </div>
-        </div>
+                  <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
+                  <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
+                </div>
+              </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, gap: 8 }}>
-          <Button icon={<EyeOutlined />} onClick={() => { setViewUser(u); setViewOpen(true); }}>
-            Informações
-          </Button>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <Button
+                  block={isMobile}
+                  icon={<EyeOutlined />}
+                  onClick={() => {
+                    setViewUser(u);
+                    setViewOpen(true);
+                  }}
+                >
+                  Informações
+                </Button>
 
-          <Button
-            icon={<ApartmentOutlined />}
-            onClick={() => {
-              setViewUser(u);
-              setStructureOpen(true);
-              fetchStructure(u.id);
-            }}
-          >
-            Estrutura
-          </Button>
-        </div>
-      </div>
-    </Card>
-  </List.Item>
-)}
-
-/>
-
+                <Button
+                  block={isMobile}
+                  icon={<ApartmentOutlined />}
+                  onClick={() => {
+                    setViewUser(u);
+                    setStructureOpen(true);
+                    fetchStructure(u.id);
+                  }}
+                >
+                  Estrutura
+                </Button>
+              </div>
+            </Card>
+          </List.Item>
+        )}
+      />
 
       {/* ===== Modal VISUALIZAR ===== */}
       <Modal
@@ -563,9 +579,12 @@ renderItem={(u) => (
           </div>
         }
         open={viewOpen}
-        onCancel={() => { setViewOpen(false); setViewUser(null); }}
+        onCancel={() => {
+          setViewOpen(false);
+          setViewUser(null);
+        }}
         footer={
-          <Space>
+          <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
             <Tooltip title={viewUser?.lat && viewUser?.lng ? 'Ver no mapa' : 'Sem coordenadas'}>
               <Button
                 icon={<EnvironmentOutlined />}
@@ -614,16 +633,24 @@ renderItem={(u) => (
               Editar
             </Button>
 
-            <Button onClick={() => { setViewOpen(false); setViewUser(null); }}>Fechar</Button>
+            <Button
+              onClick={() => {
+                setViewOpen(false);
+                setViewUser(null);
+              }}
+            >
+              Fechar
+            </Button>
           </Space>
         }
-        destroyOnHidden
-        width={720}
+        destroyOnClose
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         {viewUser && (
-          <Row gutter={16}>
-            <Col span={8}>
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={8}>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Card size="small" title="Profissional">
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="Cargo">{viewUser.role?.name || '-'}</Descriptions.Item>
@@ -642,7 +669,7 @@ renderItem={(u) => (
               </Space>
             </Col>
 
-            <Col span={8}>
+            <Col xs={24} md={8}>
               <Card size="small" title="Área de atendimento">
                 <Descriptions column={1} size="small">
                   <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
@@ -652,7 +679,7 @@ renderItem={(u) => (
               </Card>
             </Col>
 
-            <Col span={8}>
+            <Col xs={24} md={8}>
               <Card size="small" title="Endereço">
                 <Descriptions column={1} size="small">
                   <Descriptions.Item label="Logradouro">
@@ -661,7 +688,8 @@ renderItem={(u) => (
                   <Descriptions.Item label="Complemento">{viewUser.addressComplement || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Bairro">{viewUser.addressDistrict || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cidade/UF">
-                    {(viewUser.addressCity || '—')}{viewUser.addressState ? ` / ${viewUser.addressState}` : ''}
+                    {(viewUser.addressCity || '—')}
+                    {viewUser.addressState ? ` / ${viewUser.addressState}` : ''}
                   </Descriptions.Item>
                   <Descriptions.Item label="CEP">{viewUser.addressZip || '—'}</Descriptions.Item>
                   <Descriptions.Item label="País">{viewUser.addressCountry || '—'}</Descriptions.Item>
@@ -703,7 +731,9 @@ renderItem={(u) => (
           viewUser?.addressCity,
           viewUser?.addressState,
           viewUser?.addressZip,
-        ].filter(Boolean).join(', ')}
+        ]
+          .filter(Boolean)
+          .join(', ')}
       />
 
       {/* ===== Modal CRIAR ===== */}
@@ -716,7 +746,9 @@ renderItem={(u) => (
           createForm.resetFields();
         }}
         onOk={() => createForm.submit()}
-        destroyOnHidden
+        destroyOnClose
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Form
           layout="vertical"
@@ -738,122 +770,158 @@ renderItem={(u) => (
             createUser.mutate(payload);
           }}
         >
-          <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
+          <Row gutter={[12, 12]}>
+            <Col xs={24}>
+              <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
-            <Input />
-          </Form.Item>
+            <Col xs={24} md={12}>
+              <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="password" label="Senha" rules={[{ required: true, min: 6 }]}>
-            <Input.Password />
-          </Form.Item>
+            <Col xs={24} md={12}>
+              <Form.Item name="password" label="Senha" rules={[{ required: true, min: 6 }]}>
+                <Input.Password />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="sex" label="Sexo">
-            <Select
-              allowClear
-              options={[
-                { value: 'M', label: 'Masculino' },
-                { value: 'F', label: 'Feminino' },
-                { value: 'O', label: 'Outro' },
-              ]}
-            />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="sex" label="Sexo">
+                <Select
+                  allowClear
+                  options={[
+                    { value: 'M', label: 'Masculino' },
+                    { value: 'F', label: 'Feminino' },
+                    { value: 'O', label: 'Outro' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="roleId" label="Cargo" rules={[{ required: true }]}>
-            <Select options={roleOptions} optionFilterProp="label" />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="roleId" label="Cargo" rules={[{ required: true }]}>
+                <Select options={roleOptions} optionFilterProp="label" />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="managerId" label="Gestor">
-            <UserSelect onlyManagers />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="managerId" label="Gestor">
+                <UserSelect onlyManagers />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="locationId" label="Local">
-            <LocationSelect />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="locationId" label="Local">
+                <LocationSelect />
+              </Form.Item>
+            </Col>
 
-          {/* EXTRAS */}
-          <Form.Item name="phone" label="Telefone">
-            <MaskedInput
-              mask={phoneMask(createPhone)}
-              placeholder="(11) 99999-9999"
-            />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="phone" label="Telefone">
+                <MaskedInput mask={phoneMask(createPhone)} placeholder="(11) 99999-9999" />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="vendorCode" label="Cód do fornecedor">
-            <Input />
-          </Form.Item>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="vendorCode" label="Cód do fornecedor">
+                <Input />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
-            <Input />
-          </Form.Item>
+            <Col xs={24} md={12} lg={12}>
+              <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
+                <Input />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-            <Input />
-          </Form.Item>
+            <Col xs={24} md={12} lg={12}>
+              <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          {/* ENDEREÇO + BUSCA COORDENADAS */}
           <Card size="small" title="Endereço (opcional)" style={{ marginTop: 8 }}>
-            <Form.Item name="addressStreet" label="Logradouro">
-              <Input placeholder="Rua/Avenida" />
-            </Form.Item>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={12}>
+                <Form.Item name="addressStreet" label="Logradouro">
+                  <Input placeholder="Rua/Avenida" />
+                </Form.Item>
+              </Col>
 
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item name="addressNumber" label="Número" style={{ flex: 1 }}>
-                <Input />
-              </Form.Item>
-              <Form.Item name="addressComplement" label="Complemento" style={{ flex: 1, marginLeft: 8 }}>
-                <Input />
-              </Form.Item>
-            </Space.Compact>
+              <Col xs={24} md={6}>
+                <Form.Item name="addressNumber" label="Número">
+                  <Input />
+                </Form.Item>
+              </Col>
 
-            <Form.Item name="addressDistrict" label="Bairro">
-              <Input />
-            </Form.Item>
+              <Col xs={24} md={6}>
+                <Form.Item name="addressComplement" label="Complemento">
+                  <Input />
+                </Form.Item>
+              </Col>
 
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item name="addressCity" label="Cidade" style={{ flex: 1 }}>
-                <Input />
-              </Form.Item>
-              <Form.Item name="addressState" label="UF/Estado" style={{ flex: 1, marginLeft: 8 }}>
-                <Input placeholder="SP, RJ..." />
-              </Form.Item>
-            </Space.Compact>
+              <Col xs={24} md={12}>
+                <Form.Item name="addressDistrict" label="Bairro">
+                  <Input />
+                </Form.Item>
+              </Col>
 
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item name="addressZip" label="CEP" style={{ flex: 1 }}>
-                <Input />
-              </Form.Item>
-              <Form.Item
-                name="addressCountry"
-                label="País"
-                style={{ flex: 1, marginLeft: 8 }}
-                initialValue="Brasil"
-              >
-                <Input />
-              </Form.Item>
-            </Space.Compact>
+              <Col xs={24} md={6}>
+                <Form.Item name="addressCity" label="Cidade">
+                  <Input />
+                </Form.Item>
+              </Col>
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <Form.Item name="lat" label="Latitude" style={{ flex: 1 }}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-              </Form.Item>
-              <Form.Item name="lng" label="Longitude" style={{ flex: 1 }}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-              </Form.Item>
-              <Button
-                icon={<SearchOutlined />}
-                onClick={() => {
-                  setGeoForForm('create');
-                  setGeoOpen(true);
-                  setGeoResults([]);
-                  setGeoQuery('');
-                }}
-              >
-                Buscar coordenadas
-              </Button>
-            </div>
+              <Col xs={24} md={6}>
+                <Form.Item name="addressState" label="UF/Estado">
+                  <Input placeholder="SP, RJ..." />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="addressZip" label="CEP">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="lat" label="Latitude">
+                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="lng" label="Longitude">
+                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
+                <Button
+                  block={isMobile}
+                  icon={<SearchOutlined />}
+                  onClick={() => {
+                    setGeoForForm('create');
+                    setGeoOpen(true);
+                    setGeoResults([]);
+                    setGeoQuery('');
+                  }}
+                >
+                  Buscar coordenadas
+                </Button>
+              </Col>
+            </Row>
           </Card>
 
           <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
@@ -873,7 +941,7 @@ renderItem={(u) => (
         </Form>
       </Modal>
 
-      {/* ===== Modal EDITAR (SEM ENDEREÇO) ===== */}
+      {/* ===== Modal EDITAR ===== */}
       <Modal
         title={`Editar: ${editing?.name || ''}`}
         open={editOpen}
@@ -883,8 +951,9 @@ renderItem={(u) => (
           setEditAvatarFile(null);
         }}
         onOk={() => editForm.submit()}
-        destroyOnHidden
-        width={860}
+        destroyOnClose
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Form
           layout="vertical"
@@ -898,18 +967,16 @@ renderItem={(u) => (
               managerId: v.managerId ?? null,
               locationId: v.locationId ?? null,
               isActive: v.isActive,
-
               phone: v.phone ?? null,
               vendorCode: v.vendorCode ?? null,
               serviceAreaCode: v.serviceAreaCode ?? null,
               serviceAreaName: v.serviceAreaName ?? null,
             };
-
             updateUser.mutate({ id: editing!.id, payload });
           }}
         >
-          <Row gutter={[16, 12]}>
-            <Col xs={24} md={24}>
+          <Row gutter={[12, 12]}>
+            <Col xs={24}>
               <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
@@ -927,45 +994,37 @@ renderItem={(u) => (
               </Form.Item>
             </Col>
 
-            {editing?.loginEnabled ? (
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="locationId" label="Local">
-                  <LocationSelect />
-                </Form.Item>
-              </Col>
-            ) : (
-              <Col xs={24} md={12} lg={8} />
-            )}
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="locationId" label="Local">
+                <LocationSelect />
+              </Form.Item>
+            </Col>
 
-            {editing?.loginEnabled && (
-              <>
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
-                    <Input />
-                  </Form.Item>
-                </Col>
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
 
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="sex" label="Sexo">
-                    <Select
-                      allowClear
-                      options={[
-                        { value: 'M', label: 'Masculino' },
-                        { value: 'F', label: 'Feminino' },
-                        { value: 'O', label: 'Outro' },
-                      ]}
-                    />
-                  </Form.Item>
-                </Col>
-              </>
-            )}
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="sex" label="Sexo">
+                <Select
+                  allowClear
+                  options={[
+                    { value: 'M', label: 'Masculino' },
+                    { value: 'F', label: 'Feminino' },
+                    { value: 'O', label: 'Outro' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
 
             <Col xs={24} md={12} lg={8}>
               <Form.Item name="phone" label="Telefone">
                 <MaskedInput
                   mask={[
-                    { mask: "(00) 0000-0000" },
-                    { mask: "(00) 00000-0000" },
+                    { mask: '(00) 0000-0000' },
+                    { mask: '(00) 00000-0000' },
                   ]}
                   placeholder="(11) 99999-9999"
                 />
@@ -984,19 +1043,19 @@ renderItem={(u) => (
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={24} lg={8}>
+            <Col xs={24} md={12} lg={8}>
               <Form.Item name="serviceAreaName" label="Nome da área">
                 <Input />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={6} lg={5}>
+            <Col xs={24} md={6}>
               <Form.Item name="isActive" label="Ativo" valuePropName="checked" style={{ marginTop: 8 }}>
                 <Switch />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={18} lg={19}>
+            <Col xs={24} md={18}>
               <Form.Item label="Foto (trocar)">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <Avatar src={abs(editing?.avatarUrl)} size={40}>
@@ -1022,7 +1081,7 @@ renderItem={(u) => (
         </Form>
       </Modal>
 
-      {/* ===== Modal ENDEREÇO (único lugar que edita endereço) ===== */}
+      {/* ===== Modal ENDEREÇO ===== */}
       {addrUser && (
         <UserAddressModal
           open={addrOpen}
@@ -1056,9 +1115,10 @@ renderItem={(u) => (
         title="Buscar coordenadas (Nominatim)"
         open={geoOpen}
         onCancel={() => setGeoOpen(false)}
-        onOk={() => setGeoOpen(false)}
-        okButtonProps={{ style: { display: 'none' } }}
-        destroyOnHidden
+        footer={null}
+        destroyOnClose
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
           <Input
@@ -1082,8 +1142,12 @@ renderItem={(u) => (
                 title={item.label}
                 description={
                   <>
-                    <div><b>lat/lng:</b> {item.lat}, {item.lng}</div>
-                    <div><b>cidade:</b> {item.city || '—'} • <b>UF:</b> {item.uf || '—'}</div>
+                    <div>
+                      <b>lat/lng:</b> {item.lat}, {item.lng}
+                    </div>
+                    <div>
+                      <b>cidade:</b> {item.city || '—'} • <b>UF:</b> {item.uf || '—'}
+                    </div>
                   </>
                 }
               />
@@ -1092,14 +1156,19 @@ renderItem={(u) => (
         />
       </Modal>
 
-      {/* ===== Modal Cadastrar técnico/PSO ===== */}
+      {/* ===== Modal Cadastrar prestador ===== */}
       <Modal
-        title="Cadastrar técnico/PSO"
+        title="Cadastrar prestador"
         open={workerOpen}
-        onCancel={() => { setWorkerOpen(false); workerForm.resetFields(); setWorkerAvatarFile(null); }}
+        onCancel={() => {
+          setWorkerOpen(false);
+          workerForm.resetFields();
+          setWorkerAvatarFile(null);
+        }}
         onOk={() => workerForm.submit()}
-        destroyOnHidden
-        width={900}
+        destroyOnClose
+        width={isMobile ? '100%' : 980}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Form
           layout="vertical"
@@ -1110,6 +1179,7 @@ renderItem={(u) => (
               phone: v.phone || null,
               roleId: v.roleId,
               managerId: v.managerId ?? null,
+              estoqueAvancado: !!v.estoqueAvancado,
               vendorCode: v.vendorCode || null,
               serviceAreaCode: v.serviceAreaCode || null,
               serviceAreaName: v.serviceAreaName || null,
@@ -1127,132 +1197,180 @@ renderItem={(u) => (
             createWorker.mutate(payload);
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr 320px', gap: 12 }}>
-            <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione Técnico ou PSO' }]}>
-              <Select
-                placeholder="Selecione"
-                optionFilterProp="label"
-                options={roleOptions.filter((r) => ['Técnico', 'Tecnico', 'PSO'].includes(r.label))}
-              />
-            </Form.Item>
-
-            <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-
-            <Form.Item name="phone" label="Telefone">
-              <MaskedInput
-                mask={phoneMask(workerPhone)}
-                placeholder="(11) 99999-9999"
-              />
-            </Form.Item>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-            <Form.Item name="managerId" label="Gestor (opcional)">
-              <UserSelect onlyManagers allowClear placeholder="Selecione o gestor" />
-            </Form.Item>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '320px 320px 1fr', gap: 12 }}>
-            <Form.Item name="vendorCode" label="Código do fornecedor">
-              <Input />
-            </Form.Item>
-            <Form.Item name="serviceAreaCode" label="Código da área de atendimento">
-              <Input />
-            </Form.Item>
-            <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-              <Input />
-            </Form.Item>
-          </div>
-
-          <Card size="small" title="Endereço (obrigatório)" style={{ marginTop: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '220px auto', gap: 12 }}>
-              <Form.Item name="addressZip" label="CEP">
-                <Input
-                  placeholder="00000-000"
-                  onBlur={async (e) => {
-                    const raw = (e.target.value || '').replace(/\D/g, '');
-                    if (!raw) return;
-                    try {
-                      const resp = await api.get('/users/cep', { params: { cep: raw } });
-                      workerForm.setFieldsValue({
-                        addressStreet: resp.data.addressStreet ?? undefined,
-                        addressDistrict: resp.data.addressDistrict ?? undefined,
-                        addressCity: resp.data.addressCity ?? undefined,
-                        addressState: resp.data.addressState ?? undefined,
-                        addressCountry: resp.data.addressCountry ?? 'Brasil',
-                        addressZip: resp.data.addressZip ?? e.target.value,
-                      });
-                    } catch {
-                      message.warning('Não foi possível buscar o CEP.');
-                    }
-                  }}
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={8}>
+              <Form.Item
+                name="roleId"
+                label="Cargo"
+                rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
+              >
+                <Select
+                  placeholder="Selecione"
+                  optionFilterProp="label"
+                  options={roleOptions.filter((r) => {
+                    const label = String(r.label || '').toLowerCase();
+                    return label === 'técnico' || label === 'tecnico' || label === 'pso' || label === 'spot' || label === 'prp';
+                  })}
                 />
               </Form.Item>
-              <div />
-            </div>
+            </Col>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-              <Form.Item name="addressStreet" label="Logradouro" rules={[{ required: true }]}>
-                <Input placeholder="Rua/Avenida" />
-              </Form.Item>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 12 }}>
-              <Form.Item name="addressNumber" label="Número">
+            <Col xs={24} md={8}>
+              <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="addressComplement" label="Complemento">
-                <Input />
-              </Form.Item>
-            </div>
+            </Col>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 200px', gap: 12 }}>
-              <Form.Item name="addressDistrict" label="Bairro">
-                <Input />
+            <Col xs={24} md={8}>
+              <Form.Item name="phone" label="Telefone">
+                <MaskedInput mask={phoneMask(workerPhone)} placeholder="(11) 99999-9999" />
               </Form.Item>
-              <Form.Item name="addressCity" label="Cidade" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item name="addressState" label="UF/Estado" rules={[{ required: true }]}>
-                <Input placeholder="SP, RJ..." />
-              </Form.Item>
-            </div>
+            </Col>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Form.Item name="addressCountry" label="País" initialValue="Brasil">
-                <Input />
+            <Col xs={24}>
+              <Form.Item name="managerId" label="Gestor (opcional)">
+                <UserSelect onlyManagers allowClear placeholder="Selecione o gestor" />
               </Form.Item>
-            </div>
+            </Col>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-              <Form.Item name="lat" label="Latitude" rules={[{ required: true, message: 'Informe a latitude' }]}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-              </Form.Item>
-              <Form.Item name="lng" label="Longitude" rules={[{ required: true, message: 'Informe a longitude' }]}>
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-              </Form.Item>
-
-              <Button
-                icon={<SearchOutlined />}
-                onClick={() => {
-                  setGeoForForm('worker');
-                  setGeoOpen(true);
-                  setGeoResults([]);
-                  setGeoQuery('');
-                }}
+            <Col xs={24}>
+              <Form.Item
+                name="estoqueAvancado"
+                label="Pertence ao Estoque Avançado?"
+                valuePropName="checked"
+                initialValue={false}
               >
-                Buscar coordenadas
-              </Button>
-            </div>
+                <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="vendorCode" label="Código do fornecedor">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="serviceAreaCode" label="Código da área de atendimento">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Card size="small" title="Endereço (obrigatório)" style={{ marginTop: 8 }}>
+            <Row gutter={[12, 12]}>
+              <Col xs={24} md={8}>
+                <Form.Item name="addressZip" label="CEP">
+                  <Input
+                    placeholder="00000-000"
+                    onBlur={async (e) => {
+                      const raw = (e.target.value || '').replace(/\D/g, '');
+                      if (!raw) return;
+                      try {
+                        const resp = await api.get('/users/cep', { params: { cep: raw } });
+                        workerForm.setFieldsValue({
+                          addressStreet: resp.data.addressStreet ?? undefined,
+                          addressDistrict: resp.data.addressDistrict ?? undefined,
+                          addressCity: resp.data.addressCity ?? undefined,
+                          addressState: resp.data.addressState ?? undefined,
+                          addressCountry: resp.data.addressCountry ?? 'Brasil',
+                          addressZip: resp.data.addressZip ?? e.target.value,
+                        });
+                      } catch {
+                        message.warning('Não foi possível buscar o CEP.');
+                      }
+                    }}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={16} />
+
+              <Col xs={24}>
+                <Form.Item name="addressStreet" label="Logradouro" rules={[{ required: true }]}>
+                  <Input placeholder="Rua/Avenida" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={8}>
+                <Form.Item name="addressNumber" label="Número">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={16}>
+                <Form.Item name="addressComplement" label="Complemento">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={10}>
+                <Form.Item name="addressDistrict" label="Bairro">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={10}>
+                <Form.Item name="addressCity" label="Cidade" rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={4}>
+                <Form.Item name="addressState" label="UF/Estado" rules={[{ required: true }]}>
+                  <Input placeholder="SP, RJ..." />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="lat" label="Latitude" rules={[{ required: true, message: 'Informe a latitude' }]}>
+                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="lng" label="Longitude" rules={[{ required: true, message: 'Informe a longitude' }]}>
+                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
+                <Button
+                  block={isMobile}
+                  icon={<SearchOutlined />}
+                  onClick={() => {
+                    setGeoForForm('worker');
+                    setGeoOpen(true);
+                    setGeoResults([]);
+                    setGeoQuery('');
+                  }}
+                >
+                  Buscar coordenadas
+                </Button>
+              </Col>
+            </Row>
           </Card>
 
           <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
             <Upload
               accept="image/*"
               maxCount={1}
-              beforeUpload={(file) => { setWorkerAvatarFile(file); return false; }}
+              beforeUpload={(file) => {
+                setWorkerAvatarFile(file);
+                return false;
+              }}
               onRemove={() => setWorkerAvatarFile(null)}
               listType="picture"
             >
@@ -1262,121 +1380,92 @@ renderItem={(u) => (
         </Form>
       </Modal>
 
-    <Modal
-      title={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ApartmentOutlined />
-          <span>Estrutura — {viewUser?.name || ''}</span>
-        </div>
-      }
-      open={structureOpen}
-      onCancel={() => {
-        setStructureOpen(false);
-        setStructure(null);
-      }}
-      footer={null}
-      width={920}
-      bodyStyle={{ background: '#fafafa' }}
-    >
-      {loadingStructure ? (
-        <div style={{ textAlign: 'center', padding: 24 }}>
-          <Spin />
-        </div>
-      ) : structure ? (
-        <div style={{ padding: 8 }}>
-          {/* ===== ORG WRAP ===== */}
-          <div
-            style={{
-              position: 'relative',
-              padding: 16,
-              borderRadius: 12,
-              background: '#fff',
-              border: '1px solid #f0f0f0',
-            }}
-          >
-            {/* ===== SUPERIOR ===== */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              {structure.acima && structure.acima.length > 0 ? (
-                <OrgCard
-                  title="Superior"
-                  person={structure.acima[0]}
-                  badge="ACIMA"
-                />
-              ) : (
-                <div style={{ textAlign: 'center', color: '#94a3b8', padding: 10 }}>
-                  — sem superior —
-                </div>
-              )}
-            </div>
-
-            {/* linha vertical superior -> atual */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <div
-                style={{
-                  width: 2,
-                  height: 22,
-                  background: '#e5e7eb',
-                  margin: '10px 0',
-                }}
-              />
-            </div>
-
-            {/* ===== ATUAL ===== */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              {structure.atual ? (
-                <OrgCard
-                  title="Colaborador"
-                  person={structure.atual}
-                  highlight
-                  badge="ATUAL"
-                />
-              ) : null}
-            </div>
-
-            {/* linha vertical atual -> abaixo */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <div
-                style={{
-                  width: 2,
-                  height: 22,
-                  background: '#e5e7eb',
-                  margin: '10px 0',
-                }}
-              />
-            </div>
-
-            {/* ===== SUBORDINADOS ===== */}
-            <div style={{ marginTop: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <Title level={5} style={{ margin: 0 }}>
-                  Subordinados
-                </Title>
-                <Tag color="blue">{(structure.abaixo || []).length}</Tag>
+      {/* ===== Modal Estrutura ===== */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ApartmentOutlined />
+            <span>Estrutura — {viewUser?.name || ''}</span>
+          </div>
+        }
+        open={structureOpen}
+        onCancel={() => {
+          setStructureOpen(false);
+          setStructure(null);
+        }}
+        footer={null}
+        width={isMobile ? '100%' : 980}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+        bodyStyle={{ background: '#fafafa' }}
+        destroyOnClose
+      >
+        {loadingStructure ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin />
+          </div>
+        ) : structure ? (
+          <div style={{ padding: 8 }}>
+            <div
+              style={{
+                position: 'relative',
+                padding: 16,
+                borderRadius: 12,
+                background: '#fff',
+                border: '1px solid #f0f0f0',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                {structure.acima && structure.acima.length > 0 ? (
+                  <OrgCard title="Superior" person={structure.acima[0]} badge="ACIMA" />
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: 10 }}>— sem superior —</div>
+                )}
               </div>
 
-              {structure.abaixo && structure.abaixo.length > 0 ? (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: 12,
-                  }}
-                >
-                  {structure.abaixo.map((p: any) => (
-                    <OrgMiniCard key={p.id || p.email || p.nome} person={p} />
-                  ))}
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <div style={{ width: 2, height: 22, background: '#e5e7eb', margin: '10px 0' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                {structure.atual ? (
+                  <OrgCard title="Colaborador" person={structure.atual} highlight badge="ATUAL" />
+                ) : null}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <div style={{ width: 2, height: 22, background: '#e5e7eb', margin: '10px 0' }} />
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <Title level={5} style={{ margin: 0 }}>
+                    Subordinados
+                  </Title>
+                  <Tag color="blue">{(structure.abaixo || []).length}</Tag>
                 </div>
-              ) : (
-                <div style={{ color: '#94a3b8' }}>— nenhum subordinado —</div>
-              )}
+
+                {structure.abaixo && structure.abaixo.length > 0 ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: 12,
+                    }}
+                  >
+                    {structure.abaixo.map((p: any) => (
+                      <OrgMiniCard key={p.id || p.email || p.nome} person={p} />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: '#94a3b8' }}>— nenhum subordinado —</div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <Text type="secondary">Selecione um colaborador</Text>
-      )}
-    </Modal>
-
+        ) : (
+          <Text type="secondary">Selecione um colaborador</Text>
+        )}
+      </Modal>
     </div>
   );
 }

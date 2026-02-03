@@ -11,6 +11,10 @@ import {
   Upload,
   Space,
   Progress,
+  Card,
+  Typography,
+  Grid,
+  List,
 } from 'antd';
 import { useMemo, useState } from 'react';
 import { UploadOutlined, PlusOutlined } from '@ant-design/icons';
@@ -58,8 +62,10 @@ type ClientFull = {
 
 export function ClientsPage() {
   const qc = useQueryClient();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
-  // ✅ estado do import (DEVE ficar dentro do componente)
+  // ✅ estado do import
   const [importState, setImportState] = useState<ImportState>({
     open: false,
     total: 0,
@@ -77,6 +83,11 @@ export function ClientsPage() {
   // modal visualizar
   const [viewOpen, setViewOpen] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
+
+  // ✅ busca + paginação mobile
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
   const { data, isLoading } = useQuery<ClientRow[]>({
     queryKey: ['clients'],
@@ -117,7 +128,6 @@ export function ClientsPage() {
     const formData = new FormData();
     formData.append('file', file);
 
-    // ajuste conforme seu auth
     const token =
       localStorage.getItem('token') ||
       localStorage.getItem('access_token') ||
@@ -147,7 +157,6 @@ export function ClientsPage() {
 
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE separa por \n\n
       const parts = buffer.split('\n\n');
       buffer = parts.pop() || '';
 
@@ -189,6 +198,7 @@ export function ClientsPage() {
             errors: payload.errors || [],
             running: false,
           }));
+
           message.success(
             `Importação concluída: ${payload.created || 0} criados, ${payload.updated || 0} atualizados`
           );
@@ -231,45 +241,153 @@ export function ClientsPage() {
   const percent =
     importState.total > 0 ? Math.round((importState.processed / importState.total) * 100) : 0;
 
+  const rows = data || [];
+
+  // ✅ filtro pesquisa (front)
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((c) => {
+      const hay = [c.name, c.documento, c.telefone1, c.cidade, c.estado]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return hay.includes(q);
+    });
+  }, [rows, search]);
+
+  // ✅ paginação no mobile
+  const pagedMobile = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
+
+  // helpers do form responsivo
+  const grid2 = isMobile ? '1fr' : '1fr 1fr';
+  const grid3 = isMobile ? '1fr' : '120px 1fr 1fr';
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>Clientes</h2>
+      {/* Header responsivo */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 12,
+        }}
+      >
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Clientes
+        </Typography.Title>
 
-        <Space>
+        <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
           <Upload
             accept=".xlsx,.xls"
             showUploadList={false}
             beforeUpload={(file) => {
               startImport(file as File);
-              return false; // impede upload automático
+              return false;
             }}
           >
-            <Button icon={<UploadOutlined />} type="dashed">
+            <Button icon={<UploadOutlined />} type="dashed" block={isMobile}>
               Importar Excel
             </Button>
           </Upload>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} block={isMobile}>
             Novo cliente
           </Button>
         </Space>
       </div>
 
-      {/* Tabela */}
-      <Table rowKey="id" dataSource={data || []} loading={isLoading} columns={columns as any} />
+      {/* ✅ Busca */}
+      <Card bodyStyle={{ padding: isMobile ? 12 : 16 }}>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: '100%' }}>
+          <Input.Search
+            placeholder="Pesquisar cliente, CNPJ/CPF, telefone, cidade..."
+            allowClear
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            onSearch={() => setPage(1)}
+          />
+          <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+            {filtered.length} resultado(s)
+          </Typography.Text>
+        </Space>
+      </Card>
+
+      {/* Lista no mobile / Table no desktop */}
+      <Card bodyStyle={{ padding: isMobile ? 12 : 24 }}>
+        {isMobile ? (
+          <List
+            dataSource={pagedMobile}
+            loading={isLoading}
+            locale={{ emptyText: 'Sem clientes.' }}
+            pagination={{
+              current: page,
+              pageSize,
+              total: filtered.length,
+              onChange: (p) => setPage(p),
+              showSizeChanger: false,
+            }}
+            renderItem={(c) => (
+              <Card key={c.id} style={{ marginBottom: 12 }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                  <Typography.Text strong>{c.name}</Typography.Text>
+
+                  <Space wrap>
+                    <Typography.Text type="secondary">{c.documento || '—'}</Typography.Text>
+                    <Typography.Text type="secondary">{c.telefone1 || '—'}</Typography.Text>
+                  </Space>
+
+                  <Typography.Text type="secondary">
+                    {c.cidade || '—'} / {c.estado || '—'}
+                  </Typography.Text>
+
+                  <Button
+                    block
+                    onClick={() => {
+                      setViewId(c.id);
+                      setViewOpen(true);
+                    }}
+                  >
+                    Visualizar
+                  </Button>
+                </Space>
+              </Card>
+            )}
+          />
+        ) : (
+          <Table
+            rowKey="id"
+            dataSource={filtered}
+            loading={isLoading}
+            columns={columns as any}
+            pagination={{ pageSize: 10 }}
+          />
+        )}
+      </Card>
 
       {/* Modal Import */}
       <Modal
         title="Importando clientes..."
         open={importState.open}
+        width={isMobile ? '96vw' : 720}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
         onCancel={() => !importState.running && setImportState((s) => ({ ...s, open: false }))}
         footer={[
           <Button
             key="close"
             onClick={() => setImportState((s) => ({ ...s, open: false }))}
             disabled={importState.running}
+            block={isMobile}
           >
             Fechar
           </Button>,
@@ -318,10 +436,11 @@ export function ClientsPage() {
         okText="Salvar"
         confirmLoading={create.isPending}
         onOk={() => form.submit()}
-        width={900}
+        width={isMobile ? '96vw' : 900}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
       >
         <Form layout="vertical" form={form} onFinish={(v) => create.mutate(v)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="idCliente" label="ID_cliente" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -338,7 +457,7 @@ export function ClientsPage() {
             <Input />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="documento" label="cpf/cnpj" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -347,7 +466,7 @@ export function ClientsPage() {
             </Form.Item>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid3, gap: 12 }}>
             <Form.Item name="estado" label="estado" rules={[{ required: true }]}>
               <Input maxLength={2} />
             </Form.Item>
@@ -363,7 +482,7 @@ export function ClientsPage() {
             <Input />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="complemento" label="complemento" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -372,7 +491,7 @@ export function ClientsPage() {
             </Form.Item>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="latitude" label="latitude" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -381,7 +500,7 @@ export function ClientsPage() {
             </Form.Item>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="email1" label="email1" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -390,7 +509,7 @@ export function ClientsPage() {
             </Form.Item>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid2, gap: 12 }}>
             <Form.Item name="email2" label="email2" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
@@ -407,18 +526,19 @@ export function ClientsPage() {
         open={viewOpen}
         onCancel={() => setViewOpen(false)}
         footer={[
-          <Button key="close" onClick={() => setViewOpen(false)}>
+          <Button key="close" onClick={() => setViewOpen(false)} block={isMobile}>
             Fechar
           </Button>,
         ]}
-        width={900}
+        width={isMobile ? '96vw' : 900}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
       >
         {viewQuery.isLoading ? (
           <div>Carregando...</div>
         ) : viewQuery.isError ? (
           <div style={{ color: 'red' }}>Falha ao carregar cliente</div>
         ) : (
-          <Descriptions bordered size="small" column={2}>
+          <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
             <Descriptions.Item label="ID_cliente">{viewQuery.data?.idCliente}</Descriptions.Item>
             <Descriptions.Item label="tipo_cliente">{viewQuery.data?.tipoCliente}</Descriptions.Item>
 
@@ -434,11 +554,11 @@ export function ClientsPage() {
             <Descriptions.Item label="bairro">{viewQuery.data?.bairro}</Descriptions.Item>
             <Descriptions.Item label="cep">{viewQuery.data?.cep}</Descriptions.Item>
 
-            <Descriptions.Item label="logradouro" span={2}>
+            <Descriptions.Item label="logradouro" span={isMobile ? 1 : 2}>
               {viewQuery.data?.logradouro}
             </Descriptions.Item>
 
-            <Descriptions.Item label="complemento" span={2}>
+            <Descriptions.Item label="complemento" span={isMobile ? 1 : 2}>
               {viewQuery.data?.complemento}
             </Descriptions.Item>
 

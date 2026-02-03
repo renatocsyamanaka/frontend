@@ -16,6 +16,9 @@ import {
   Col,
   Image,
   Tooltip,
+  Switch,
+  Grid,
+  Drawer,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -24,6 +27,7 @@ import {
   EyeOutlined,
   CloseCircleOutlined,
   EnvironmentOutlined,
+  FilterOutlined,
 } from '@ant-design/icons';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -61,6 +65,8 @@ type User = {
   lng?: number | null;
 
   isActive?: boolean;
+
+  estoqueAvancado?: boolean | null;
 };
 
 const REGIOES = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'] as const;
@@ -75,6 +81,22 @@ const abs = (url?: string | null) => {
 };
 
 const initial = (s?: string | null) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
+
+/** ===== Tipos de prestador ===== */
+const PRESTADOR_TYPES = ['TECNICO', 'PSO', 'SPOT', 'PRP'] as const;
+type PrestadorType = (typeof PRESTADOR_TYPES)[number];
+
+const getPrestadorType = (u: User): PrestadorType | 'OUTROS' => {
+  const roleName = (u.role?.name || '').toLowerCase();
+
+  if (roleName.includes('pso')) return 'PSO';
+  if (roleName.includes('spot')) return 'SPOT';
+  if (roleName === 'prp' || roleName.includes('prp')) return 'PRP';
+
+  if (u.role?.level === 1 || roleName.includes('técnic') || roleName.includes('tecnic')) return 'TECNICO';
+
+  return 'OUTROS';
+};
 
 /** Ajusta o tamanho do mapa quando o layout muda (sider/resize) */
 function MapResizeWatcher() {
@@ -126,7 +148,11 @@ function FitToPoints({
 }
 
 export default function TechsPsoMapPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+
+  const [sidebarOpen, setSidebarOpen] = useState(true); // PC
+  const [drawerOpen, setDrawerOpen] = useState(false); // mobile
 
   const { data: users = [], isFetching, refetch } = useQuery<User[]>({
     queryKey: ['users'],
@@ -134,7 +160,6 @@ export default function TechsPsoMapPage() {
     staleTime: 60_000,
   });
 
-  // index por id
   const byId = useMemo(() => {
     const m = new Map<number, User>();
     users.forEach((u) => m.set(u.id, u));
@@ -156,15 +181,12 @@ export default function TechsPsoMapPage() {
     return null;
   };
 
-  // Técnicos & PSO
   const techsPso = useMemo(
     () =>
-      users.filter(
-        (u) =>
-          u.role?.level === 1 ||
-          /tecnic|técnic/i.test(u.role?.name || '') ||
-          /pso/i.test(u.role?.name || '')
-      ),
+      users.filter((u) => {
+        const t = getPrestadorType(u);
+        return t === 'TECNICO' || t === 'PSO' || t === 'SPOT' || t === 'PRP';
+      }),
     [users]
   );
 
@@ -172,8 +194,9 @@ export default function TechsPsoMapPage() {
   const [regiao, setRegiao] = useState<string | undefined>(undefined);
   const [coordId, setCoordId] = useState<number | undefined>(undefined);
   const [supId, setSupId] = useState<number | undefined>(undefined);
+  const [tipo, setTipo] = useState<PrestadorType | undefined>(undefined);
+  const [onlyEA, setOnlyEA] = useState(false);
 
-  // opções coord/sup
   const coordOptions = useMemo(() => {
     const set = new Map<number, string>();
     techsPso.forEach((t) => {
@@ -192,48 +215,63 @@ export default function TechsPsoMapPage() {
     return Array.from(set.entries()).map(([value, label]) => ({ value, label }));
   }, [techsPso]);
 
-  // filtro final
   const filtered = useMemo(() => {
     return techsPso.filter((t) => {
-      if (q && !t.name.toLowerCase().includes(q.toLowerCase())) return false;
+      if (q) {
+        const qq = q.toLowerCase();
+        const inName = t.name.toLowerCase().includes(qq);
+        const inType = String(getPrestadorType(t)).toLowerCase().includes(qq);
+        if (!inName && !inType) return false;
+      }
+
       if (regiao && (t.serviceAreaName || '').toLowerCase() !== regiao.toLowerCase()) return false;
+
+      if (tipo) {
+        const tt = getPrestadorType(t);
+        if (tt !== tipo) return false;
+      }
+
+      if (onlyEA && !t.estoqueAvancado) return false;
+
       if (coordId) {
         const c = coordinatorOf(t);
         if (!c || c.id !== coordId) return false;
       }
+
       if (supId) {
         const s = supervisorOf(t);
         if (!s || s.id !== supId) return false;
       }
+
       return true;
     });
-  }, [techsPso, q, regiao, coordId, supId]);
+  }, [techsPso, q, regiao, tipo, onlyEA, coordId, supId]);
 
   const withCoords = filtered.filter((t) => t.lat != null && t.lng != null);
   const allWithCoords = useMemo(() => techsPso.filter((t) => t.lat != null && t.lng != null), [techsPso]);
 
   const [focus, setFocus] = useState<{ lat: number; lng: number } | null>(null);
 
-  // sinais para encaixar o mapa (todos x filtrados)
   const [fitAllSignal, setFitAllSignal] = useState(0);
   const [fitFilteredSignal, setFitFilteredSignal] = useState(0);
 
-  // sempre que filtro muda: remove focus e enquadra filtrados
   useEffect(() => {
     setFocus(null);
     const id = setTimeout(() => setFitFilteredSignal((s) => s + 1), 0);
     return () => clearTimeout(id);
-  }, [q, regiao, coordId, supId, users]);
+  }, [q, regiao, tipo, onlyEA, coordId, supId, users]);
 
-  const defaultCenter: [number, number] = [-23.55, -46.633]; // SP
+  const defaultCenter: [number, number] = [-23.55, -46.633];
 
   const handleClear = () => {
     setQ('');
     setRegiao(undefined);
+    setTipo(undefined);
+    setOnlyEA(false);
     setCoordId(undefined);
     setSupId(undefined);
     setFocus(null);
-    setSidebarOpen(true);
+    if (!isMobile) setSidebarOpen(true);
     setTimeout(() => setFitAllSignal((s) => s + 1), 0);
   };
 
@@ -255,11 +293,9 @@ export default function TechsPsoMapPage() {
   const [svOpen, setSvOpen] = useState(false);
   const [svTarget, setSvTarget] = useState<{ lat: number; lng: number; name?: string } | null>(null);
 
-  // Iframe do street view (modo pano)
   const streetViewEmbedUrl = (lat: number, lng: number) =>
     `https://www.google.com/maps?layer=c&cbll=${lat},${lng}&cbp=11,0,0,0,0&output=svembed`;
 
-  // Fallback para abrir fora (caso algum browser bloqueie iframe)
   const streetViewExternalUrl = (lat: number, lng: number) =>
     `https://www.google.com/maps?q=&layer=c&cbll=${lat},${lng}&cbp=11,0,0,0,0`;
 
@@ -289,122 +325,188 @@ export default function TechsPsoMapPage() {
     wordBreak: 'break-word',
   };
 
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: sidebarOpen ? '380px 1fr' : '1fr', gap: 16 }}>
-      {sidebarOpen && (
-        <Card>
-          <Space direction="vertical" style={{ width: '100%' }} size={12}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Title level={4} style={{ margin: 0 }}>
-                Mapa Técnicos / PSO
-              </Title>
-              <Button size="small" icon={<EyeInvisibleOutlined />} onClick={() => setSidebarOpen(false)}>
-                Ocultar painel
-              </Button>
-            </div>
+  // ✅ painel (reutilizado PC e Drawer)
+  const FiltersPanel = (
+    <Card bordered={false} style={{ boxShadow: 'none' }}>
+      <Space direction="vertical" style={{ width: '100%' }} size={12}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            Mapa Prestadores
+          </Title>
 
-            <div style={{ color: '#64748b' }}>{withCoords.length} técnico(s) com localização</div>
+          {!isMobile && (
+            <Button size="small" icon={<EyeInvisibleOutlined />} onClick={() => setSidebarOpen(false)}>
+              Ocultar painel
+            </Button>
+          )}
+        </div>
 
-            <Input
-              allowClear
-              prefix={<SearchOutlined />}
-              placeholder="Buscar técnico por nome"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+        <div style={{ color: '#64748b' }}>{withCoords.length} prestador(es) com localização</div>
 
-            <Select
-              allowClear
-              placeholder="Filtrar por região"
-              value={regiao}
-              onChange={(v) => setRegiao(v)}
-              options={REGIOES.map((r) => ({ value: r, label: r }))}
-              showSearch
-              optionFilterProp="label"
-            />
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="Buscar por nome ou tipo (ex: PRP, PSO...)"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
 
-            <Select
-              allowClear
-              placeholder="Filtrar por coordenador"
-              options={coordOptions}
-              value={coordId}
-              onChange={(v) => setCoordId(v)}
-              showSearch
-              optionFilterProp="label"
-            />
+        <Select
+          allowClear
+          placeholder="Filtrar por tipo (Técnico, PSO, SPOT, PRP)"
+          value={tipo}
+          onChange={(v) => setTipo(v)}
+          options={[
+            { value: 'TECNICO', label: 'Técnico' },
+            { value: 'PSO', label: 'PSO' },
+            { value: 'SPOT', label: 'SPOT' },
+            { value: 'PRP', label: 'PRP' },
+          ]}
+          showSearch
+          optionFilterProp="label"
+        />
 
-            <Select
-              allowClear
-              placeholder="Filtrar por supervisor"
-              options={supOptions}
-              value={supId}
-              onChange={(v) => setSupId(v)}
-              showSearch
-              optionFilterProp="label"
-            />
+        <Select
+          allowClear
+          placeholder="Filtrar por região"
+          value={regiao}
+          onChange={(v) => setRegiao(v)}
+          options={REGIOES.map((r) => ({ value: r, label: r }))}
+          showSearch
+          optionFilterProp="label"
+        />
 
-            <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
-                Atualizar
-              </Button>
-              <Button icon={<CloseCircleOutlined />} onClick={handleClear}>
-                Limpar
-              </Button>
-            </Space>
+        <Select
+          allowClear
+          placeholder="Filtrar por coordenador"
+          options={coordOptions}
+          value={coordId}
+          onChange={(v) => setCoordId(v)}
+          showSearch
+          optionFilterProp="label"
+        />
 
-            <div style={{ borderTop: '1px solid #eee', marginTop: 8, paddingTop: 8 }}>
-              {withCoords.map((t) => {
-                const s = supervisorOf(t);
-                const c = coordinatorOf(t);
+        <Select
+          allowClear
+          placeholder="Filtrar por supervisor"
+          options={supOptions}
+          value={supId}
+          onChange={(v) => setSupId(v)}
+          showSearch
+          optionFilterProp="label"
+        />
 
-                return (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ color: '#64748b' }}>Somente Estoque Avançado</Text>
+          <Switch checked={onlyEA} onChange={setOnlyEA} />
+        </div>
+
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
+            Atualizar
+          </Button>
+          <Button icon={<CloseCircleOutlined />} onClick={handleClear}>
+            Limpar
+          </Button>
+        </Space>
+
+        <div style={{ borderTop: '1px solid #eee', marginTop: 8, paddingTop: 8 }}>
+          {withCoords.map((t) => {
+            const s = supervisorOf(t);
+            const c = coordinatorOf(t);
+            const tipoPrest = getPrestadorType(t);
+
+            return (
+              <div
+                key={t.id}
+                style={{
+                  padding: '10px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
                   <div
-                    key={t.id}
                     style={{
-                      padding: '10px 0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: 220,
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {t.name}
-                      </div>
-                      <div style={{ color: '#64748b', fontSize: 12 }}>Sup.: {s?.name || '—'}</div>
-                      <div style={{ color: '#94a3b8', fontSize: 12 }}>Coord.: {c?.name || '—'}</div>
-                    </div>
-
-                    <Space>
-                      <Button size="small" onClick={() => openDetails(t)}>
-                        Detalhes
-                      </Button>
-                      <Button
-                        size="small"
-                        disabled={!(t.lat && t.lng)}
-                        onClick={() => setFocus({ lat: t.lat!, lng: t.lng! })}
-                      >
-                        Ver no mapa
-                      </Button>
-                    </Space>
+                    {t.name}
                   </div>
-                );
-              })}
-              {withCoords.length === 0 && <div style={{ color: '#94a3b8' }}>Nenhum técnico com coordenadas</div>}
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                    <Tag>{tipoPrest}</Tag>
+                    {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                  </div>
+
+                  <div style={{ color: '#64748b', fontSize: 12 }}>Sup.: {s?.name || '—'}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 12 }}>Coord.: {c?.name || '—'}</div>
+                </div>
+
+                <Space direction="vertical" size={6}>
+                  <Button size="small" onClick={() => openDetails(t)}>
+                    Detalhes
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={!(t.lat && t.lng)}
+                    onClick={() => {
+                      setFocus({ lat: t.lat!, lng: t.lng! });
+                      if (isMobile) setDrawerOpen(false);
+                    }}
+                  >
+                    Ver no mapa
+                  </Button>
+                </Space>
+              </div>
+            );
+          })}
+          {withCoords.length === 0 && <div style={{ color: '#94a3b8' }}>Nenhum prestador com coordenadas</div>}
+        </div>
+      </Space>
+    </Card>
+  );
+
+  // ✅ layout principal responsivo:
+  // PC: sidebar + mapa
+  // Mobile: só mapa + Drawer
+  const gridTemplateColumns = !isMobile && sidebarOpen ? '380px 1fr' : '1fr';
+  const mapHeight = isMobile ? '90vh' : '78vh';
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns, gap: 16 }}>
+      {/* ===== PC Sidebar ===== */}
+      {!isMobile && sidebarOpen && <Card>{FiltersPanel}</Card>}
+
+      {/* ===== Mobile Header ações (botão filtros) ===== */}
+      {isMobile && (
+        <Card bodyStyle={{ padding: 12 }}>
+          <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ display: 'grid' }}>
+              <Text strong>Mapa Prestadores</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {withCoords.length} com localização
+              </Text>
             </div>
+
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching} />
+              <Button type="primary" icon={<FilterOutlined />} onClick={() => setDrawerOpen(true)}>
+                Filtros
+              </Button>
+            </Space>
           </Space>
         </Card>
       )}
 
-      {!sidebarOpen && (
+      {/* ===== quando PC sidebar fechado ===== */}
+      {!isMobile && !sidebarOpen && (
         <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => setSidebarOpen(true)} style={{ marginBottom: 8 }}>
             Mostrar painel
@@ -412,19 +514,28 @@ export default function TechsPsoMapPage() {
         </div>
       )}
 
-      <Card bodyStyle={{ padding: 0 }}>
+      {/* ===== MAPA ===== */}
+      <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
         <MapContainer
           center={withCoords[0]?.lat ? [withCoords[0].lat!, withCoords[0].lng!] : defaultCenter}
           zoom={6}
-          style={{ height: '78vh', width: '100%' }}
+          style={{ height: mapHeight, width: '100%' }}
           scrollWheelZoom
         >
           <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
           <MapResizeWatcher />
 
-          <FitToPoints points={allWithCoords.map((t) => [t.lat!, t.lng!] as [number, number])} signal={fitAllSignal} fallback={defaultCenter} />
-          <FitToPoints points={withCoords.map((t) => [t.lat!, t.lng!] as [number, number])} signal={fitFilteredSignal} fallback={defaultCenter} />
+          <FitToPoints
+            points={allWithCoords.map((t) => [t.lat!, t.lng!] as [number, number])}
+            signal={fitAllSignal}
+            fallback={defaultCenter}
+          />
+          <FitToPoints
+            points={withCoords.map((t) => [t.lat!, t.lng!] as [number, number])}
+            signal={fitFilteredSignal}
+            fallback={defaultCenter}
+          />
 
           {!!focus && <FocusOn lat={focus.lat} lng={focus.lng} />}
 
@@ -432,11 +543,16 @@ export default function TechsPsoMapPage() {
             const s = supervisorOf(t);
             const c = coordinatorOf(t);
             const avatarUrlAbsMarker = abs(t.avatarUrl);
+            const tipoPrest = getPrestadorType(t);
 
             return (
-              <Marker key={t.id} position={[t.lat!, t.lng!]} icon={avatarDivIcon({ name: t.name, avatarUrl: avatarUrlAbsMarker }, 44)}>
+              <Marker
+                key={t.id}
+                position={[t.lat!, t.lng!]}
+                icon={avatarDivIcon({ name: t.name, avatarUrl: avatarUrlAbsMarker }, 44)}
+              >
                 <Popup>
-                  <div style={{ minWidth: 300 }}>
+                  <div style={{ minWidth: isMobile ? 240 : 320 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <Avatar src={avatarUrlAbsMarker} size={42}>
                         {initial(t.name)}
@@ -448,6 +564,11 @@ export default function TechsPsoMapPage() {
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {t.role?.name || '—'}
                         </Text>
+
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                          <Tag>{tipoPrest}</Tag>
+                          {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                        </div>
                       </div>
                     </div>
 
@@ -460,7 +581,6 @@ export default function TechsPsoMapPage() {
                       {c?.name || '—'}
                     </div>
 
-                    {/* ✅ Botões maiores + StreetView abre MODAL */}
                     <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       <Button
                         type="primary"
@@ -508,13 +628,29 @@ export default function TechsPsoMapPage() {
         </MapContainer>
       </Card>
 
-      {/* ===== Modal DETALHES ===== */}
+      {/* ===== MOBILE DRAWER ===== */}
+      <Drawer
+        title="Filtros"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        width="92vw"
+        destroyOnClose
+        bodyStyle={{ padding: 12 }}
+      >
+        {FiltersPanel}
+      </Drawer>
+
+      {/* ===== Modal DETALHES (responsivo) ===== */}
       <Modal
         open={detailsOpen}
         onCancel={closeDetails}
-        footer={<Button onClick={closeDetails}>Fechar</Button>}
-        width={1200}
-        style={{ top: 140 }}
+        footer={
+          <Button onClick={closeDetails} block={isMobile}>
+            Fechar
+          </Button>
+        }
+        width={isMobile ? '96vw' : 1200}
+        style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 140 }}
         destroyOnClose
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -544,6 +680,10 @@ export default function TechsPsoMapPage() {
                 <Card size="small" title="Profissional" bodyStyle={{ paddingTop: 12 }}>
                   <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                     <Descriptions.Item label="Cargo">{detailsUser.role?.name || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Tipo">{getPrestadorType(detailsUser)}</Descriptions.Item>
+                    <Descriptions.Item label="Estoque Avançado">
+                      {detailsUser.estoqueAvancado ? <Tag color="purple">Sim</Tag> : 'Não'}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Supervisor">{supervisorOf(detailsUser)?.name || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Coordenador">{coordinatorOf(detailsUser)?.name || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Região">{detailsUser.serviceAreaName || '—'}</Descriptions.Item>
@@ -581,14 +721,22 @@ export default function TechsPsoMapPage() {
                   <Descriptions.Item label="Complemento">{detailsUser.addressComplement || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Bairro">{detailsUser.addressDistrict || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cidade/UF">
-                    {(detailsUser.addressCity || '—')}
-                    {detailsUser.addressState ? ` / ${detailsUser.addressState}` : ''}
+                    {(detailsUser.addressCity || '—')}{detailsUser.addressState ? ` / ${detailsUser.addressState}` : ''}
                   </Descriptions.Item>
                   <Descriptions.Item label="CEP">{detailsUser.addressZip || '—'}</Descriptions.Item>
                   <Descriptions.Item label="País">{detailsUser.addressCountry || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Coordenadas">
                     {detailsUser.lat != null && detailsUser.lng != null ? (
-                      <Tag color="green" style={{ maxWidth: '100%', display: 'inline-block', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                      <Tag
+                        color="green"
+                        style={{
+                          maxWidth: '100%',
+                          display: 'inline-block',
+                          whiteSpace: 'normal',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word',
+                        }}
+                      >
                         {detailsUser.lat}, {detailsUser.lng}
                       </Tag>
                     ) : (
@@ -602,26 +750,26 @@ export default function TechsPsoMapPage() {
         )}
       </Modal>
 
-      {/* ===== Modal STREET VIEW ===== */}
+      {/* ===== Modal STREET VIEW (responsivo) ===== */}
       <Modal
         open={svOpen}
         onCancel={closeStreetViewModal}
-        width={1100}
-        style={{ top: 80 }}
+        width={isMobile ? '96vw' : 1100}
+        style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 80 }}
         destroyOnClose
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <EnvironmentOutlined />
-            <div style={{ fontWeight: 700 }}>
-              Street View{svTarget?.name ? ` — ${svTarget.name}` : ''}
-            </div>
+            <div style={{ fontWeight: 700 }}>Street View{svTarget?.name ? ` — ${svTarget.name}` : ''}</div>
           </div>
         }
         footer={
-          <Space>
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }} wrap>
             {svTarget && (
               <Button
-                onClick={() => window.open(streetViewExternalUrl(svTarget.lat, svTarget.lng), '_blank', 'noopener,noreferrer')}
+                onClick={() =>
+                  window.open(streetViewExternalUrl(svTarget.lat, svTarget.lng), '_blank', 'noopener,noreferrer')
+                }
               >
                 Abrir no Google Maps
               </Button>
@@ -633,7 +781,15 @@ export default function TechsPsoMapPage() {
         }
       >
         {svTarget ? (
-          <div style={{ width: '100%', height: '70vh', borderRadius: 10, overflow: 'hidden', border: '1px solid #f0f0f0' }}>
+          <div
+            style={{
+              width: '100%',
+              height: isMobile ? '55vh' : '70vh',
+              borderRadius: 10,
+              overflow: 'hidden',
+              border: '1px solid #f0f0f0',
+            }}
+          >
             <iframe
               title="Street View"
               src={streetViewEmbedUrl(svTarget.lat, svTarget.lng)}

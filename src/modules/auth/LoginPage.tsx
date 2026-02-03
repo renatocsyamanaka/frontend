@@ -1,9 +1,11 @@
-import { Button, Card, Form, Input, Typography, message } from 'antd';
+import { Button, Card, Form, Input, Typography, message, Grid } from 'antd';
 import { MailOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 import { useAuth } from './AuthProvider';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md; // md+ = PC/tablet grande
 
   const onFinish = async (values: any) => {
     try {
@@ -15,7 +17,7 @@ export function LoginPage() {
     }
   };
 
-  // cores da sua marca: ajuste se quiser
+  // cores da sua marca
   const brandStart = '#1e40af'; // azul escuro
   const brandEnd = '#22d3ee';   // ciano
 
@@ -25,7 +27,7 @@ export function LoginPage() {
         minHeight: '100vh',
         display: 'grid',
         placeItems: 'center',
-        padding: 24,
+        padding: isMobile ? 16 : 24,
         background: `radial-gradient(1200px 600px at 10% 10%, ${brandEnd}1a, transparent 60%),
                      radial-gradient(1000px 500px at 90% 80%, ${brandStart}1a, transparent 55%),
                      linear-gradient(135deg, ${brandStart} 0%, ${brandEnd} 100%)`,
@@ -33,20 +35,23 @@ export function LoginPage() {
     >
       <Card
         style={{
-          width: 420,
-          borderRadius: 16,
+          width: '100%',
+          maxWidth: 420, // 👈 mantém exatamente o “tamanho do PC”
+          borderRadius: isMobile ? 14 : 16,
           boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
           backdropFilter: 'blur(6px)',
         }}
-        bodyStyle={{ padding: 28 }}
+        bodyStyle={{
+          padding: isMobile ? 20 : 28,
+        }}
       >
         {/* Header com logo */}
         <div style={{ textAlign: 'center', marginBottom: 8 }}>
           <img
-            src="/logo.png"      // <- seu caminho
+            src="/logo.png"
             alt="Omnilink"
             style={{
-              height: '96px',     // 👈 logo maior (ajuste para 120px se quiser)
+              height: isMobile ? '78px' : '96px',
               maxWidth: '85%',
               objectFit: 'contain',
               display: 'block',
@@ -70,7 +75,11 @@ export function LoginPage() {
             />
           </Form.Item>
 
-          <Form.Item name="password" label="Senha" rules={[{ required: true, message: 'Informe sua senha' }]}>
+          <Form.Item
+            name="password"
+            label="Senha"
+            rules={[{ required: true, message: 'Informe sua senha' }]}
+          >
             <Input.Password
               size="large"
               placeholder="••••••••"

@@ -1,189 +1,196 @@
-.org-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+/* ---------------- base ---------------- */
+.org-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
 }
 
-/* wrapper com scroll horizontal */
-.orgchart-wrapper { overflow-x: auto; padding-bottom: 12px; }
-
-/* irmãos sempre na mesma linha */
-.orgchart ul { white-space: nowrap; }
-
-.orgchart, .orgchart ul {
-  padding-left: 0;
-  padding-top: 20px;
-  position: relative;
-  text-align: center;
+.orgchart-wrapper{
+  background:#fff;
+  border:1px solid #f0f0f0;
+  border-radius:12px;
+  padding:16px;
+  overflow-x:auto;
 }
 
-.orgchart li {
-  list-style: none;
-  display: inline-block;
-  vertical-align: top;
-  position: relative;
-  padding: 20px 20px 0 20px;
-  white-space: normal; /* texto pode quebrar dentro do card */
+.orgchart{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  justify-content:center;
+  gap:18px;
+  min-width:900px; /* desktop horizontal */
 }
 
-/* conectores entre irmãos */
-.orgchart li::before, .orgchart li::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 50%;
-  height: 20px;
-  border-top: 2px solid #e5e7eb;
-}
-.orgchart li::before { right: 50%; }
-.orgchart li::after  { left: 50%; }
-
-.orgchart li:only-child::before,
-.orgchart li:only-child::after { display: none; }
-.orgchart li:only-child { padding-top: 0; }
-
-.orgchart li:first-child::before { border: 0; }
-.orgchart li:last-child::after   { border: 0; }
-
-.orgchart li:last-child::before {
-  border-right: 2px solid #e5e7eb; border-radius: 0 6px 0 0;
-}
-.orgchart li:first-child::after {
-  border-left: 2px solid #e5e7eb; border-radius: 6px 0 0 0;
+.orgchart > li{
+  list-style:none;
 }
 
-/* conector vertical para a linha de filhos */
-.orgchart ul::before {
-  content: ''; position: absolute; top: 0; left: 50%; height: 20px; border-left: 2px solid #e5e7eb;
+/* cada nó */
+.org-node{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid #eef2f7;
+  background:#f8fafc;
+  border-radius:14px;
+  min-width:320px;
+  max-width:360px;
+  box-shadow:0 1px 0 rgba(0,0,0,.02);
 }
 
-/* ----- CARTÕES ----- */
-.org-head { display: inline-flex; align-items: center; gap: 8px; }
-
-.org-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 280px;
-  padding: 12px 16px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.08);
-  transition: transform .2s ease, opacity .2s ease, filter .2s ease;
-  transform-origin: center center;
+.org-meta{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
 }
 
-.org-node.muted {
-  transform: scale(0.9);
-  opacity: 0.7;
-  filter: saturate(0.85);
+.org-name{
+  font-weight:700;
+  font-size:15px;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
-.org-meta { text-align: left; }
-.org-name { font-weight: 600; line-height: 1.1; }
-.org-role { font-size: 12px; color: #6b7280; margin-top: 2px; }
-
-/* reduzir espaço REAL quando fora do foco */
-.li-muted { padding: 14px 10px 0 10px; }         /* menos espaço ao redor do card */
-.li-muted .org-node { min-width: 180px; padding: 8px 10px; }
-.li-muted .org-name { font-size: 14px; }
-.li-muted .org-role { font-size: 11px; }
-
-/* botão toggle com contador */
-.org-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 9999px;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-}
-.org-toggle:hover { background: #f3f4f6; }
-.org-toggle.muted { transform: scale(0.9); opacity: .7; }
-
-.org-count {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 9999px;
-  background: #111827;
-  color: #fff;
-  font-size: 12px;
-  line-height: 18px;
+.org-role{
+  font-size:12px;
+  color:#64748b;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
-/* colapsado: esconde os filhos e o conector vertical */
-.orgchart li.collapsed > ul,
-.orgchart li.collapsed > ul::before { display: none !important; }
-/* 🔽 compacta somente a linha de filhos que não coube */
-.row-compact li { padding: 16px 12px 0 12px; }
-.row-compact .org-node {
-  min-width: 200px;
-  padding: 10px 40px 10px 12px; /* reserva pro toggle dentro do card */
-}
-.row-compact .org-name { font-size: 14px; }
-.row-compact .org-role { font-size: 11px; }
-
-/* avatar um pouco menor na linha compacta */
-.row-compact .ant-avatar {
-  width: 56px !important;
-  height: 56px !important;
-  line-height: 56px !important;
-  font-size: 20px !important;
+.org-head{
+  display:flex;
+  justify-content:center;
 }
 
-/* 1) grid não usa white-space */
-.orgchart ul.grid-children-3 {
-  white-space: normal !important;
-  position: relative;
-  padding-top: 26px; /* espaço para os conectores do grid */
+/* botão toggle */
+.org-toggle.inside{
+  margin-left:auto;
+  border:0;
+  background:#e2e8f0;
+  color:#0f172a;
+  border-radius:999px;
+  padding:6px 10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  cursor:pointer;
 }
 
-/* 2) DESLIGA os conectores "de irmãos" do modo inline dentro do grid */
-.orgchart ul.grid-children-3 > li::before,
-.orgchart ul.grid-children-3 > li::after {
-  display: none !important;
+.org-toggle.inside:hover{
+  filter:brightness(.98);
 }
 
-/* 3) DESLIGA o conector vertical padrão do UL (aquele do left:50%) dentro do grid */
-.orgchart li > ul.grid-children-3::before {
-  display: none !important;
+.org-count{
+  font-weight:700;
 }
 
-/* 4) Cria um “barramento” horizontal no topo do grid (conecta o pai aos filhos) */
-.orgchart li > ul.grid-children-3::after {
-  content: '';
-  position: absolute;
-  top: 10px;                 /* linha no topo do grid */
-  left: 8%;
-  width: 84%;
-  border-top: 2px solid #e5e7eb;
+/* filhos */
+.orgchart li ul{
+  list-style:none;
+  margin:14px 0 0;
+  padding:0;
+  display:flex;
+  justify-content:center;
+  gap:14px;
 }
 
-/* 5) Cria a linha vertical que desce do barramento até cada técnico */
-.orgchart ul.grid-children-3 > li {
-  position: relative; /* necessário para o pseudo-elemento abaixo */
-  padding-top: 0;     /* o grid já controla espaçamento */
+/* compact row (desktop) */
+.row-compact{
+  gap:10px;
 }
 
-.orgchart ul.grid-children-3 > li::after {
-  content: '';
-  position: absolute;
-  top: 10px;          /* começa exatamente na linha horizontal */
-  left: 50%;
-  transform: translateX(-50%);
-  height: 16px;       /* desce até perto do card */
-  border-left: 2px solid #e5e7eb;
+/* grid 3 (desktop) */
+.grid-children-3{
+  display:grid !important;
+  grid-template-columns:repeat(3, minmax(240px, 1fr));
+  gap:12px;
+  justify-items:center;
 }
 
-/* 6) (opcional) deixa o card um pouco afastado da linha vertical */
-.orgchart ul.grid-children-3 > li [data-node-card] {
-  margin-top: 10px;
+/* collapsed */
+.orgchart li.collapsed > ul{
+  display:none;
+}
+
+/* ---------------- MOBILE FIX ---------------- */
+@media (max-width: 768px){
+  .org-title-row{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .orgchart-wrapper{
+    padding:12px;
+    overflow-x:hidden; /* ✅ evita “estourar” */
+  }
+
+  .orgchart{
+    min-width:0;        /* ✅ mata o min-width do desktop */
+    display:block;      /* ✅ vira vertical */
+  }
+
+  .orgchart > li{
+    display:block;
+  }
+
+  /* ✅ desliga qualquer “layout horizontal” nos filhos */
+  .orgchart li ul{
+    display:grid !important;
+    grid-template-columns:1fr;
+    justify-items:stretch;
+    gap:10px;
+    margin-top:10px;
+  }
+
+  /* ✅ cards 100% */
+  .org-node{
+    min-width:0;
+    max-width:100%;
+    width:100%;
+  }
+
+  .org-name, .org-role{
+    white-space:normal;       /* ✅ permite quebrar */
+    overflow:visible;
+    text-overflow:unset;
+    word-break:break-word;
+  }
+
+  /* ✅ toggle sempre ok */
+  .org-toggle.inside{
+    padding:6px 10px;
+  }
+
+  /* ✅ remove grid 3 no mobile (força 1 coluna) */
+  .grid-children-3{
+    grid-template-columns:1fr !important;
+  }
+
+  /* ✅ se você tiver conectores/linhas por pseudo-elementos, desliga aqui */
+  .orgchart li::before,
+  .orgchart li::after,
+  .orgchart li ul::before,
+  .orgchart li ul::after{
+    display:none !important;
+    content:none !important;
+  }
+}
+
+/* classe extra usada pelo TSX */
+.children-mobile{
+  display:grid !important;
+  grid-template-columns:1fr;
+  justify-items:stretch;
+  gap:10px;
 }

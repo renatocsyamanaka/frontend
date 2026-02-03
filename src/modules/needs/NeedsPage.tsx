@@ -32,6 +32,7 @@ import {
   PaperClipOutlined,
   DeleteOutlined,
   EyeOutlined,
+  WhatsAppOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -40,7 +41,9 @@ type SimpleUser = { id: number; name: string };
 
 type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED';
 type Tier = 'OURO' | 'PRATA' | 'BRONZE';
-type HomologStatus = 'NAO_INICIADA' | 'EM_ANDAMENTO' | 'APROVADO' | 'REPROVADO';
+
+// ✅ status por etapa (igual backend)
+type StepStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
 
 type Need = {
   id: number;
@@ -63,8 +66,14 @@ type Need = {
   providerName?: string | null;
   providerWhatsapp?: string | null;
   negotiationTier?: Tier | null;
-  homologationStatus?: HomologStatus | null;
   negotiationNotes?: string | null;
+
+  // ✅ NOVOS CAMPOS (iguais ao Model Need no backend)
+  homologTablesStatus?: StepStatus | null;
+  homologDocsStatus?: StepStatus | null;
+  homologContractStatus?: StepStatus | null;
+  homologCrmStatus?: StepStatus | null;
+  homologErpStatus?: StepStatus | null;
 };
 
 type Requester = { id: number; name: string; count?: number };
@@ -79,7 +88,7 @@ type NeedAttachment = {
   fileName: string;
   mimeType: string;
   size: number;
-  url: string; // ex: "/uploads/needs/10/arquivo.png"
+  url: string;
   createdAt: string;
 };
 
@@ -96,11 +105,10 @@ const TIER_OPTS = [
   { value: 'BRONZE', label: 'Bronze' },
 ];
 
-const HOMOLOG_OPTS = [
-  { value: 'NAO_INICIADA', label: 'Não iniciada' },
+const STEP_STATUS_OPTS = [
+  { value: 'PENDENTE', label: 'Pendente' },
   { value: 'EM_ANDAMENTO', label: 'Em andamento' },
-  { value: 'APROVADO', label: 'Aprovado' },
-  { value: 'REPROVADO', label: 'Reprovado' },
+  { value: 'CONCLUIDO', label: 'Concluído' },
 ];
 
 const ATTACH_KIND_OPTS = [
@@ -151,7 +159,12 @@ function fmtBytes(n?: number) {
   }
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
-
+function whatsappLink(phone?: string | null) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  return `https://wa.me/55${digits}`;
+}
 /** ✅ Resolve origin correto (pra NÃO virar /api/uploads...) */
 function getApiOrigin() {
   const baseURL = (api as any)?.defaults?.baseURL || import.meta.env.VITE_API_URL || '';
@@ -168,7 +181,6 @@ async function fetchAsBlobUrl(fileUrl: string, mimeType?: string) {
   const isAbs = /^https?:\/\//i.test(fileUrl);
   const full = isAbs ? fileUrl : `${origin}${fileUrl}`;
 
-  // axios (api) já manda Authorization; mas precisamos garantir baseURL = origin (sem /api)
   const res = await api.get(isAbs ? full : fileUrl, {
     responseType: 'blob',
     baseURL: isAbs ? undefined : origin,
@@ -276,6 +288,7 @@ export default function NeedsPage() {
     q: params.get('q') || '',
   };
 
+  // ✅ correto no seu backend: /techtypes
   const { data: techTypes = [] } = useQuery<TechType[]>({
     queryKey: ['techtypes'],
     queryFn: async () => (await api.get('/techtypes')).data,
@@ -303,8 +316,7 @@ export default function NeedsPage() {
 
       let rows: Need[] = res.data;
 
-      if (initial.techTypeId) rows = rows.filter((n) => n.techType?.id === initial.techTypeId);
-      if (initial.requesterId) rows = rows.filter((n) => n.requestedBy?.id === initial.requesterId);
+      // (opcional) filtro textual local
       if (initial.q) {
         const s = initial.q.toLowerCase();
         rows = rows.filter(
@@ -384,11 +396,19 @@ export default function NeedsPage() {
     setOpenProvider(true);
     setUploadKind('DOCUMENTO');
     setUploadFileList([]);
+
     formProvider.setFieldsValue({
       providerName: n.providerName ?? '',
       providerWhatsapp: n.providerWhatsapp ?? '',
       negotiationTier: n.negotiationTier ?? null,
-      homologationStatus: n.homologationStatus ?? null,
+
+      // ✅ nomes IGUAIS ao backend
+      homologTablesStatus: n.homologTablesStatus ?? 'PENDENTE',
+      homologDocsStatus: n.homologDocsStatus ?? 'PENDENTE',
+      homologContractStatus: n.homologContractStatus ?? 'PENDENTE',
+      homologCrmStatus: n.homologCrmStatus ?? 'PENDENTE',
+      homologErpStatus: n.homologErpStatus ?? 'PENDENTE',
+
       negotiationNotes: n.negotiationNotes ?? '',
     });
   };
@@ -404,7 +424,6 @@ export default function NeedsPage() {
   const [uploadKind, setUploadKind] = useState<AttachmentKind>('DOCUMENTO');
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([]);
 
-  // ✅ Preview Modal (abrir anexo dentro do modal)
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string>('');
@@ -424,7 +443,6 @@ export default function NeedsPage() {
     },
   });
 
-  /** ✅ AGORA ABRE (IMAGEM + PDF) NO PREVIEW e (OUTROS) BAIXA — tudo via blob autenticado */
   async function openAttachment(a: NeedAttachment) {
     if (!a?.url) return;
 
@@ -432,13 +450,12 @@ export default function NeedsPage() {
     const isPreviewable = mime.startsWith('image/') || mime === 'application/pdf';
 
     try {
-      // revoga anterior se tiver
       if (lastBlobUrlRef.current?.startsWith('blob:')) {
         URL.revokeObjectURL(lastBlobUrlRef.current);
         lastBlobUrlRef.current = null;
       }
 
-      const { blobUrl, fullUrl } = await fetchAsBlobUrl(a.url, a.mimeType);
+      const { blobUrl } = await fetchAsBlobUrl(a.url, a.mimeType);
 
       if (isPreviewable) {
         lastBlobUrlRef.current = blobUrl;
@@ -449,7 +466,6 @@ export default function NeedsPage() {
         return;
       }
 
-      // se não for previewável, baixa
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = a.originalName || 'arquivo';
@@ -457,15 +473,9 @@ export default function NeedsPage() {
       link.click();
       link.remove();
 
-      setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-      }, 4000);
-
-      // (opcional) abrir também em aba:
-      // window.open(fullUrl, '_blank', 'noopener,noreferrer');
-      void fullUrl;
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Não foi possível abrir o arquivo (verifique permissões/URL).');
+      message.error(e?.response?.data?.error || 'Não foi possível abrir o arquivo.');
     }
   }
 
@@ -489,7 +499,6 @@ export default function NeedsPage() {
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao anexar arquivo'),
   });
 
-  // ✅ DELETE corrigido para bater com seu backend: DELETE /api/needs/:id/attachments/:attachmentId
   const deleteAttachment = useMutation({
     mutationFn: async (attachmentId: number) => {
       if (!providerNeed?.id) throw new Error('Need não selecionada');
@@ -506,10 +515,7 @@ export default function NeedsPage() {
   const handleUpload = async () => {
     if (!providerNeed?.id) return;
     const f = uploadFileList?.[0]?.originFileObj as File | undefined;
-    if (!f) {
-      message.error('Selecione um arquivo');
-      return;
-    }
+    if (!f) return message.error('Selecione um arquivo');
     uploadAttachment.mutate({ needId: providerNeed.id, kind: uploadKind, file: f });
   };
 
@@ -696,7 +702,11 @@ export default function NeedsPage() {
           </Form.Item>
 
           <Form.Item name="techTypeId" label="Tipo técnico">
-            <Select allowClear style={{ width: 220 }} options={techTypes.map((t) => ({ value: t.id, label: t.name }))} />
+            <Select
+              allowClear
+              style={{ width: 220 }}
+              options={techTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
           </Form.Item>
 
           <Form.Item name="requesterId" label="Solicitante">
@@ -765,7 +775,13 @@ export default function NeedsPage() {
           </Space>
         }
       >
-        <Table rowKey="id" loading={isLoading || updateStatus.isPending} dataSource={data} columns={columns as any} pagination={{ pageSize: 10 }} />
+        <Table
+          rowKey="id"
+          loading={isLoading || updateStatus.isPending}
+          dataSource={data}
+          columns={columns as any}
+          pagination={{ pageSize: 10 }}
+        />
       </Card>
 
       {/* ===== Modal Novo Pedido (com autocomplete) ===== */}
@@ -807,7 +823,6 @@ export default function NeedsPage() {
               requestedCep: v.requestedCep ? String(v.requestedCep).trim() : null,
               requestedLat: lat,
               requestedLng: lng,
-
               requestedName: String(v.requestedName || 'Técnico a definir').trim(),
               techTypeId: v.techTypeId || null,
               notes: v.notes || '',
@@ -853,16 +868,14 @@ export default function NeedsPage() {
               <Input maxLength={2} />
             </Form.Item>
             <Form.Item name="requestedCep" label="CEP">
-              <Input placeholder="00000-000" onChange={(e) => formNew.setFieldValue('requestedCep', maskCepBR(e.target.value))} />
+              <Input
+                placeholder="00000-000"
+                onChange={(e) => formNew.setFieldValue('requestedCep', maskCepBR(e.target.value))}
+              />
             </Form.Item>
           </div>
 
-          <Form.Item
-            name="requestedName"
-            label="Nome do técnico (livre)"
-            tooltip="Pode ser qualquer nome, inclusive 'a definir'"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="requestedName" label="Nome do técnico (livre)" rules={[{ required: true }]}>
             <Input placeholder="Ex.: Técnico João / Técnico a definir" />
           </Form.Item>
 
@@ -874,7 +887,9 @@ export default function NeedsPage() {
             <Input.TextArea rows={3} placeholder="Requisitos, disponibilidade, etc." />
           </Form.Item>
 
-          <Typography.Text type="secondary">Dica: sempre selecione um item da lista para preencher lat/lng automaticamente.</Typography.Text>
+          <Typography.Text type="secondary">
+            Dica: sempre selecione um item da lista para preencher lat/lng automaticamente.
+          </Typography.Text>
         </Form>
       </Modal>
 
@@ -895,12 +910,18 @@ export default function NeedsPage() {
               providerName: String(v.providerName).trim(),
               providerWhatsapp: v.providerWhatsapp ? String(v.providerWhatsapp).trim() : null,
               negotiationTier: v.negotiationTier ?? null,
-              homologationStatus: v.homologationStatus ?? null,
               negotiationNotes: v.negotiationNotes ? String(v.negotiationNotes) : null,
+
+              // ✅ chaves corretas
+              homologTablesStatus: v.homologTablesStatus ?? null,
+              homologDocsStatus: v.homologDocsStatus ?? null,
+              homologContractStatus: v.homologContractStatus ?? null,
+              homologCrmStatus: v.homologCrmStatus ?? null,
+              homologErpStatus: v.homologErpStatus ?? null,
             });
           } catch {}
         }}
-        width={820}
+        width={900}
         destroyOnClose
       >
         {providerNeed ? (
@@ -910,30 +931,88 @@ export default function NeedsPage() {
             </Typography.Text>
 
             <Form layout="vertical" form={formProvider} style={{ marginTop: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Form.Item
-                  name="providerName"
-                  label="Nome do prestador (obrigatório)"
-                  rules={[{ required: true, message: 'Informe o nome do prestador' }, { min: 2 }]}
-                >
-                  <Input placeholder="Ex.: João da Silva (Prestador X)" />
-                </Form.Item>
+  <div
+    style={{
+      display: 'grid',
+      gridTemplateColumns: '2fr 1fr',
+      gap: 12,
+      alignItems: 'end',
+    }}
+  >
+    <Form.Item
+      name="providerName"
+      label="Nome do prestador (obrigatório)"
+      rules={[
+        { required: true, message: 'Informe o nome do prestador' },
+        { min: 2 },
+      ]}
+    >
+      <Input placeholder="Ex.: João da Silva (Prestador X)" />
+    </Form.Item>
 
-                <Form.Item name="providerWhatsapp" label="WhatsApp do prestador">
-                  <Input
-                    placeholder="(11) 99999-9999"
-                    onChange={(e) => formProvider.setFieldValue('providerWhatsapp', maskPhoneBR(e.target.value))}
-                  />
-                </Form.Item>
-              </div>
+    <Form.Item name="providerWhatsapp" label="WhatsApp do prestador">
+      <Input
+        placeholder="(11) 99999-9999"
+        onChange={(e) =>
+          formProvider.setFieldValue(
+            'providerWhatsapp',
+            maskPhoneBR(e.target.value)
+          )
+        }
+        addonAfter={(() => {
+          const phone = formProvider.getFieldValue('providerWhatsapp');
+          const link = whatsappLink(phone);
+
+          return (
+            <Button
+              type="text"
+              icon={
+                <WhatsAppOutlined
+                  style={{ color: '#25D366', fontSize: 18 }}
+                />
+              }
+              disabled={!link}
+              onClick={() => {
+                if (link) window.open(link, '_blank');
+              }}
+            />
+          );
+        })()}
+      />
+    </Form.Item>
+  </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Form.Item name="negotiationTier" label="Categoria negociada">
                   <Select allowClear options={TIER_OPTS} placeholder="Ouro / Prata / Bronze" />
                 </Form.Item>
+                <div />
+              </div>
 
-                <Form.Item name="homologationStatus" label="Status da homologação">
-                  <Select allowClear options={HOMOLOG_OPTS} placeholder="Selecione" />
+              <Divider style={{ margin: '8px 0 12px' }} />
+              <Typography.Title level={5} style={{ marginTop: 0 }}>
+                Status da homologação
+              </Typography.Title>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Form.Item name="homologTablesStatus" label="Apresentação de Tabelas">
+                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
+                </Form.Item>
+
+                <Form.Item name="homologDocsStatus" label="Envio de documentos">
+                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
+                </Form.Item>
+
+                <Form.Item name="homologContractStatus" label="Assinatura de contrato">
+                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
+                </Form.Item>
+
+                <Form.Item name="homologCrmStatus" label="Cadastro no CRM">
+                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
+                </Form.Item>
+
+                <Form.Item name="homologErpStatus" label="Cadastro no ERP">
+                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
                 </Form.Item>
               </div>
 
@@ -983,14 +1062,7 @@ export default function NeedsPage() {
               renderItem={(a) => (
                 <List.Item
                   actions={[
-                    <Button
-                      key="open"
-                      size="small"
-                      icon={<EyeOutlined />}
-                      onClick={() => {
-                        void openAttachment(a);
-                      }}
-                    >
+                    <Button key="open" size="small" icon={<EyeOutlined />} onClick={() => void openAttachment(a)}>
                       Abrir
                     </Button>,
                     <Popconfirm
@@ -1025,7 +1097,6 @@ export default function NeedsPage() {
               )}
             />
 
-            {/* ✅ Modal Preview do arquivo (IMAGEM / PDF) */}
             <Modal
               open={previewOpen}
               title={previewTitle}
@@ -1035,10 +1106,7 @@ export default function NeedsPage() {
                 setPreviewMime('');
                 setPreviewTitle('');
 
-                // limpa previewUrl + revoga blob
-                if (previewUrl?.startsWith('blob:')) {
-                  URL.revokeObjectURL(previewUrl);
-                }
+                if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
                 if (lastBlobUrlRef.current?.startsWith('blob:')) {
                   URL.revokeObjectURL(lastBlobUrlRef.current);
                   lastBlobUrlRef.current = null;
@@ -1052,23 +1120,10 @@ export default function NeedsPage() {
                 <img
                   src={previewUrl}
                   alt={previewTitle}
-                  style={{
-                    width: '100%',
-                    maxHeight: '70vh',
-                    objectFit: 'contain',
-                    borderRadius: 8,
-                  }}
+                  style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 8 }}
                 />
               ) : previewMime === 'application/pdf' ? (
-                <iframe
-                  src={previewUrl}
-                  title={previewTitle}
-                  style={{
-                    width: '100%',
-                    height: '70vh',
-                    border: 'none',
-                  }}
-                />
+                <iframe src={previewUrl} title={previewTitle} style={{ width: '100%', height: '70vh', border: 'none' }} />
               ) : (
                 <div style={{ textAlign: 'center' }}>
                   <Typography.Text>Pré-visualização não disponível para este tipo de arquivo.</Typography.Text>
@@ -1169,7 +1224,9 @@ export default function NeedsPage() {
                 </Form.Item>
               </div>
 
-              <Typography.Text type="secondary">Se o CEP vier preenchido, o sistema usa ViaCEP para garantir cidade/UF corretos.</Typography.Text>
+              <Typography.Text type="secondary">
+                Se o CEP vier preenchido, o sistema usa ViaCEP para garantir cidade/UF corretos.
+              </Typography.Text>
             </Form>
           </>
         ) : (
