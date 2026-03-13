@@ -23,7 +23,7 @@ import { TimeOffPage } from './modules/timeoff/TimeOffPage';
 import NewsCenterPage from './modules/news/NewsCenterPage';
 import NewsAdminPage from './modules/news/NewsAdminPage';
 import PartRequestsPage from './modules/PartRequests/PartRequests';
-import MyPartRequestsPage from './modules/partRequests/MyPartRequestsPage';
+import MyPartRequestsPage from './modules/PartRequests/MyPartRequestsPage';
 
 export default function App() {
   return (
