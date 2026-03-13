@@ -51,6 +51,8 @@ type User = {
   serviceAreaName?: string | null;
   vendorCode?: string | null;
   serviceAreaCode?: string | null;
+  tipoAtendimento?: 'FX' | 'VL' | 'FV' | null;
+  tipoAtendimentoDescricao?: string | null;
 
   addressStreet?: string | null;
   addressNumber?: string | null;
@@ -96,6 +98,22 @@ const getPrestadorType = (u: User): PrestadorType | 'OUTROS' => {
   if (u.role?.level === 1 || roleName.includes('técnic') || roleName.includes('tecnic')) return 'TECNICO';
 
   return 'OUTROS';
+};
+
+const getTipoAtendimentoLabel = (u?: User | null) => {
+  const v = u?.tipoAtendimento;
+  if (v === 'FX') return 'Ponto Fixo';
+  if (v === 'VL') return 'Volante';
+  if (v === 'FV') return 'Fixo e Volante';
+  return u?.tipoAtendimentoDescricao || '—';
+};
+
+const getTipoAtendimentoTagColor = (u?: User | null) => {
+  const v = u?.tipoAtendimento;
+  if (v === 'FX') return 'blue';
+  if (v === 'VL') return 'orange';
+  if (v === 'FV') return 'purple';
+  return 'default';
 };
 
 /** Ajusta o tamanho do mapa quando o layout muda (sider/resize) */
@@ -151,8 +169,8 @@ export default function TechsPsoMapPage() {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
-  const [sidebarOpen, setSidebarOpen] = useState(true); // PC
-  const [drawerOpen, setDrawerOpen] = useState(false); // mobile
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { data: users = [], isFetching, refetch } = useQuery<User[]>({
     queryKey: ['users'],
@@ -221,7 +239,8 @@ export default function TechsPsoMapPage() {
         const qq = q.toLowerCase();
         const inName = t.name.toLowerCase().includes(qq);
         const inType = String(getPrestadorType(t)).toLowerCase().includes(qq);
-        if (!inName && !inType) return false;
+        const inAtendimento = getTipoAtendimentoLabel(t).toLowerCase().includes(qq);
+        if (!inName && !inType && !inAtendimento) return false;
       }
 
       if (regiao && (t.serviceAreaName || '').toLowerCase() !== regiao.toLowerCase()) return false;
@@ -325,7 +344,6 @@ export default function TechsPsoMapPage() {
     wordBreak: 'break-word',
   };
 
-  // ✅ painel (reutilizado PC e Drawer)
   const FiltersPanel = (
     <Card bordered={false} style={{ boxShadow: 'none' }}>
       <Space direction="vertical" style={{ width: '100%' }} size={12}>
@@ -346,7 +364,7 @@ export default function TechsPsoMapPage() {
         <Input
           allowClear
           prefix={<SearchOutlined />}
-          placeholder="Buscar por nome ou tipo (ex: PRP, PSO...)"
+          placeholder="Buscar por nome, tipo ou atendimento"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -442,6 +460,9 @@ export default function TechsPsoMapPage() {
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                     <Tag>{tipoPrest}</Tag>
+                    {t.tipoAtendimento && (
+                      <Tag color={getTipoAtendimentoTagColor(t)}>{getTipoAtendimentoLabel(t)}</Tag>
+                    )}
                     {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
                   </div>
 
@@ -473,18 +494,13 @@ export default function TechsPsoMapPage() {
     </Card>
   );
 
-  // ✅ layout principal responsivo:
-  // PC: sidebar + mapa
-  // Mobile: só mapa + Drawer
   const gridTemplateColumns = !isMobile && sidebarOpen ? '380px 1fr' : '1fr';
   const mapHeight = isMobile ? '90vh' : '78vh';
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns, gap: 16 }}>
-      {/* ===== PC Sidebar ===== */}
       {!isMobile && sidebarOpen && <Card>{FiltersPanel}</Card>}
 
-      {/* ===== Mobile Header ações (botão filtros) ===== */}
       {isMobile && (
         <Card bodyStyle={{ padding: 12 }}>
           <Space style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -505,7 +521,6 @@ export default function TechsPsoMapPage() {
         </Card>
       )}
 
-      {/* ===== quando PC sidebar fechado ===== */}
       {!isMobile && !sidebarOpen && (
         <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => setSidebarOpen(true)} style={{ marginBottom: 8 }}>
@@ -514,7 +529,6 @@ export default function TechsPsoMapPage() {
         </div>
       )}
 
-      {/* ===== MAPA ===== */}
       <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
         <MapContainer
           center={withCoords[0]?.lat ? [withCoords[0].lat!, withCoords[0].lng!] : defaultCenter}
@@ -567,6 +581,9 @@ export default function TechsPsoMapPage() {
 
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                           <Tag>{tipoPrest}</Tag>
+                          {t.tipoAtendimento && (
+                            <Tag color={getTipoAtendimentoTagColor(t)}>{getTipoAtendimentoLabel(t)}</Tag>
+                          )}
                           {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
                         </div>
                       </div>
@@ -579,6 +596,10 @@ export default function TechsPsoMapPage() {
                     <div>
                       <Text type="secondary">Coordenador:&nbsp;</Text>
                       {c?.name || '—'}
+                    </div>
+                    <div>
+                      <Text type="secondary">Atendimento:&nbsp;</Text>
+                      {getTipoAtendimentoLabel(t)}
                     </div>
 
                     <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -628,7 +649,6 @@ export default function TechsPsoMapPage() {
         </MapContainer>
       </Card>
 
-      {/* ===== MOBILE DRAWER ===== */}
       <Drawer
         title="Filtros"
         open={drawerOpen}
@@ -640,7 +660,6 @@ export default function TechsPsoMapPage() {
         {FiltersPanel}
       </Drawer>
 
-      {/* ===== Modal DETALHES (responsivo) ===== */}
       <Modal
         open={detailsOpen}
         onCancel={closeDetails}
@@ -681,6 +700,15 @@ export default function TechsPsoMapPage() {
                   <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                     <Descriptions.Item label="Cargo">{detailsUser.role?.name || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Tipo">{getPrestadorType(detailsUser)}</Descriptions.Item>
+                    <Descriptions.Item label="Atendimento">
+                      {detailsUser.tipoAtendimento ? (
+                        <Tag color={getTipoAtendimentoTagColor(detailsUser)}>
+                          {getTipoAtendimentoLabel(detailsUser)}
+                        </Tag>
+                      ) : (
+                        '—'
+                      )}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Estoque Avançado">
                       {detailsUser.estoqueAvancado ? <Tag color="purple">Sim</Tag> : 'Não'}
                     </Descriptions.Item>
@@ -708,6 +736,7 @@ export default function TechsPsoMapPage() {
                   <Descriptions.Item label="Código fornecedor">{detailsUser.vendorCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Código da área">{detailsUser.serviceAreaCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Nome da área">{detailsUser.serviceAreaName || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Tipo de atendimento">{getTipoAtendimentoLabel(detailsUser)}</Descriptions.Item>
                 </Descriptions>
               </Card>
             </Col>
@@ -721,7 +750,8 @@ export default function TechsPsoMapPage() {
                   <Descriptions.Item label="Complemento">{detailsUser.addressComplement || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Bairro">{detailsUser.addressDistrict || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cidade/UF">
-                    {(detailsUser.addressCity || '—')}{detailsUser.addressState ? ` / ${detailsUser.addressState}` : ''}
+                    {(detailsUser.addressCity || '—')}
+                    {detailsUser.addressState ? ` / ${detailsUser.addressState}` : ''}
                   </Descriptions.Item>
                   <Descriptions.Item label="CEP">{detailsUser.addressZip || '—'}</Descriptions.Item>
                   <Descriptions.Item label="País">{detailsUser.addressCountry || '—'}</Descriptions.Item>
@@ -750,7 +780,6 @@ export default function TechsPsoMapPage() {
         )}
       </Modal>
 
-      {/* ===== Modal STREET VIEW (responsivo) ===== */}
       <Modal
         open={svOpen}
         onCancel={closeStreetViewModal}

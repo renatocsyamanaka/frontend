@@ -14,25 +14,18 @@ import {
   Select,
   Space,
   Tag,
+  Typography,
   message,
   Segmented,
+  Grid,
+  Tabs,
 } from 'antd';
-import {
-  CheckOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { CheckOutlined, PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { UserSelect } from '../shared/UserSelect';
 import { LocationSelect } from '../shared/LocationSelect';
 
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  type DropResult,
-} from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 
 type SimpleUser = { id: number; name: string };
 type Location = { id: number; name: string };
@@ -54,13 +47,11 @@ type Task = {
 };
 
 const STATUS_COLS: Array<{ key: Exclude<Task['status'], 'CANCELLED'>; title: string; color: string }> = [
-  { key: 'NEW',         title: 'Novas',        color: 'default' },
-  { key: 'ACK',         title: 'Confirmadas',  color: 'blue' },
+  { key: 'NEW', title: 'Novas', color: 'default' },
+  { key: 'ACK', title: 'Confirmadas', color: 'blue' },
   { key: 'IN_PROGRESS', title: 'Em andamento', color: 'gold' },
-  { key: 'DONE',        title: 'Concluídas',   color: 'green' },
-  { key: 'BLOCKED',     title: 'Canceladas',   color: 'red' },
-  // Observação: CANCELLED continua acessível pelo seletor do card,
-  // mas não mostramos uma coluna dedicada para ela.
+  { key: 'DONE', title: 'Concluídas', color: 'green' },
+  { key: 'BLOCKED', title: 'Bloqueadas', color: 'red' },
 ];
 
 const PRIORITY_TAG: Record<Task['priority'], JSX.Element> = {
@@ -74,19 +65,26 @@ type Scope = 'subs' | 'mine' | 'one';
 export default function TasksPage() {
   const qc = useQueryClient();
 
+  const { useBreakpoint } = Grid;
+  const bp = useBreakpoint();
+  const isMobile = !bp.md; // < md
+
   // ===== filtros
-  const [scope, setScope] = useState<Scope>('subs'); // padrão: subordinados
+  const [scope, setScope] = useState<Scope>('subs');
   const [assigneeId, setAssigneeId] = useState<number | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<Task['status'] | undefined>(undefined);
+
+  // mobile: tab ativa
+  const [activeTab, setActiveTab] = useState<Exclude<Task['status'], 'CANCELLED'>>('NEW');
 
   const queryParams = useMemo(() => {
     if (scope === 'mine') return { mine: true, status: statusFilter };
     if (scope === 'one' && assigneeId) return { assignedToId: assigneeId, status: statusFilter };
-    return { status: statusFilter }; // subs é o padrão do backend
+    return { status: statusFilter };
   }, [scope, assigneeId, statusFilter]);
 
   const { data: tasks = [], isLoading, refetch, isFetching } = useQuery<Task[]>({
-    queryKey: ['tasks', queryParams], // muda quando filtros mudam
+    queryKey: ['tasks', queryParams],
     queryFn: async () => (await api.get('/tasks', { params: queryParams })).data,
     keepPreviousData: true,
   });
@@ -144,20 +142,15 @@ export default function TasksPage() {
     const to = destination.droppableId as Task['status'];
     if (from === to) return;
 
-    // Regras de negócio:
-    // 1) Nunca mover para NEW (NEW só existe na criação)
     if (to === 'NEW') {
       message.warning('Não é possível mover para "Novas".');
       return;
     }
-
-    // 2) ACK só a partir de NEW
     if (to === 'ACK' && from !== 'NEW') {
       message.warning('Só é permitido mover para "Confirmadas" a partir de "Novas".');
       return;
     }
 
-    // 3) Atualiza status (pode ser ACK, IN_PROGRESS, DONE, BLOCKED, CANCELLED)
     setStatus.mutate({ id: Number(draggableId), status: to });
   };
 
@@ -171,36 +164,68 @@ export default function TasksPage() {
           style={{
             ...provided.draggableProps.style,
             opacity: snapshot.isDragging ? 0.9 : 1,
+            minWidth: 0,
           }}
         >
-          <Card size="small" hoverable>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ fontWeight: 600 }}>{t.title}</div>
-              {PRIORITY_TAG[t.priority]}
-            </div>
-            {t.dueDate && (
-              <div style={{ color: '#64748b' }}>
-                Prazo: {dayjs(t.dueDate).format('DD/MM/YYYY')}
-              </div>
-            )}
-            {t.assignee && (
-              <div style={{ color: '#64748b' }}>Resp.: {t.assignee.name}</div>
-            )}
-            {t.location && (
-              <div style={{ color: '#64748b' }}>Local: {t.location.name}</div>
-            )}
-            {t.client && (
-              <div style={{ color: '#64748b' }}>Cliente: {t.client.name}</div>
-            )}
-            {t.description && <div style={{ marginTop: 6 }}>{t.description}</div>}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              {t.status === 'NEW' && (
-                <Button
-                  icon={<CheckOutlined />}
-                  size="small"
-                  onClick={() => ackTask.mutate(t.id)}
+          <Card
+            size="small"
+            hoverable
+            style={{ borderRadius: 12, minWidth: 0 }}
+            bodyStyle={{ padding: isMobile ? 10 : 12 }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'start', justifyContent: 'space-between' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Typography.Text
+                  strong
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    lineHeight: 1.25,
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                  }}
                 >
+                  {t.title}
+                </Typography.Text>
+              </div>
+              <div style={{ flexShrink: 0 }}>{PRIORITY_TAG[t.priority]}</div>
+            </div>
+
+            <div style={{ marginTop: 6, display: 'grid', gap: 2 }}>
+              {t.dueDate && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Prazo: {dayjs(t.dueDate).format('DD/MM/YYYY')}
+                </Typography.Text>
+              )}
+              {t.assignee && (
+                <Typography.Text type="secondary" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
+                  Resp.: {t.assignee.name}
+                </Typography.Text>
+              )}
+              {t.location && (
+                <Typography.Text type="secondary" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
+                  Local: {t.location.name}
+                </Typography.Text>
+              )}
+              {t.client && (
+                <Typography.Text type="secondary" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>
+                  Cliente: {t.client.name}
+                </Typography.Text>
+              )}
+            </div>
+
+            {t.description && (
+              <Typography.Paragraph
+                style={{ marginTop: 8, marginBottom: 0, fontSize: 12, overflowWrap: 'anywhere' }}
+                ellipsis={{ rows: isMobile ? 2 : 3 }}
+              >
+                {t.description}
+              </Typography.Paragraph>
+            )}
+
+            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+              {t.status === 'NEW' && (
+                <Button icon={<CheckOutlined />} size="small" onClick={() => ackTask.mutate(t.id)} block>
                   Confirmar recebimento
                 </Button>
               )}
@@ -210,20 +235,13 @@ export default function TasksPage() {
                   size="small"
                   value={t.status}
                   onChange={(s) => {
-                    // As mesmas regras do DnD se aplicam aqui:
-                    if (s === 'NEW') {
-                      message.warning('Não é possível voltar para "Novas".');
-                      return;
-                    }
+                    if (s === 'NEW') return message.warning('Não é possível voltar para "Novas".');
                     if (s === 'ACK' && t.status !== 'NEW') {
-                      message.warning(
-                        'Só é permitido mover para "Confirmadas" a partir de "Novas".'
-                      );
-                      return;
+                      return message.warning('Só é permitido mover para "Confirmadas" a partir de "Novas".');
                     }
                     setStatus.mutate({ id: t.id, status: s as Task['status'] });
                   }}
-                  style={{ minWidth: 170 }}
+                  style={{ width: '100%' }}
                   options={[
                     { value: 'ACK', label: 'Confirmada' },
                     { value: 'IN_PROGRESS', label: 'Em andamento' },
@@ -240,120 +258,181 @@ export default function TasksPage() {
     </Draggable>
   );
 
-  return (
-    <div style={{ display: 'grid', gap: 16 }}>
+  const FilterBar = (
+    <Card bodyStyle={{ padding: isMobile ? 12 : 12 }}>
       <div
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        style={{
+          display: 'grid',
+          gap: 10,
+          gridTemplateColumns: isMobile ? '1fr' : '340px 1fr 260px',
+          alignItems: 'center',
+          maxWidth: '100%',
+        }}
       >
-        <h2 style={{ margin: 0 }}>Demandas (Planner)</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenNew(true)}>
+        <Segmented
+          size="small"
+          block={isMobile}
+          value={scope}
+          onChange={(v) => {
+            setScope(v as Scope);
+            if (v !== 'one') setAssigneeId(undefined);
+          }}
+          options={[
+            { label: 'Subordinados', value: 'subs' },
+            { label: 'Minhas', value: 'mine' },
+            { label: 'Responsável', value: 'one' },
+          ]}
+        />
+
+        {scope === 'one' ? (
+          <UserSelect
+            allowClear
+            placeholder="Selecione o responsável"
+            onChange={(val) => setAssigneeId(val as number | undefined)}
+            style={{ width: '100%' }}
+            suffixIcon={<UserOutlined />}
+          />
+        ) : (
+          <div />
+        )}
+
+        <Select
+          allowClear
+          placeholder="Status"
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as Task['status'] | undefined)}
+          style={{ width: '100%' }}
+          options={[
+            { value: 'NEW', label: 'Novas' },
+            { value: 'ACK', label: 'Confirmadas' },
+            { value: 'IN_PROGRESS', label: 'Em andamento' },
+            { value: 'DONE', label: 'Concluídas' },
+            { value: 'BLOCKED', label: 'Bloqueadas' },
+            { value: 'CANCELLED', label: 'Canceladas' },
+          ]}
+        />
+      </div>
+
+      <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+        {scope === 'subs' && 'Mostrando tarefas dos seus subordinados (diretos e indiretos).'}
+        {scope === 'mine' && 'Mostrando apenas as suas tarefas.'}
+        {scope === 'one' && (assigneeId ? `Mostrando tarefas do usuário #${assigneeId}.` : 'Selecione um responsável.')}
+      </Typography.Text>
+    </Card>
+  );
+
+  const Header = (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 10,
+          alignItems: isMobile ? 'stretch' : 'center',
+          justifyContent: 'space-between',
+          maxWidth: '100%',
+        }}
+      >
+        <Typography.Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
+          Demandas (Planner)
+        </Typography.Title>
+
+        <div style={{ display: 'flex', gap: 10, flexDirection: isMobile ? 'column' : 'row' }}>
+          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()} block={isMobile}>
+            Atualizar
+          </Button>
+
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenNew(true)} block={isMobile}>
             Nova demanda
           </Button>
         </div>
       </div>
+    </div>
+  );
 
-      {/* Barra de filtros */}
-      <Card>
-        <Space wrap align="center">
-          <Segmented
-            value={scope}
-            onChange={(v) => setScope(v as Scope)}
-            options={[
-              { label: 'Subordinados', value: 'subs' },
-              { label: 'Minhas', value: 'mine' },
-              { label: 'Responsável', value: 'one' },
-            ]}
-          />
-
-          {scope === 'one' && (
-            <div style={{ minWidth: 260 }}>
-              <UserSelect
-                allowClear
-                placeholder="Selecione o responsável"
-                onChange={(val) => setAssigneeId(val as number | undefined)}
-                style={{ width: '100%' }}
-                suffixIcon={<UserOutlined />}
-              />
+  const Column = (colKey: Exclude<Task['status'], 'CANCELLED'>) => {
+    const col = STATUS_COLS.find((c) => c.key === colKey)!;
+    return (
+      <Card
+        title={
+          <span>
+            {col.title} <Tag color={col.color}>{grouped[col.key]?.length || 0}</Tag>
+          </span>
+        }
+        loading={isLoading}
+        bodyStyle={{ padding: isMobile ? 12 : 12 }}
+        style={{ minWidth: 0 }}
+      >
+        <Droppable droppableId={col.key} isDropDisabled={col.key === 'NEW'}>
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              style={{
+                minHeight: 40,
+                borderRadius: 12,
+                padding: 2,
+                background: snapshot.isDraggingOver ? '#f5f7ff' : undefined,
+                transition: 'background 0.2s',
+                display: 'grid',
+                gap: 10,
+                minWidth: 0,
+              }}
+            >
+              {grouped[col.key]?.map((t, idx) => renderCard(t, idx))}
+              {(grouped[col.key]?.length || 0) === 0 && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Sem itens
+                </Typography.Text>
+              )}
+              {provided.placeholder}
             </div>
           )}
-
-          <Select
-            allowClear
-            placeholder="Status"
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as Task['status'] | undefined)}
-            style={{ width: 200 }}
-            options={[
-              { value: 'NEW', label: 'Novas' },
-              { value: 'ACK', label: 'Confirmadas' },
-              { value: 'IN_PROGRESS', label: 'Em andamento' },
-              { value: 'DONE', label: 'Concluídas' },
-              { value: 'BLOCKED', label: 'Bloqueadas' },
-              { value: 'CANCELLED', label: 'Canceladas' },
-            ]}
-          />
-
-          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
-            Atualizar
-          </Button>
-        </Space>
-
-        <div style={{ color: '#64748b', marginTop: 8 }}>
-          {scope === 'subs' &&
-            'Mostrando tarefas dos seus subordinados (diretos e indiretos).'}
-          {scope === 'mine' && 'Mostrando apenas as suas tarefas.'}
-          {scope === 'one' &&
-            (assigneeId
-              ? `Mostrando tarefas do usuário #${assigneeId}.`
-              : 'Selecione um responsável.')}
-        </div>
+        </Droppable>
       </Card>
+    );
+  };
 
-      {/* Colunas do planner com DnD */}
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 16,
+        maxWidth: '100%',
+        overflowX: 'hidden', // ✅ mata scroll lateral no mobile
+      }}
+    >
+      {Header}
+      {FilterBar}
+
       <DragDropContext onDragEnd={onDragEnd}>
-        <Row gutter={16}>
-          {STATUS_COLS.map((col) => (
-            <Col key={col.key} xs={24} md={12} lg={8} xl={6}>
-              <Card
-                title={
-                  <span>
-                    {col.title}{' '}
-                    <Tag color={col.color}>{grouped[col.key]?.length || 0}</Tag>
+        {isMobile ? (
+          <Card bodyStyle={{ padding: 10 }} style={{ minWidth: 0 }}>
+            <Tabs
+              activeKey={activeTab}
+              onChange={(k) => setActiveTab(k as any)}
+              centered={false}
+              tabBarGutter={8}
+              items={STATUS_COLS.map((c) => ({
+                key: c.key,
+                label: (
+                  <span style={{ fontSize: 12 }}>
+                    {c.title} <Tag style={{ marginInlineStart: 6 }} color={c.color}>{grouped[c.key]?.length || 0}</Tag>
                   </span>
-                }
-                loading={isLoading}
-              >
-                <Droppable
-                  droppableId={col.key}
-                  isDropDisabled={col.key === 'NEW'} // bloqueia drop em "Novas"
-                >
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      style={{
-                        minHeight: 40,
-                        transition: 'background 0.2s',
-                        background: snapshot.isDraggingOver ? '#f5f7ff' : undefined,
-                        borderRadius: 6,
-                        padding: 2,
-                      }}
-                    >
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        {grouped[col.key]?.map((t, idx) => renderCard(t, idx))}
-                        {(grouped[col.key]?.length || 0) === 0 && (
-                          <div style={{ color: '#94a3b8' }}>Sem itens</div>
-                        )}
-                      </Space>
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                ),
+                children: <div style={{ marginTop: 10 }}>{Column(c.key)}</div>,
+              }))}
+            />
+          </Card>
+        ) : (
+          <Row gutter={[16, 16]} style={{ margin: 0 }}>
+            {STATUS_COLS.map((col) => (
+              <Col key={col.key} xs={24} md={12} lg={8} xl={6} style={{ minWidth: 0 }}>
+                {Column(col.key)}
+              </Col>
+            ))}
+          </Row>
+        )}
       </DragDropContext>
 
       {/* Modal Nova Demanda */}
@@ -362,7 +441,8 @@ export default function TasksPage() {
         open={openNew}
         onCancel={() => setOpenNew(false)}
         onOk={() => formNew.submit()}
-        destroyOnHidden
+        destroyOnClose
+        confirmLoading={createTask.isPending}
       >
         <Form
           layout="vertical"
@@ -373,7 +453,6 @@ export default function TasksPage() {
               description: v.description || null,
               assignedToId: v.assignedToId,
               priority: v.priority,
-              // DatePicker (dayjs) -> Date -> ISO
               dueDate: v.dueDate ? v.dueDate.toDate().toISOString() : null,
               locationId: v.locationId ?? null,
               clientId: v.clientId ?? null,
@@ -388,11 +467,7 @@ export default function TasksPage() {
             <Input.TextArea rows={3} />
           </Form.Item>
 
-          <Form.Item
-            name="assignedToId"
-            label="Responsável (Supervisor)"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="assignedToId" label="Responsável (Supervisor)" rules={[{ required: true }]}>
             <UserSelect onlyManagers />
           </Form.Item>
 
@@ -413,7 +488,6 @@ export default function TasksPage() {
           <Form.Item name="locationId" label="Local">
             <LocationSelect />
           </Form.Item>
-          {/* Se quiser clientes, crie um ClientSelect similar ao LocationSelect e use aqui */}
         </Form>
       </Modal>
     </div>

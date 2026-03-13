@@ -22,6 +22,8 @@ import OvertimePage from './modules/overtime/OvertimePage';
 import { TimeOffPage } from './modules/timeoff/TimeOffPage';
 import NewsCenterPage from './modules/news/NewsCenterPage';
 import NewsAdminPage from './modules/news/NewsAdminPage';
+import PartRequestsPage from './modules/PartRequests/PartRequests';
+import MyPartRequestsPage from './modules/partRequests/MyPartRequestsPage';
 
 export default function App() {
   return (
@@ -36,10 +38,8 @@ export default function App() {
           </RequireAuth>
         }
       >
-        {/* Dashboard: qualquer logado */}
         <Route index element={<Dashboard />} />
 
-        {/* ✅ Analista+ (2) */}
         <Route
           path="techs-pso"
           element={
@@ -56,6 +56,22 @@ export default function App() {
             </RequireRoleLevel>
           }
         />
+          <Route
+            path="users"
+            element={
+              <RequireRoleLevel minLevel={2}>
+                <UsersPage />
+              </RequireRoleLevel>
+            }
+          />
+          <Route
+            path="part-requests"
+            element={
+              <RequireRoleLevel minLevel={2}>
+                <PartRequestsPage />
+              </RequireRoleLevel>
+            }
+          />
         <Route
           path="installation-projects/:id"
           element={
@@ -64,7 +80,7 @@ export default function App() {
             </RequireRoleLevel>
           }
         />
-        {/* Se Analista NÃO deve ver Organograma/Locais/Clientes, suba para 3 aqui */}
+
         <Route
           path="org"
           element={
@@ -90,7 +106,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Demandas: Analista+ (2) */}
         <Route
           path="tasks"
           element={
@@ -100,7 +115,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Tipos Técnico / Requisições / Agenda: Analista+ (2) */}
         <Route
           path="tech-types"
           element={
@@ -125,6 +139,23 @@ export default function App() {
             </RequireRoleLevel>
           }
         />
+
+        <Route
+          path="part-requests"
+          element={
+            <RequireRoleLevel minLevel={5}>
+              <PartRequestsPage />
+            </RequireRoleLevel>
+          }
+        />
+        <Route
+          path="my-part-requests"
+          element={
+            <RequireRoleLevel minLevel={2}>
+              <MyPartRequestsPage />
+            </RequireRoleLevel>
+          }
+        />
         <Route
           path="assignments"
           element={
@@ -134,7 +165,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Banco de Horas / Folgas: Analista+ (2) */}
         <Route
           path="overtime"
           element={
@@ -152,7 +182,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Notícias: Coordenador+ (4) (ajuste se quiser Supervisor+ (3)) */}
         <Route
           path="news"
           element={
@@ -162,7 +191,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Notícias (Admin): Admin (6) */}
         <Route
           path="news-admin"
           element={
@@ -172,7 +200,6 @@ export default function App() {
           }
         />
 
-        {/* ✅ Colaboradores: Coordenador+ (4) (ajuste se quiser Supervisor+ (3)) */}
         <Route
           path="users"
           element={

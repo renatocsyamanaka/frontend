@@ -48,24 +48,21 @@ export function AppLayout() {
   const menuConfig: MenuCfg[] = [
     { key: '/', label: 'Dashboard', icon: <HomeOutlined />, minLevel: 1 },
     { key: '/installation-projects', label: 'Projetos de Instalação', icon: <ProjectOutlined />, minLevel: 2 },
-
+    { key: '/part-requests', label: 'Pedido de Peças', icon: <DatabaseOutlined />, minLevel: 2 },
     { key: '/techs-pso', label: 'Mapa Técnicos', icon: <ToolOutlined />, minLevel: 2 },
-    { key: '/users', label: 'Colaboradores', icon: <TeamOutlined />, minLevel: 3 },
+    { key: '/users', label: 'Colaboradores', icon: <TeamOutlined />, minLevel: 2 },
     { key: '/org', label: 'Organograma', icon: <ClusterOutlined />, minLevel: 3 },
-
+    { key: '/my-part-requests', label: 'Meus Pedidos de Peças', icon: <ProfileOutlined />, minLevel: 2 },
     { key: '/news', label: 'Notícias', icon: <NotificationOutlined />, minLevel: 4 },
     { key: '/news-admin', label: 'Notícias (Admin)', icon: <NotificationOutlined />, minLevel: 6 },
 
-    { key: '/locations', label: 'Locais', icon: <EnvironmentOutlined />, minLevel: 3 },
     { key: '/clients', label: 'Clientes', icon: <ProfileOutlined />, minLevel: 2 },
-    { key: '/tech-types', label: 'Tipos Técnico', icon: <ToolOutlined />, minLevel: 2 },
     { key: '/needs', label: 'Requisições', icon: <DatabaseOutlined />, minLevel: 2 },
 
     { key: '/tasks', label: 'Demandas', icon: <ProfileOutlined />, minLevel: 2 },
     { key: '/assignments', label: 'Agenda', icon: <ScheduleOutlined />, minLevel: 1 },
 
     { key: '/overtime', label: 'Banco de Horas', icon: <CalendarOutlined />, minLevel: 3 },
-    { key: '/timeoff', label: 'Folgas', icon: <CalendarOutlined />, minLevel: 3 },
   ];
 
   const menuItems = useMemo(() => {

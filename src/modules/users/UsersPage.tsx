@@ -34,11 +34,11 @@ import {
   EyeOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons';
-import { UserSelect } from '../shared/UserSelect';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
 import UserMapModal from './UserMapModal';
 import { MaskedInput } from 'antd-mask-input';
+import { useAuth } from '../auth/AuthProvider';
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -60,6 +60,21 @@ const phoneMask = (value?: string) => {
   const digits = onlyDigits(value);
   return digits.length > 10 ? '(00) 00000-0000' : '(00) 0000-0000';
 };
+
+const normalizeRoleName = (s?: string | null) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const TIPO_ATENDIMENTO_OPTIONS = [
+  { value: 'FX', label: 'FX - Fixo' },
+  { value: 'VL', label: 'VL - Volante' },
+  { value: 'FV', label: 'FV - Fixo e Volante' },
+];
 
 type Role = { id: number; name: string; level: number };
 type SimpleUser = { id: number; name: string };
@@ -93,6 +108,8 @@ type User = {
   vendorCode?: string | null;
   serviceAreaCode?: string | null;
   serviceAreaName?: string | null;
+  tipoAtendimento?: 'FX' | 'VL' | 'FV' | null;
+  tipoAtendimentoDescricao?: string | null;
 };
 
 const BASE_ROLE_OPTIONS = [
@@ -173,21 +190,41 @@ export function UsersPage() {
   const qc = useQueryClient();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+  const { user: authUser } = useAuth();
 
-  // listagem
+  const myLevel = Number(authUser?.role?.level || 0);
+  const canCreateWorker = myLevel >= 2;
+  const canCreateAnyUser = myLevel >= 5;
+  const canEditAnyUser = myLevel >= 5;
+
+  const isWorkerRoleName = (roleName?: string | null) => {
+    const r = normalizeRoleName(roleName);
+    return ['tecnico', 'pso', 'ata', 'prp', 'spot'].includes(r);
+  };
+
+  const isWorkerRoleId = (roleId?: number | null) => {
+    const role = roleOptions.find((r) => r.value === roleId);
+    return isWorkerRoleName(String(role?.label || ''));
+  };
+
+  const canEditTarget = (u?: User | null) => {
+    if (!u) return false;
+    if (canEditAnyUser) return true;
+    if (myLevel >= 2 && isWorkerRoleName(u.role?.name)) return true;
+    return false;
+  };
+
   const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users')).data,
   });
 
-  // ======= filtros =======
   const [fSearch, setFSearch] = useState<string>('');
   const [fRoles, setFRoles] = useState<number[] | undefined>(undefined);
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [fManagerId, setFManagerId] = useState<number | undefined>(undefined);
   const [fLocationId, setFLocationId] = useState<number | undefined>(undefined);
 
-  // mapa modal
   const [mapOpen, setMapOpen] = useState(false);
 
   const roleOptions = useMemo(() => {
@@ -207,6 +244,33 @@ export function UsersPage() {
     return merged.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [data]);
 
+  const workerRoleOptions = useMemo(() => {
+    return roleOptions.filter((r) => {
+      const label = normalizeRoleName(String(r.label || ''));
+      return ['tecnico', 'pso', 'ata', 'prp', 'spot'].includes(label);
+    });
+  }, [roleOptions]);
+
+  const managerOptions = useMemo(() => {
+    const seen = new Set<number>();
+
+    return (data || [])
+      .filter((u) => {
+        const level = Number(u.role?.level || 0);
+        return level >= 3;
+      })
+      .filter((u) => {
+        if (seen.has(u.id)) return false;
+        seen.add(u.id);
+        return true;
+      })
+      .map((u) => ({
+        value: u.id,
+        label: u.name,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  }, [data]);
+
   const filtered = useMemo(() => {
     const list = data || [];
 
@@ -214,7 +278,7 @@ export function UsersPage() {
       if (fSearch) {
         const q = fSearch.toLowerCase();
         const inName = (u.name || '').toLowerCase().includes(q);
-        const inEmail = (u.email || '')?.toLowerCase().includes(q);
+        const inEmail = (u.email || '').toLowerCase().includes(q);
         if (!inName && !inEmail) return false;
       }
       if (fRoles && fRoles.length > 0) {
@@ -229,7 +293,6 @@ export function UsersPage() {
     });
   }, [data, fSearch, fRoles, fActive, fManagerId, fLocationId]);
 
-  // ======= criar prestador =======
   const [workerOpen, setWorkerOpen] = useState(false);
   const [workerForm] = Form.useForm();
   const [workerAvatarFile, setWorkerAvatarFile] = useState<File | null>(null);
@@ -246,22 +309,23 @@ export function UsersPage() {
         });
         setWorkerAvatarFile(null);
       }
-      message.success('Técnico/PSO cadastrado');
+      message.success('Prestador cadastrado');
       await qc.invalidateQueries({ queryKey: ['users'] });
       setWorkerOpen(false);
       workerForm.resetFields();
     },
     onError: (e: any) => {
       console.error('workers ERROR:', e?.response?.data || e);
-      message.error(e?.response?.data?.error || 'Erro ao cadastrar técnico/PSO');
+      message.error(e?.response?.data?.error || 'Erro ao cadastrar prestador');
     },
   });
 
-  // ======= criar =======
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm] = Form.useForm();
   const [createAvatarFile, setCreateAvatarFile] = useState<File | null>(null);
   const createPhone = Form.useWatch('phone', createForm);
+  const createRoleId = Form.useWatch('roleId', createForm);
+  const createSelectedIsWorker = isWorkerRoleId(createRoleId);
 
   const createUser = useMutation({
     mutationFn: async (payload: any) => (await api.post('/users', payload)).data,
@@ -306,42 +370,57 @@ export function UsersPage() {
     onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao criar'),
   });
 
-  // ======= editar =======
   const [editOpen, setEditOpen] = useState(false);
   const [editForm] = Form.useForm();
   const [editing, setEditing] = useState<User | null>(null);
   const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
+  const editPhone = Form.useWatch('phone', editForm);
+  const editRoleId = Form.useWatch('roleId', editForm);
+  const editSelectedIsWorker = isWorkerRoleId(editRoleId) || editing?.loginEnabled === false;
 
-  const updateUser = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
-      (await api.patch(`/users/${id}`, payload)).data,
-    onSuccess: async (u: User) => {
-      if (editAvatarFile) {
-        const fd = new FormData();
-        fd.append('file', editAvatarFile);
-        await api.post(`/users/${u.id}/avatar`, fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        setEditAvatarFile(null);
-      }
+const updateUser = useMutation({
+  mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
+    (await api.patch(`/users/${id}`, payload)).data,
+  onSuccess: async (u: User) => {
+    if (editAvatarFile) {
+      const fd = new FormData();
+      fd.append('file', editAvatarFile);
+      await api.post(`/users/${u.id}/avatar`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setEditAvatarFile(null);
+    }
 
-      message.success('Usuário atualizado');
-      await qc.invalidateQueries({ queryKey: ['users'] });
-      setEditOpen(false);
-      setEditing(null);
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao atualizar'),
-  });
+    // atualiza cache local da lista imediatamente
+    qc.setQueryData<User[]>(['users'], (old) =>
+      (old || []).map((item) => (item.id === u.id ? { ...item, ...u } : item))
+    );
 
-  // ======= endereço =======
+    // atualiza modal de visualização, se estiver aberto para o mesmo usuário
+    setViewUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+
+    // atualiza edição local
+    setEditing((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+
+    // atualiza dados de endereço local
+    setAddrUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+
+    message.success('Usuário atualizado');
+
+    await qc.invalidateQueries({ queryKey: ['users'] });
+
+    setEditOpen(false);
+    setEditing(null);
+  },
+  onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao atualizar'),
+});
+
   const [addrOpen, setAddrOpen] = useState(false);
   const [addrUser, setAddrUser] = useState<User | null>(null);
 
-  // ======= visualizar =======
   const [viewOpen, setViewOpen] = useState(false);
   const [viewUser, setViewUser] = useState<User | null>(null);
 
-  // ======= estrutura =======
   const [structureOpen, setStructureOpen] = useState(false);
   const [structure, setStructure] = useState<any | null>(null);
   const [loadingStructure, setLoadingStructure] = useState(false);
@@ -358,7 +437,6 @@ export function UsersPage() {
     }
   }
 
-  // ======= GEOCODE (somente CREATE e WORKER) =======
   const [geoOpen, setGeoOpen] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoResults, setGeoResults] = useState<any[]>([]);
@@ -392,9 +470,34 @@ export function UsersPage() {
     setGeoOpen(false);
   };
 
+  const openEditModal = (u: User) => {
+    if (!canEditTarget(u)) {
+      message.warning('Você não tem permissão para editar este usuário.');
+      return;
+    }
+
+    setEditing(u);
+
+    editForm.setFieldsValue({
+      name: u.name,
+      email: u.email || '',
+      sex: u.sex || null,
+      roleId: u.role?.id,
+      managerId: u.manager?.id,
+      locationId: u.location?.id,
+      isActive: u.isActive,
+      phone: u.phone || '',
+      vendorCode: u.vendorCode || '',
+      serviceAreaCode: u.serviceAreaCode || '',
+      serviceAreaName: u.serviceAreaName || '',
+      tipoAtendimento: u.tipoAtendimento || undefined,
+    });
+
+    setEditOpen(true);
+  };
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {/* ===== Header Responsivo ===== */}
       <Row gutter={[12, 12]} align="middle" justify="space-between">
         <Col xs={24} md="auto">
           <h2 style={{ margin: 0 }}>Colaboradores</h2>
@@ -411,17 +514,22 @@ export function UsersPage() {
             <Button block={isMobile} icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
               Atualizar
             </Button>
-            <Button block={isMobile} type="primary" onClick={() => setCreateOpen(true)}>
-              Novo usuário
-            </Button>
-            <Button block={isMobile} onClick={() => setWorkerOpen(true)}>
-              Cadastrar prestador
-            </Button>
+
+            {canCreateAnyUser && (
+              <Button block={isMobile} type="primary" onClick={() => setCreateOpen(true)}>
+                Novo usuário
+              </Button>
+            )}
+
+            {canCreateWorker && (
+              <Button block={isMobile} onClick={() => setWorkerOpen(true)}>
+                Cadastrar prestador
+              </Button>
+            )}
           </Space>
         </Col>
       </Row>
 
-      {/* ===== Filtros Responsivos ===== */}
       <Card size="small">
         <Row gutter={[12, 12]}>
           <Col xs={24} md={8} lg={6}>
@@ -461,12 +569,18 @@ export function UsersPage() {
           </Col>
 
           <Col xs={24} md={12} lg={4}>
-            <UserSelect
+            <Select
               allowClear
-              onlyManagers
+              showSearch
               placeholder="Filtrar por gestor"
-              onChange={(v) => setFManagerId(v as number | undefined)}
-              style={{ width: '100%' } as any}
+              value={fManagerId}
+              onChange={(v) => setFManagerId(v)}
+              options={managerOptions}
+              optionFilterProp="label"
+              filterOption={(input, option) =>
+                String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+              }
+              style={{ width: '100%' }}
             />
           </Col>
 
@@ -496,16 +610,20 @@ export function UsersPage() {
         </Row>
       </Card>
 
-      {/* ===== Grade de cards ===== */}
       <List
         loading={isLoading}
         grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4, xxl: 4 }}
         dataSource={filtered}
         rowKey={(u) => u.id}
+        pagination={{
+          pageSize: 12,
+          showSizeChanger: false,
+          hideOnSinglePage: true,
+          align: 'end',
+        }}
         renderItem={(u) => (
           <List.Item>
             <Card hoverable bodyStyle={{ padding: 16 }}>
-              {/* TAGS (sem absolute, não quebra no mobile) */}
               <div
                 style={{
                   display: 'flex',
@@ -519,6 +637,7 @@ export function UsersPage() {
                 {u.loginEnabled === false && <Tag color="blue">Sem login</Tag>}
                 {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
                 {!!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                {u.tipoAtendimento && <Tag color="cyan">{u.tipoAtendimento}</Tag>}
               </div>
 
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -533,6 +652,9 @@ export function UsersPage() {
 
                   <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
                   <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
+                  {u.tipoAtendimentoDescricao && (
+                    <div style={{ color: '#94a3b8' }}>Atendimento: {u.tipoAtendimentoDescricao}</div>
+                  )}
                 </div>
               </div>
 
@@ -565,7 +687,6 @@ export function UsersPage() {
         )}
       />
 
-      {/* ===== Modal VISUALIZAR ===== */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -595,43 +716,31 @@ export function UsersPage() {
               </Button>
             </Tooltip>
 
-            <Button
-              icon={<HomeOutlined />}
-              onClick={() => {
-                if (!viewUser) return;
-                setAddrUser(viewUser);
-                setAddrOpen(true);
-              }}
-            >
-              Endereço
-            </Button>
+            {canEditTarget(viewUser) && (
+              <Button
+                icon={<HomeOutlined />}
+                onClick={() => {
+                  if (!viewUser) return;
+                  setAddrUser(viewUser);
+                  setAddrOpen(true);
+                }}
+              >
+                Endereço
+              </Button>
+            )}
 
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={() => {
-                if (!viewUser) return;
-                setEditing(viewUser);
-
-                editForm.setFieldsValue({
-                  name: viewUser.name,
-                  email: viewUser.email || '',
-                  sex: viewUser.sex || null,
-                  roleId: viewUser.role?.id,
-                  managerId: viewUser.manager?.id,
-                  locationId: viewUser.location?.id,
-                  isActive: viewUser.isActive,
-                  phone: viewUser.phone || '',
-                  vendorCode: viewUser.vendorCode || '',
-                  serviceAreaCode: viewUser.serviceAreaCode || '',
-                  serviceAreaName: viewUser.serviceAreaName || '',
-                });
-
-                setEditOpen(true);
-              }}
-            >
-              Editar
-            </Button>
+            {canEditTarget(viewUser) && (
+              <Button
+                type="primary"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  if (!viewUser) return;
+                  openEditModal(viewUser);
+                }}
+              >
+                Editar
+              </Button>
+            )}
 
             <Button
               onClick={() => {
@@ -657,6 +766,9 @@ export function UsersPage() {
                     <Descriptions.Item label="Gestor">{viewUser.manager?.name || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Local">{viewUser.location?.name || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Status">{viewUser.isActive ? 'Ativo' : 'Inativo'}</Descriptions.Item>
+                    <Descriptions.Item label="Login">
+                      {viewUser.loginEnabled === false ? 'Sem login' : 'Com login'}
+                    </Descriptions.Item>
                   </Descriptions>
                 </Card>
 
@@ -675,6 +787,9 @@ export function UsersPage() {
                   <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Tipo de atendimento">
+                    {viewUser.tipoAtendimentoDescricao || viewUser.tipoAtendimento || '—'}
+                  </Descriptions.Item>
                 </Descriptions>
               </Card>
             </Col>
@@ -688,7 +803,7 @@ export function UsersPage() {
                   <Descriptions.Item label="Complemento">{viewUser.addressComplement || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Bairro">{viewUser.addressDistrict || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cidade/UF">
-                    {(viewUser.addressCity || '—')}
+                    {viewUser.addressCity || '—'}
                     {viewUser.addressState ? ` / ${viewUser.addressState}` : ''}
                   </Descriptions.Item>
                   <Descriptions.Item label="CEP">{viewUser.addressZip || '—'}</Descriptions.Item>
@@ -736,212 +851,234 @@ export function UsersPage() {
           .join(', ')}
       />
 
-      {/* ===== Modal CRIAR ===== */}
-      <Modal
-        title="Novo colaborador"
-        open={createOpen}
-        onCancel={() => {
-          setCreateOpen(false);
-          setCreateAvatarFile(null);
-          createForm.resetFields();
-        }}
-        onOk={() => createForm.submit()}
-        destroyOnClose
-        width={isMobile ? '100%' : 900}
-        style={isMobile ? { top: 0, padding: 0 } : undefined}
-      >
-        <Form
-          layout="vertical"
-          form={createForm}
-          onFinish={(v) => {
-            const payload = {
-              name: v.name,
-              email: v.email,
-              password: v.password,
-              sex: v.sex,
-              roleId: v.roleId,
-              managerId: v.managerId ?? null,
-              locationId: v.locationId ?? null,
-              phone: v.phone || null,
-              vendorCode: v.vendorCode || null,
-              serviceAreaCode: v.serviceAreaCode || null,
-              serviceAreaName: v.serviceAreaName || null,
-            };
-            createUser.mutate(payload);
+      {canCreateAnyUser && (
+        <Modal
+          title="Novo colaborador"
+          open={createOpen}
+          onCancel={() => {
+            setCreateOpen(false);
+            setCreateAvatarFile(null);
+            createForm.resetFields();
           }}
+          onOk={() => createForm.submit()}
+          destroyOnClose
+          width={isMobile ? '100%' : 900}
+          style={isMobile ? { top: 0, padding: 0 } : undefined}
         >
-          <Row gutter={[12, 12]}>
-            <Col xs={24}>
-              <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12}>
-              <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12}>
-              <Form.Item name="password" label="Senha" rules={[{ required: true, min: 6 }]}>
-                <Input.Password />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="sex" label="Sexo">
-                <Select
-                  allowClear
-                  options={[
-                    { value: 'M', label: 'Masculino' },
-                    { value: 'F', label: 'Feminino' },
-                    { value: 'O', label: 'Outro' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="roleId" label="Cargo" rules={[{ required: true }]}>
-                <Select options={roleOptions} optionFilterProp="label" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="managerId" label="Gestor">
-                <UserSelect onlyManagers />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="locationId" label="Local">
-                <LocationSelect />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="phone" label="Telefone">
-                <MaskedInput mask={phoneMask(createPhone)} placeholder="(11) 99999-9999" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="vendorCode" label="Cód do fornecedor">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={12}>
-              <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={12}>
-              <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Card size="small" title="Endereço (opcional)" style={{ marginTop: 8 }}>
+          <Form
+            layout="vertical"
+            form={createForm}
+            onFinish={(v) => {
+              const payload = {
+                name: v.name,
+                email: v.email,
+                password: v.password,
+                sex: v.sex,
+                roleId: v.roleId,
+                managerId: v.managerId ?? null,
+                locationId: v.locationId ?? null,
+                phone: v.phone || null,
+                vendorCode: v.vendorCode || null,
+                serviceAreaCode: v.serviceAreaCode || null,
+                serviceAreaName: v.serviceAreaName || null,
+                tipoAtendimento: v.tipoAtendimento || null,
+              };
+              createUser.mutate(payload);
+            }}
+          >
             <Row gutter={[12, 12]}>
-              <Col xs={24} md={12}>
-                <Form.Item name="addressStreet" label="Logradouro">
-                  <Input placeholder="Rua/Avenida" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="addressNumber" label="Número">
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="addressComplement" label="Complemento">
+              <Col xs={24}>
+                <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
                   <Input />
                 </Form.Item>
               </Col>
 
               <Col xs={24} md={12}>
-                <Form.Item name="addressDistrict" label="Bairro">
+                <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
                   <Input />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="addressCity" label="Cidade">
+              <Col xs={24} md={12}>
+                <Form.Item name="password" label="Senha" rules={[{ required: true, min: 6 }]}>
+                  <Input.Password />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="sex" label="Sexo">
+                  <Select
+                    allowClear
+                    options={[
+                      { value: 'M', label: 'Masculino' },
+                      { value: 'F', label: 'Feminino' },
+                      { value: 'O', label: 'Outro' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="roleId" label="Cargo" rules={[{ required: true }]}>
+                  <Select options={roleOptions} optionFilterProp="label" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="managerId" label="Gestor">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Selecione o gestor"
+                    options={managerOptions}
+                    optionFilterProp="label"
+                    filterOption={(input, option) =>
+                      String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                    }
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="locationId" label="Local">
+                  <LocationSelect />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="phone" label="Telefone">
+                  <MaskedInput mask={phoneMask(createPhone)} placeholder="(11) 99999-9999" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="vendorCode" label="Cód do fornecedor">
                   <Input />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="addressState" label="UF/Estado">
-                  <Input placeholder="SP, RJ..." />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="addressZip" label="CEP">
+              <Col xs={24} md={12} lg={12}>
+                <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
                   <Input />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+              <Col xs={24} md={12} lg={12}>
+                <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
                   <Input />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="lat" label="Latitude">
-                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="lng" label="Longitude">
-                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
-                <Button
-                  block={isMobile}
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setGeoForForm('create');
-                    setGeoOpen(true);
-                    setGeoResults([]);
-                    setGeoQuery('');
-                  }}
-                >
-                  Buscar coordenadas
-                </Button>
-              </Col>
+              {createSelectedIsWorker && (
+                <Col xs={24} md={12} lg={12}>
+                  <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                    <Select
+                      allowClear
+                      placeholder="Selecione"
+                      options={TIPO_ATENDIMENTO_OPTIONS}
+                    />
+                  </Form.Item>
+                </Col>
+              )}
             </Row>
-          </Card>
 
-          <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
-            <Upload
-              accept="image/*"
-              maxCount={1}
-              beforeUpload={(file) => {
-                setCreateAvatarFile(file);
-                return false;
-              }}
-              onRemove={() => setCreateAvatarFile(null)}
-              listType="picture"
-            >
-              <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-            </Upload>
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Card size="small" title="Endereço (opcional)" style={{ marginTop: 8 }}>
+              <Row gutter={[12, 12]}>
+                <Col xs={24} md={12}>
+                  <Form.Item name="addressStreet" label="Logradouro">
+                    <Input placeholder="Rua/Avenida" />
+                  </Form.Item>
+                </Col>
 
-      {/* ===== Modal EDITAR ===== */}
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressNumber" label="Número">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressComplement" label="Complemento">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item name="addressDistrict" label="Bairro">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressCity" label="Cidade">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressState" label="UF/Estado">
+                    <Input placeholder="SP, RJ..." />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressZip" label="CEP">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="lat" label="Latitude">
+                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="lng" label="Longitude">
+                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
+                  <Button
+                    block={isMobile}
+                    icon={<SearchOutlined />}
+                    onClick={() => {
+                      setGeoForForm('create');
+                      setGeoOpen(true);
+                      setGeoResults([]);
+                      setGeoQuery('');
+                    }}
+                  >
+                    Buscar coordenadas
+                  </Button>
+                </Col>
+              </Row>
+            </Card>
+
+            <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
+              <Upload
+                accept="image/*"
+                maxCount={1}
+                beforeUpload={(file) => {
+                  setCreateAvatarFile(file);
+                  return false;
+                }}
+                onRemove={() => setCreateAvatarFile(null)}
+                listType="picture"
+              >
+                <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+              </Upload>
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
+
       <Modal
         title={`Editar: ${editing?.name || ''}`}
         open={editOpen}
@@ -961,7 +1098,7 @@ export function UsersPage() {
           onFinish={(v) => {
             const payload: any = {
               name: v.name,
-              email: v.email,
+              email: v.email || null,
               sex: v.sex,
               roleId: v.roleId,
               managerId: v.managerId ?? null,
@@ -971,6 +1108,7 @@ export function UsersPage() {
               vendorCode: v.vendorCode ?? null,
               serviceAreaCode: v.serviceAreaCode ?? null,
               serviceAreaName: v.serviceAreaName ?? null,
+              tipoAtendimento: v.tipoAtendimento ?? null,
             };
             updateUser.mutate({ id: editing!.id, payload });
           }}
@@ -984,25 +1122,44 @@ export function UsersPage() {
 
             <Col xs={24} md={12} lg={8}>
               <Form.Item name="roleId" label="Cargo">
-                <Select allowClear options={roleOptions} optionFilterProp="label" />
+                <Select
+                  allowClear
+                  options={canEditAnyUser ? roleOptions : workerRoleOptions}
+                  optionFilterProp="label"
+                />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12} lg={8}>
               <Form.Item name="managerId" label="Gestor">
-                <UserSelect onlyManagers />
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Selecione o gestor"
+                  options={managerOptions}
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                  }
+                />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="locationId" label="Local">
-                <LocationSelect />
-              </Form.Item>
-            </Col>
+            {canEditAnyUser && (
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="locationId" label="Local">
+                  <LocationSelect />
+                </Form.Item>
+              </Col>
+            )}
 
             <Col xs={24} md={12} lg={8}>
-              <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
-                <Input />
+              <Form.Item
+                name="email"
+                label="E-mail"
+                rules={editSelectedIsWorker ? [{ type: 'email', message: 'E-mail inválido' }] : [{ required: true, type: 'email' }]}
+              >
+                <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : ''} />
               </Form.Item>
             </Col>
 
@@ -1021,13 +1178,7 @@ export function UsersPage() {
 
             <Col xs={24} md={12} lg={8}>
               <Form.Item name="phone" label="Telefone">
-                <MaskedInput
-                  mask={[
-                    { mask: '(00) 0000-0000' },
-                    { mask: '(00) 00000-0000' },
-                  ]}
-                  placeholder="(11) 99999-9999"
-                />
+                <MaskedInput mask={phoneMask(editPhone)} placeholder="(11) 99999-9999" />
               </Form.Item>
             </Col>
 
@@ -1048,6 +1199,18 @@ export function UsersPage() {
                 <Input />
               </Form.Item>
             </Col>
+
+            {editSelectedIsWorker && (
+              <Col xs={24} md={12} lg={8}>
+                <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                  <Select
+                    allowClear
+                    placeholder="Selecione"
+                    options={TIPO_ATENDIMENTO_OPTIONS}
+                  />
+                </Form.Item>
+              </Col>
+            )}
 
             <Col xs={24} md={6}>
               <Form.Item name="isActive" label="Ativo" valuePropName="checked" style={{ marginTop: 8 }}>
@@ -1081,7 +1244,6 @@ export function UsersPage() {
         </Form>
       </Modal>
 
-      {/* ===== Modal ENDEREÇO ===== */}
       {addrUser && (
         <UserAddressModal
           open={addrOpen}
@@ -1110,7 +1272,6 @@ export function UsersPage() {
         />
       )}
 
-      {/* ===== Modal de busca geográfica ===== */}
       <Modal
         title="Buscar coordenadas (Nominatim)"
         open={geoOpen}
@@ -1156,231 +1317,248 @@ export function UsersPage() {
         />
       </Modal>
 
-      {/* ===== Modal Cadastrar prestador ===== */}
-      <Modal
-        title="Cadastrar prestador"
-        open={workerOpen}
-        onCancel={() => {
-          setWorkerOpen(false);
-          workerForm.resetFields();
-          setWorkerAvatarFile(null);
-        }}
-        onOk={() => workerForm.submit()}
-        destroyOnClose
-        width={isMobile ? '100%' : 980}
-        style={isMobile ? { top: 0, padding: 0 } : undefined}
-      >
-        <Form
-          layout="vertical"
-          form={workerForm}
-          onFinish={(v) => {
-            const payload = {
-              name: v.name,
-              phone: v.phone || null,
-              roleId: v.roleId,
-              managerId: v.managerId ?? null,
-              estoqueAvancado: !!v.estoqueAvancado,
-              vendorCode: v.vendorCode || null,
-              serviceAreaCode: v.serviceAreaCode || null,
-              serviceAreaName: v.serviceAreaName || null,
-              addressStreet: v.addressStreet,
-              addressNumber: v.addressNumber || '',
-              addressComplement: v.addressComplement || '',
-              addressDistrict: v.addressDistrict || '',
-              addressCity: v.addressCity,
-              addressState: v.addressState,
-              addressZip: v.addressZip || '',
-              addressCountry: v.addressCountry || 'Brasil',
-              lat: v.lat,
-              lng: v.lng,
-            };
-            createWorker.mutate(payload);
+      {canCreateWorker && (
+        <Modal
+          title="Cadastrar prestador"
+          open={workerOpen}
+          onCancel={() => {
+            setWorkerOpen(false);
+            workerForm.resetFields();
+            setWorkerAvatarFile(null);
           }}
+          onOk={() => workerForm.submit()}
+          destroyOnClose
+          width={isMobile ? '100%' : 980}
+          style={isMobile ? { top: 0, padding: 0 } : undefined}
         >
-          <Row gutter={[12, 12]}>
-            <Col xs={24} md={8}>
-              <Form.Item
-                name="roleId"
-                label="Cargo"
-                rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
-              >
-                <Select
-                  placeholder="Selecione"
-                  optionFilterProp="label"
-                  options={roleOptions.filter((r) => {
-                    const label = String(r.label || '').toLowerCase();
-                    return label === 'técnico' || label === 'tecnico' || label === 'pso' || label === 'spot' || label === 'prp';
-                  })}
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="phone" label="Telefone">
-                <MaskedInput mask={phoneMask(workerPhone)} placeholder="(11) 99999-9999" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24}>
-              <Form.Item name="managerId" label="Gestor (opcional)">
-                <UserSelect onlyManagers allowClear placeholder="Selecione o gestor" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24}>
-              <Form.Item
-                name="estoqueAvancado"
-                label="Pertence ao Estoque Avançado?"
-                valuePropName="checked"
-                initialValue={false}
-              >
-                <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="vendorCode" label="Código do fornecedor">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="serviceAreaCode" label="Código da área de atendimento">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Card size="small" title="Endereço (obrigatório)" style={{ marginTop: 8 }}>
+          <Form
+            layout="vertical"
+            form={workerForm}
+            onFinish={(v) => {
+              const payload = {
+                name: v.name,
+                phone: v.phone || null,
+                roleId: v.roleId,
+                managerId: v.managerId ?? null,
+                estoqueAvancado: !!v.estoqueAvancado,
+                vendorCode: v.vendorCode || null,
+                serviceAreaCode: v.serviceAreaCode || null,
+                serviceAreaName: v.serviceAreaName || null,
+                tipoAtendimento: v.tipoAtendimento || null,
+                addressStreet: v.addressStreet,
+                addressNumber: v.addressNumber || '',
+                addressComplement: v.addressComplement || '',
+                addressDistrict: v.addressDistrict || '',
+                addressCity: v.addressCity,
+                addressState: v.addressState,
+                addressZip: v.addressZip || '',
+                addressCountry: v.addressCountry || 'Brasil',
+                lat: v.lat,
+                lng: v.lng,
+              };
+              createWorker.mutate(payload);
+            }}
+          >
             <Row gutter={[12, 12]}>
               <Col xs={24} md={8}>
-                <Form.Item name="addressZip" label="CEP">
-                  <Input
-                    placeholder="00000-000"
-                    onBlur={async (e) => {
-                      const raw = (e.target.value || '').replace(/\D/g, '');
-                      if (!raw) return;
-                      try {
-                        const resp = await api.get('/users/cep', { params: { cep: raw } });
-                        workerForm.setFieldsValue({
-                          addressStreet: resp.data.addressStreet ?? undefined,
-                          addressDistrict: resp.data.addressDistrict ?? undefined,
-                          addressCity: resp.data.addressCity ?? undefined,
-                          addressState: resp.data.addressState ?? undefined,
-                          addressCountry: resp.data.addressCountry ?? 'Brasil',
-                          addressZip: resp.data.addressZip ?? e.target.value,
-                        });
-                      } catch {
-                        message.warning('Não foi possível buscar o CEP.');
-                      }
-                    }}
+                <Form.Item
+                  name="roleId"
+                  label="Cargo"
+                  rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
+                >
+                  <Select
+                    placeholder="Selecione"
+                    optionFilterProp="label"
+                    options={workerRoleOptions}
                   />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={16} />
-
-              <Col xs={24}>
-                <Form.Item name="addressStreet" label="Logradouro" rules={[{ required: true }]}>
-                  <Input placeholder="Rua/Avenida" />
+              <Col xs={24} md={8}>
+                <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
+                  <Input />
                 </Form.Item>
               </Col>
 
               <Col xs={24} md={8}>
-                <Form.Item name="addressNumber" label="Número">
-                  <Input />
+                <Form.Item name="phone" label="Telefone">
+                  <MaskedInput mask={phoneMask(workerPhone)} placeholder="(11) 99999-9999" />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={16}>
-                <Form.Item name="addressComplement" label="Complemento">
-                  <Input />
+              <Col xs={24}>
+                <Form.Item name="managerId" label="Gestor (opcional)">
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Selecione o gestor"
+                    options={managerOptions}
+                    optionFilterProp="label"
+                    filterOption={(input, option) =>
+                      String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                    }
+                  />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={10}>
-                <Form.Item name="addressDistrict" label="Bairro">
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={10}>
-                <Form.Item name="addressCity" label="Cidade" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={4}>
-                <Form.Item name="addressState" label="UF/Estado" rules={[{ required: true }]}>
-                  <Input placeholder="SP, RJ..." />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="addressCountry" label="País" initialValue="Brasil">
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="lat" label="Latitude" rules={[{ required: true, message: 'Informe a latitude' }]}>
-                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={6}>
-                <Form.Item name="lng" label="Longitude" rules={[{ required: true, message: 'Informe a longitude' }]}>
-                  <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
-                <Button
-                  block={isMobile}
-                  icon={<SearchOutlined />}
-                  onClick={() => {
-                    setGeoForForm('worker');
-                    setGeoOpen(true);
-                    setGeoResults([]);
-                    setGeoQuery('');
-                  }}
+              <Col xs={24}>
+                <Form.Item
+                  name="estoqueAvancado"
+                  label="Pertence ao Estoque Avançado?"
+                  valuePropName="checked"
+                  initialValue={false}
                 >
-                  Buscar coordenadas
-                </Button>
+                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="vendorCode" label="Código do fornecedor">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="serviceAreaCode" label="Código da área de atendimento">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
+                  <Input />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={6}>
+                <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                  <Select
+                    allowClear
+                    placeholder="Selecione"
+                    options={TIPO_ATENDIMENTO_OPTIONS}
+                  />
+                </Form.Item>
               </Col>
             </Row>
-          </Card>
 
-          <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
-            <Upload
-              accept="image/*"
-              maxCount={1}
-              beforeUpload={(file) => {
-                setWorkerAvatarFile(file);
-                return false;
-              }}
-              onRemove={() => setWorkerAvatarFile(null)}
-              listType="picture"
-            >
-              <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-            </Upload>
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Card size="small" title="Endereço (obrigatório)" style={{ marginTop: 8 }}>
+              <Row gutter={[12, 12]}>
+                <Col xs={24} md={8}>
+                  <Form.Item name="addressZip" label="CEP">
+                    <Input
+                      placeholder="00000-000"
+                      onBlur={async (e) => {
+                        const raw = (e.target.value || '').replace(/\D/g, '');
+                        if (!raw) return;
+                        try {
+                          const resp = await api.get('/users/cep', { params: { cep: raw } });
+                          workerForm.setFieldsValue({
+                            addressStreet: resp.data.addressStreet ?? undefined,
+                            addressDistrict: resp.data.addressDistrict ?? undefined,
+                            addressCity: resp.data.addressCity ?? undefined,
+                            addressState: resp.data.addressState ?? undefined,
+                            addressCountry: resp.data.addressCountry ?? 'Brasil',
+                            addressZip: resp.data.addressZip ?? e.target.value,
+                          });
+                        } catch {
+                          message.warning('Não foi possível buscar o CEP.');
+                        }
+                      }}
+                    />
+                  </Form.Item>
+                </Col>
 
-      {/* ===== Modal Estrutura ===== */}
+                <Col xs={24} md={16} />
+
+                <Col xs={24}>
+                  <Form.Item name="addressStreet" label="Logradouro" rules={[{ required: true }]}>
+                    <Input placeholder="Rua/Avenida" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={8}>
+                  <Form.Item name="addressNumber" label="Número">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={16}>
+                  <Form.Item name="addressComplement" label="Complemento">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={10}>
+                  <Form.Item name="addressDistrict" label="Bairro">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={10}>
+                  <Form.Item name="addressCity" label="Cidade" rules={[{ required: true }]}>
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={4}>
+                  <Form.Item name="addressState" label="UF/Estado" rules={[{ required: true }]}>
+                    <Input placeholder="SP, RJ..." />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="lat" label="Latitude" rules={[{ required: true, message: 'Informe a latitude' }]}>
+                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="lng" label="Longitude" rules={[{ required: true, message: 'Informe a longitude' }]}>
+                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
+                  <Button
+                    block={isMobile}
+                    icon={<SearchOutlined />}
+                    onClick={() => {
+                      setGeoForForm('worker');
+                      setGeoOpen(true);
+                      setGeoResults([]);
+                      setGeoQuery('');
+                    }}
+                  >
+                    Buscar coordenadas
+                  </Button>
+                </Col>
+              </Row>
+            </Card>
+
+            <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
+              <Upload
+                accept="image/*"
+                maxCount={1}
+                beforeUpload={(file) => {
+                  setWorkerAvatarFile(file);
+                  return false;
+                }}
+                onRemove={() => setWorkerAvatarFile(null)}
+                listType="picture"
+              >
+                <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+              </Upload>
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
+
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

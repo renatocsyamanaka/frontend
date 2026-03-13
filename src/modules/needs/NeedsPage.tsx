@@ -17,32 +17,32 @@ import {
   List,
   Divider,
   Popconfirm,
+  Grid,
+  Spin,
+  Dropdown,
 } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import {
   ReloadOutlined,
-  CheckOutlined,
-  StopOutlined,
-  RollbackOutlined,
   PlusOutlined,
   SearchOutlined,
-  IdcardOutlined,
-  EditOutlined,
   UploadOutlined,
   PaperClipOutlined,
   DeleteOutlined,
   EyeOutlined,
   WhatsAppOutlined,
+  EnvironmentOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+
+const { useBreakpoint } = Grid;
 
 type TechType = { id: number; name: string };
 type SimpleUser = { id: number; name: string };
 
 type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED';
 type Tier = 'OURO' | 'PRATA' | 'BRONZE';
-
-// ✅ status por etapa (igual backend)
 type StepStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
 
 type Need = {
@@ -68,7 +68,6 @@ type Need = {
   negotiationTier?: Tier | null;
   negotiationNotes?: string | null;
 
-  // ✅ NOVOS CAMPOS (iguais ao Model Need no backend)
   homologTablesStatus?: StepStatus | null;
   homologDocsStatus?: StepStatus | null;
   homologContractStatus?: StepStatus | null;
@@ -165,6 +164,7 @@ function whatsappLink(phone?: string | null) {
   if (digits.length < 10) return null;
   return `https://wa.me/55${digits}`;
 }
+
 /** ✅ Resolve origin correto (pra NÃO virar /api/uploads...) */
 function getApiOrigin() {
   const baseURL = (api as any)?.defaults?.baseURL || import.meta.env.VITE_API_URL || '';
@@ -211,7 +211,6 @@ async function searchNominatim(q: string): Promise<NominatimSuggestion[]> {
   if (!res.ok) return [];
   const data = (await res.json()) as any[];
   if (!Array.isArray(data)) return [];
-
   return data.map((x) => ({
     place_id: Number(x.place_id),
     display_name: String(x.display_name || ''),
@@ -275,10 +274,22 @@ async function enrichWithViaCep(fields: {
   };
 }
 
+function renderLocal(r: Need) {
+  const city = (r.requestedCity || '').trim();
+  const uf = (r.requestedState || '').trim().toUpperCase();
+  if (city && uf) return `${city}/${uf}`;
+  if (city) return city;
+  if (uf) return uf;
+  return r.requestedLocationText || '—';
+}
+
 export default function NeedsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
+
   const [form] = Form.useForm();
 
   const initial = {
@@ -288,7 +299,6 @@ export default function NeedsPage() {
     q: params.get('q') || '',
   };
 
-  // ✅ correto no seu backend: /techtypes
   const { data: techTypes = [] } = useQuery<TechType[]>({
     queryKey: ['techtypes'],
     queryFn: async () => (await api.get('/techtypes')).data,
@@ -316,7 +326,6 @@ export default function NeedsPage() {
 
       let rows: Need[] = res.data;
 
-      // (opcional) filtro textual local
       if (initial.q) {
         const s = initial.q.toLowerCase();
         rows = rows.filter(
@@ -363,6 +372,16 @@ export default function NeedsPage() {
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar status'),
   });
 
+  const confirmStatus = (id: number, to: NeedStatus, title: string) => {
+    Modal.confirm({
+      title,
+      okText: 'Confirmar',
+      cancelText: 'Cancelar',
+      onOk: () => updateStatus.mutate({ id, status: to }),
+    });
+  };
+
+  /** ===== Modal Novo Pedido ===== */
   const [openNew, setOpenNew] = useState(false);
   const [formNew] = Form.useForm();
 
@@ -402,7 +421,6 @@ export default function NeedsPage() {
       providerWhatsapp: n.providerWhatsapp ?? '',
       negotiationTier: n.negotiationTier ?? null,
 
-      // ✅ nomes IGUAIS ao backend
       homologTablesStatus: n.homologTablesStatus ?? 'PENDENTE',
       homologDocsStatus: n.homologDocsStatus ?? 'PENDENTE',
       homologContractStatus: n.homologContractStatus ?? 'PENDENTE',
@@ -420,7 +438,7 @@ export default function NeedsPage() {
     setUploadFileList([]);
   };
 
-  /** ===== Anexos (Provider Modal) ===== */
+  /** ===== Anexos ===== */
   const [uploadKind, setUploadKind] = useState<AttachmentKind>('DOCUMENTO');
   const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([]);
 
@@ -536,7 +554,7 @@ export default function NeedsPage() {
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar endereço'),
   });
 
-  /** ===== Autocomplete compartilhado (novo + editar) ===== */
+  /** ===== Autocomplete ===== */
   const [addrLoading, setAddrLoading] = useState(false);
   const [addrOptions, setAddrOptions] = useState<NominatimSuggestion[]>([]);
   const debounceRef = useRef<any>(null);
@@ -596,97 +614,163 @@ export default function NeedsPage() {
     runSearch(n.requestedLocationText || '');
   };
 
-  /** ===== Table ===== */
-  const columns = useMemo(
+  /** ===== Actions menu (DESKTOP compacto) ===== */
+  const actionsMenuItems = (r: Need) => [
+    {
+      key: 'map',
+      label: 'Abrir no mapa',
+      onClick: () => navigate(`/needs/map?focus=${r.id}`),
+    },
+    { type: 'divider' as const },
+    {
+      key: 'fulfill',
+      label: 'Marcar como atendida',
+      disabled: r.status === 'FULFILLED',
+      onClick: () => confirmStatus(r.id, 'FULFILLED', 'Marcar como atendida?'),
+    },
+    {
+      key: 'cancel',
+      label: 'Cancelar',
+      danger: true,
+      disabled: r.status === 'CANCELLED',
+      onClick: () => confirmStatus(r.id, 'CANCELLED', 'Cancelar solicitação?'),
+    },
+    {
+      key: 'reopen',
+      label: 'Reabrir',
+      disabled: r.status === 'OPEN',
+      onClick: () => confirmStatus(r.id, 'OPEN', 'Reabrir solicitação?'),
+    },
+  ];
+
+  /** ===== Columns (DESKTOP SEM SCROLL) ===== */
+  const columnsDesktop = useMemo(
     () => [
       {
         title: 'Local',
-        render: (_: any, r: Need) => {
-          const city = (r.requestedCity || '').trim();
-          const uf = (r.requestedState || '').trim().toUpperCase();
-          const local = city && uf ? `${city}/${uf}` : city ? city : uf ? uf : r.requestedLocationText || '—';
-          return <span>{local}</span>;
-        },
+        key: 'local',
+        width: 140,
+        render: (_: any, r: Need) => (
+          <Typography.Text ellipsis={{ tooltip: r.requestedLocationText }}>
+            {renderLocal(r)}
+          </Typography.Text>
+        ),
       },
-      { title: 'Técnico (livre)', dataIndex: 'requestedName' },
-      { title: 'Tipo', render: (_: any, r: Need) => r.techType?.name || '-' },
+      {
+        title: 'Técnico',
+        key: 'requestedName',
+        width: 220,
+        render: (_: any, r: Need) => (
+          <Typography.Text ellipsis={{ tooltip: r.requestedName }}>
+            {r.requestedName || '—'}
+          </Typography.Text>
+        ),
+      },
+      {
+        title: 'Tipo',
+        key: 'tipo',
+        width: 80,
+        render: (_: any, r: Need) => r.techType?.name || '—',
+      },
       {
         title: 'Status',
+        key: 'status',
+        width: 130,
         render: (_: any, r: Need) => statusTag(r.status),
         filters: STATUS_OPTS.map((s) => ({ text: s.label, value: s.value })),
         onFilter: (v: any, rec: Need) => rec.status === v,
       },
-      { title: 'Solicitado por', render: (_: any, r: Need) => r.requestedBy?.name || '—' },
-      { title: 'Prestador', render: (_: any, r: Need) => r.providerName || '—' },
       {
-        title: 'Criado em',
-        render: (_: any, r: Need) =>
-          new Date(r.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+        title: 'Solicitante / Prestador',
+        key: 'who',
+        width: 260,
+        render: (_: any, r: Need) => (
+          <div style={{ lineHeight: 1.25 }}>
+            <Typography.Text ellipsis={{ tooltip: r.requestedBy?.name || '' }}>
+              <b>{r.requestedBy?.name || '—'}</b>
+            </Typography.Text>
+            <br />
+            <Typography.Text type="secondary" ellipsis={{ tooltip: r.providerName || '' }}>
+              {r.providerName || '—'}
+            </Typography.Text>
+          </div>
+        ),
+      },
+      {
+        title: 'Criado',
+        key: 'createdAt',
+        width: 110,
+        render: (_: any, r: Need) => new Date(r.createdAt).toLocaleDateString('pt-BR'),
       },
       {
         title: 'Ações',
-        render: (_: any, r: Need) => {
-          const confirm = (to: NeedStatus, title: string) => {
-            Modal.confirm({ title, onOk: () => updateStatus.mutate({ id: r.id, status: to }) });
-          };
-
-          return (
-            <Space wrap>
-              <Button icon={<EditOutlined />} size="small" onClick={() => openEditAddressModal(r)}>
-                Endereço
-              </Button>
-
-              <Button icon={<IdcardOutlined />} size="small" onClick={() => openProviderModal(r)}>
-                Prestador
-              </Button>
-
-              <Button
-                icon={<CheckOutlined />}
-                size="small"
-                type="primary"
-                disabled={r.status === 'FULFILLED'}
-                onClick={() => confirm('FULFILLED', 'Marcar como atendida?')}
-              >
-                Atender
-              </Button>
-
-              <Button
-                icon={<StopOutlined />}
-                size="small"
-                danger
-                disabled={r.status === 'CANCELLED'}
-                onClick={() => confirm('CANCELLED', 'Cancelar solicitação?')}
-              >
-                Cancelar
-              </Button>
-
-              <Button
-                icon={<RollbackOutlined />}
-                size="small"
-                disabled={r.status === 'OPEN'}
-                onClick={() => confirm('OPEN', 'Reabrir solicitação?')}
-              >
-                Reabrir
-              </Button>
-
-              <Button size="small" onClick={() => navigate(`/needs/map?focus=${r.id}`)}>
-                Mapa
-              </Button>
-            </Space>
-          );
-        },
+        key: 'actions',
+        width: 180,
+        render: (_: any, r: Need) => (
+          <Space size={6}>
+            <Button size="small" onClick={() => openEditAddressModal(r)}>
+              Endereço
+            </Button>
+            <Button size="small" onClick={() => openProviderModal(r)}>
+              Prestador
+            </Button>
+            <Dropdown
+              menu={{ items: actionsMenuItems(r) as any }}
+              trigger={['click']}
+              placement="bottomRight"
+            >
+              <Button size="small" icon={<MoreOutlined />} />
+            </Dropdown>
+          </Space>
+        ),
       },
     ],
-    [navigate, updateStatus]
+    [navigate]
+  );
+
+  /** ===== Header extra ===== */
+  const headerExtra = (
+    <Space size="small" wrap style={{ maxWidth: '100%' }}>
+      <Button size={isMobile ? 'middle' : 'small'} onClick={() => navigate('/needs/map')}>
+        Mapa geral
+      </Button>
+
+      <Button
+        size={isMobile ? 'middle' : 'small'}
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={() => {
+          formNew.setFieldsValue({
+            requestedLocationText: '',
+            requestedCity: '',
+            requestedState: '',
+            requestedCep: '',
+            requestedLat: null,
+            requestedLng: null,
+            requestedName: 'Técnico a definir',
+            techTypeId: undefined,
+            notes: '',
+          });
+          setAddrOptions([]);
+          setOpenNew(true);
+        }}
+      >
+        Novo pedido
+      </Button>
+
+      <span style={{ color: '#64748b' }}>{isFetching ? 'Atualizando…' : ''}</span>
+    </Space>
   );
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Card>
+    <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+      {/* ===== FILTROS ===== */}
+      <Card bodyStyle={{ padding: isMobile ? 16 : 12 }}>
         <Form
-          layout="inline"
           form={form}
           initialValues={initial}
+          size={isMobile ? 'middle' : 'small'}
+          layout={isMobile ? 'vertical' : 'inline'}
           onFinish={(v) => {
             const next = new URLSearchParams();
             if (v.status) next.set('status', v.status);
@@ -697,94 +781,156 @@ export default function NeedsPage() {
             refetch();
           }}
         >
-          <Form.Item name="status" label="Status">
-            <Select allowClear style={{ width: 160 }} options={STATUS_OPTS} />
-          </Form.Item>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 12 : 10, width: '100%', alignItems: 'end' }}>
+            <Form.Item name="status" label="Status" style={{ marginBottom: 0 }}>
+              <Select allowClear style={{ width: isMobile ? '100%' : 160 }} options={STATUS_OPTS} placeholder="Selecione" />
+            </Form.Item>
 
-          <Form.Item name="techTypeId" label="Tipo técnico">
-            <Select
-              allowClear
-              style={{ width: 220 }}
-              options={techTypes.map((t) => ({ value: t.id, label: t.name }))}
-            />
-          </Form.Item>
+            <Form.Item name="techTypeId" label="Tipo técnico" style={{ marginBottom: 0 }}>
+              <Select
+                allowClear
+                style={{ width: isMobile ? '100%' : 220 }}
+                options={techTypes.map((t) => ({ value: t.id, label: t.name }))}
+                placeholder="Selecione"
+              />
+            </Form.Item>
 
-          <Form.Item name="requesterId" label="Solicitante">
-            <Select
-              allowClear
-              showSearch
-              style={{ width: 260 }}
-              placeholder="Filtrar por solicitante"
-              suffixIcon={<SearchOutlined />}
-              options={requesters.map((r) => ({
-                value: r.id,
-                label: r.count ? `${r.name} (${r.count})` : r.name,
-              }))}
-              optionFilterProp="label"
-            />
-          </Form.Item>
+            <Form.Item name="requesterId" label="Solicitante" style={{ marginBottom: 0 }}>
+              <Select
+                allowClear
+                showSearch
+                style={{ width: isMobile ? '100%' : 260 }}
+                placeholder="Filtrar por solicitante"
+                suffixIcon={<SearchOutlined />}
+                options={requesters.map((r) => ({
+                  value: r.id,
+                  label: r.count ? `${r.name} (${r.count})` : r.name,
+                }))}
+                optionFilterProp="label"
+              />
+            </Form.Item>
 
-          <Form.Item name="q" label="Busca">
-            <Input style={{ width: 240 }} placeholder="Local / técnico / prestador" allowClear />
-          </Form.Item>
+            <Form.Item name="q" label="Busca" style={{ marginBottom: 0 }}>
+              <Input style={{ width: isMobile ? '100%' : 240 }} placeholder="Local / técnico / prestador" allowClear />
+            </Form.Item>
 
-          <Space>
-            <Button type="primary" htmlType="submit" icon={<ReloadOutlined />}>
-              Filtrar
-            </Button>
-            <Button
-              onClick={() => {
-                form.resetFields();
-                setParams(new URLSearchParams(), { replace: true });
-                refetch();
-              }}
-            >
-              Limpar
-            </Button>
-          </Space>
+            <Space wrap>
+              <Button type="primary" htmlType="submit" icon={<ReloadOutlined />}>
+                Filtrar
+              </Button>
+              <Button
+                onClick={() => {
+                  form.resetFields();
+                  setParams(new URLSearchParams(), { replace: true });
+                  refetch();
+                }}
+              >
+                Limpar
+              </Button>
+            </Space>
+          </div>
         </Form>
       </Card>
 
-      <Card
-        title="Requisições de técnicos"
-        extra={
-          <Space>
-            <Button onClick={() => navigate('/needs/map')}>Mapa geral</Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                formNew.setFieldsValue({
-                  requestedLocationText: '',
-                  requestedCity: '',
-                  requestedState: '',
-                  requestedCep: '',
-                  requestedLat: null,
-                  requestedLng: null,
-                  requestedName: 'Técnico a definir',
-                  techTypeId: undefined,
-                  notes: '',
-                });
-                setAddrOptions([]);
-                setOpenNew(true);
-              }}
-            >
-              Novo pedido
-            </Button>
-            <span style={{ color: '#64748b' }}>{isFetching ? 'Atualizando…' : ''}</span>
-          </Space>
-        }
-      >
-        <Table
-          rowKey="id"
-          loading={isLoading || updateStatus.isPending}
-          dataSource={data}
-          columns={columns as any}
-          pagination={{ pageSize: 10 }}
-        />
+      {/* ===== LISTA ===== */}
+      <Card title="Requisições de técnicos" extra={headerExtra} bodyStyle={{ padding: isMobile ? 16 : 12 }}>
+        {/* MOBILE (cards) */}
+        {isMobile ? (
+          <>
+            {isLoading ? (
+              <div style={{ padding: 16, textAlign: 'center' }}>
+                <Spin />
+              </div>
+            ) : (
+              <List
+                dataSource={data}
+                locale={{ emptyText: 'Nenhuma requisição encontrada.' }}
+                renderItem={(r) => (
+                  <List.Item style={{ paddingLeft: 0, paddingRight: 0 }}>
+                    <Card style={{ width: '100%' }} bodyStyle={{ padding: 12 }}>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <Space wrap>
+                          <Tag icon={<EnvironmentOutlined />}>{renderLocal(r)}</Tag>
+                          {statusTag(r.status)}
+                        </Space>
+
+                        <div>
+                          <Typography.Text type="secondary">Técnico</Typography.Text>
+                          <div style={{ fontWeight: 600 }}>{r.requestedName || '—'}</div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <Typography.Text type="secondary">Tipo</Typography.Text>
+                            <div>{r.techType?.name || '—'}</div>
+                          </div>
+
+                          <div>
+                            <Typography.Text type="secondary">Solicitante</Typography.Text>
+                            <div>{r.requestedBy?.name || '—'}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Typography.Text type="secondary">Prestador</Typography.Text>
+                          <div>{r.providerName || '—'}</div>
+                        </div>
+
+                        <Typography.Text type="secondary">
+                          Criado: {new Date(r.createdAt).toLocaleDateString('pt-BR')}
+                        </Typography.Text>
+
+                        <Space wrap style={{ marginTop: 6 }}>
+                          <Button onClick={() => openEditAddressModal(r)}>Endereço</Button>
+                          <Button onClick={() => openProviderModal(r)}>Prestador</Button>
+                          <Button onClick={() => navigate(`/needs/map?focus=${r.id}`)}>Mapa</Button>
+
+                          <Button
+                            type="primary"
+                            disabled={r.status === 'FULFILLED'}
+                            onClick={() => confirmStatus(r.id, 'FULFILLED', 'Marcar como atendida?')}
+                          >
+                            Atender
+                          </Button>
+
+                          <Button
+                            danger
+                            disabled={r.status === 'CANCELLED'}
+                            onClick={() => confirmStatus(r.id, 'CANCELLED', 'Cancelar solicitação?')}
+                          >
+                            Cancelar
+                          </Button>
+
+                          <Button
+                            disabled={r.status === 'OPEN'}
+                            onClick={() => confirmStatus(r.id, 'OPEN', 'Reabrir solicitação?')}
+                          >
+                            Reabrir
+                          </Button>
+                        </Space>
+                      </div>
+                    </Card>
+                  </List.Item>
+                )}
+              />
+            )}
+          </>
+        ) : (
+          // DESKTOP (tabela SEM scroll)
+          <Table
+            rowKey="id"
+            loading={isLoading || updateStatus.isPending}
+            dataSource={data}
+            columns={columnsDesktop as any}
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            size="small"
+            tableLayout="fixed"
+            style={{ width: '100%' }}
+          />
+        )}
       </Card>
 
-      {/* ===== Modal Novo Pedido (com autocomplete) ===== */}
+      {/* ===== Modal Novo Pedido ===== */}
       <Modal
         title="Nova solicitação de técnico"
         open={openNew}
@@ -795,7 +941,7 @@ export default function NeedsPage() {
         onOk={() => formNew.submit()}
         confirmLoading={createNeed.isPending}
         destroyOnClose
-        width={820}
+        width={isMobile ? 520 : 820}
       >
         <Form
           layout="vertical"
@@ -851,7 +997,7 @@ export default function NeedsPage() {
             />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="requestedLat" label="Latitude">
               <Input disabled />
             </Form.Item>
@@ -860,7 +1006,7 @@ export default function NeedsPage() {
             </Form.Item>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 160px', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 120px 160px', gap: 12 }}>
             <Form.Item name="requestedCity" label="Cidade">
               <Input />
             </Form.Item>
@@ -868,10 +1014,7 @@ export default function NeedsPage() {
               <Input maxLength={2} />
             </Form.Item>
             <Form.Item name="requestedCep" label="CEP">
-              <Input
-                placeholder="00000-000"
-                onChange={(e) => formNew.setFieldValue('requestedCep', maskCepBR(e.target.value))}
-              />
+              <Input placeholder="00000-000" onChange={(e) => formNew.setFieldValue('requestedCep', maskCepBR(e.target.value))} />
             </Form.Item>
           </div>
 
@@ -912,7 +1055,6 @@ export default function NeedsPage() {
               negotiationTier: v.negotiationTier ?? null,
               negotiationNotes: v.negotiationNotes ? String(v.negotiationNotes) : null,
 
-              // ✅ chaves corretas
               homologTablesStatus: v.homologTablesStatus ?? null,
               homologDocsStatus: v.homologDocsStatus ?? null,
               homologContractStatus: v.homologContractStatus ?? null,
@@ -921,7 +1063,7 @@ export default function NeedsPage() {
             });
           } catch {}
         }}
-        width={900}
+        width={isMobile ? 560 : 900}
         destroyOnClose
       >
         {providerNeed ? (
@@ -931,58 +1073,46 @@ export default function NeedsPage() {
             </Typography.Text>
 
             <Form layout="vertical" form={formProvider} style={{ marginTop: 12 }}>
-  <div
-    style={{
-      display: 'grid',
-      gridTemplateColumns: '2fr 1fr',
-      gap: 12,
-      alignItems: 'end',
-    }}
-  >
-    <Form.Item
-      name="providerName"
-      label="Nome do prestador (obrigatório)"
-      rules={[
-        { required: true, message: 'Informe o nome do prestador' },
-        { min: 2 },
-      ]}
-    >
-      <Input placeholder="Ex.: João da Silva (Prestador X)" />
-    </Form.Item>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
+                  gap: 12,
+                  alignItems: 'end',
+                }}
+              >
+                <Form.Item
+                  name="providerName"
+                  label="Nome do prestador (obrigatório)"
+                  rules={[{ required: true, message: 'Informe o nome do prestador' }, { min: 2 }]}
+                >
+                  <Input placeholder="Ex.: João da Silva (Prestador X)" />
+                </Form.Item>
 
-    <Form.Item name="providerWhatsapp" label="WhatsApp do prestador">
-      <Input
-        placeholder="(11) 99999-9999"
-        onChange={(e) =>
-          formProvider.setFieldValue(
-            'providerWhatsapp',
-            maskPhoneBR(e.target.value)
-          )
-        }
-        addonAfter={(() => {
-          const phone = formProvider.getFieldValue('providerWhatsapp');
-          const link = whatsappLink(phone);
+                <Form.Item name="providerWhatsapp" label="WhatsApp do prestador">
+                  <Input
+                    placeholder="(11) 99999-9999"
+                    onChange={(e) => formProvider.setFieldValue('providerWhatsapp', maskPhoneBR(e.target.value))}
+                    addonAfter={(() => {
+                      const phone = formProvider.getFieldValue('providerWhatsapp');
+                      const link = whatsappLink(phone);
 
-          return (
-            <Button
-              type="text"
-              icon={
-                <WhatsAppOutlined
-                  style={{ color: '#25D366', fontSize: 18 }}
-                />
-              }
-              disabled={!link}
-              onClick={() => {
-                if (link) window.open(link, '_blank');
-              }}
-            />
-          );
-        })()}
-      />
-    </Form.Item>
-  </div>
+                      return (
+                        <Button
+                          type="text"
+                          icon={<WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} />}
+                          disabled={!link}
+                          onClick={() => {
+                            if (link) window.open(link, '_blank');
+                          }}
+                        />
+                      );
+                    })()}
+                  />
+                </Form.Item>
+              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="negotiationTier" label="Categoria negociada">
                   <Select allowClear options={TIER_OPTS} placeholder="Ouro / Prata / Bronze" />
                 </Form.Item>
@@ -994,7 +1124,7 @@ export default function NeedsPage() {
                 Status da homologação
               </Typography.Title>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="homologTablesStatus" label="Apresentação de Tabelas">
                   <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
                 </Form.Item>
@@ -1023,7 +1153,7 @@ export default function NeedsPage() {
 
             <Divider style={{ margin: '10px 0 14px' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <Typography.Title level={5} style={{ margin: 0 }}>
                 Documentos do prestador
               </Typography.Title>
@@ -1032,7 +1162,7 @@ export default function NeedsPage() {
               </Button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 12, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '180px 1fr auto', gap: 12, marginTop: 12 }}>
               <Select value={uploadKind} onChange={(v) => setUploadKind(v)} options={ATTACH_KIND_OPTS} />
 
               <Upload
@@ -1080,13 +1210,13 @@ export default function NeedsPage() {
                 >
                   <List.Item.Meta
                     title={
-                      <Space>
+                      <Space wrap>
                         <Tag>{a.kind}</Tag>
                         <span style={{ fontWeight: 600 }}>{a.originalName}</span>
                       </Space>
                     }
                     description={
-                      <Space split={<span style={{ color: '#cbd5e1' }}>•</span>}>
+                      <Space wrap split={<span style={{ color: '#cbd5e1' }}>•</span>}>
                         <span>{a.mimeType}</span>
                         <span>{fmtBytes(a.size)}</span>
                         <span>{new Date(a.createdAt).toLocaleString('pt-BR')}</span>
@@ -1113,7 +1243,7 @@ export default function NeedsPage() {
                 }
                 setPreviewUrl(null);
               }}
-              width={900}
+              width={isMobile ? 560 : 900}
               destroyOnClose
             >
               {!previewUrl ? null : previewMime.startsWith('image/') ? (
@@ -1173,7 +1303,7 @@ export default function NeedsPage() {
             });
           } catch {}
         }}
-        width={820}
+        width={isMobile ? 560 : 820}
         destroyOnClose
       >
         {editAddrNeed ? (
@@ -1203,7 +1333,7 @@ export default function NeedsPage() {
                 />
               </Form.Item>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <Form.Item name="requestedLat" label="Latitude">
                   <Input disabled />
                 </Form.Item>
@@ -1212,7 +1342,7 @@ export default function NeedsPage() {
                 </Form.Item>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 160px', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 120px 160px', gap: 12 }}>
                 <Form.Item name="requestedCity" label="Cidade">
                   <Input />
                 </Form.Item>

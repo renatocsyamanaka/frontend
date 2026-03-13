@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Button,
   Card,
@@ -18,6 +18,7 @@ import {
   message,
   Spin,
   Grid,
+  Pagination,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -25,7 +26,6 @@ import { api } from '../../lib/api';
 
 type Client = { id: number; name: string };
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
-
 type RoleLite = { id: number; name: string; level: number };
 
 type UserLite = {
@@ -128,6 +128,8 @@ function statusTag(s: Status) {
 
 export default function InstallationProjectsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status | 'TODOS'>('TODOS');
   const [form] = Form.useForm();
@@ -137,6 +139,15 @@ export default function InstallationProjectsPage() {
 
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
+
+  // ✅ paginação para mobile (cards)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  const onChangeStatus = (v: any) => {
+    setStatus(v);
+    setPage(1); // ✅ sempre volta pra primeira página ao filtrar
+  };
 
   const clientsQuery = useQuery<Client[]>({
     queryKey: ['clients'],
@@ -202,6 +213,15 @@ export default function InstallationProjectsPage() {
 
   const rows = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
 
+  // ✅ paginação frontend só para mobile cards
+  const total = rows.length;
+
+  const pagedRows = useMemo(() => {
+    if (!isMobile) return rows;
+    const start = (page - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, isMobile, page, pageSize]);
+
   const endPreview = (() => {
     const trucksTotal = Number(form.getFieldValue('trucksTotal') ?? 0);
     const perDay = Number(form.getFieldValue('equipmentsPerDay') ?? 0);
@@ -213,15 +233,18 @@ export default function InstallationProjectsPage() {
 
   const coordinatorPreviewText = 'Será definido automaticamente a partir do supervisor';
 
-  // ✅ helper pra grid responsiva mantendo desktop igual
-  const grid = (desktopCols: string) => ({
+  const gridStyle = (desktopCols: string) => ({
     display: 'grid',
     gridTemplateColumns: isMobile ? '1fr' : desktopCols,
     gap: 12,
+    maxWidth: '100%',
   });
 
+  // ✅ evita overflow em textos longos no mobile
+  const line = { fontSize: 12, margin: 0, overflowWrap: 'anywhere' as const };
+
   return (
-    <div style={{ display: 'grid', gap: isMobile ? 12 : 16 }}>
+    <div style={{ display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Header responsivo */}
       <div
         style={{
@@ -230,6 +253,7 @@ export default function InstallationProjectsPage() {
           justifyContent: 'space-between',
           gap: 12,
           flexDirection: isMobile ? 'column' : 'row',
+          maxWidth: '100%',
         }}
       >
         <Typography.Title level={2} style={{ margin: 0 }}>
@@ -248,11 +272,13 @@ export default function InstallationProjectsPage() {
 
       <Card
         title="Lista"
+        style={{ maxWidth: '100%' }}
         extra={
-          <div style={{ maxWidth: isMobile ? '100%' : 'unset', overflowX: isMobile ? 'auto' : 'visible' }}>
-            <Segmented
+          isMobile ? (
+            <Select
               value={status}
-              onChange={(v) => setStatus(v as any)}
+              onChange={onChangeStatus}
+              style={{ width: 160 }}
               options={[
                 { label: 'Todos', value: 'TODOS' },
                 { label: 'À iniciar', value: 'A_INICIAR' },
@@ -260,43 +286,134 @@ export default function InstallationProjectsPage() {
                 { label: 'Finalizado', value: 'FINALIZADO' },
               ]}
             />
-          </div>
+          ) : (
+            <Segmented
+              value={status}
+              onChange={(v) => onChangeStatus(v)}
+              options={[
+                { label: 'Todos', value: 'TODOS' },
+                { label: 'À iniciar', value: 'A_INICIAR' },
+                { label: 'Iniciado', value: 'INICIADO' },
+                { label: 'Finalizado', value: 'FINALIZADO' },
+              ]}
+            />
+          )
         }
-        bodyStyle={{ padding: isMobile ? 12 : 24 }}
+        bodyStyle={{ padding: isMobile ? 12 : 24, maxWidth: '100%' }}
       >
-        <Table
-          rowKey="id"
-          loading={projectsQuery.isLoading}
-          dataSource={rows}
-          pagination={{ pageSize: 10 }}
-          scroll={isMobile ? { x: 900 } : undefined} // ✅ mobile: evita “quebrar” colunas
-          size={isMobile ? 'small' : 'middle'}
-          columns={[
-            {
-              title: 'Projeto',
-              dataIndex: 'title',
-              render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
-              ellipsis: true,
-            },
-            { title: 'AF', dataIndex: 'af', render: (v) => v || '-', ellipsis: true },
-            { title: 'Cliente', render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'), ellipsis: true },
+        {/* ✅ MOBILE: cards + paginação */}
+        {isMobile ? (
+          <div style={{ display: 'grid', gap: 12, maxWidth: '100%' }}>
+            {projectsQuery.isLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+                <Spin />
+              </div>
+            ) : total ? (
+              <>
+                {pagedRows.map((r) => (
+                  <Card key={r.id} size="small" style={{ borderRadius: 12, maxWidth: '100%' }} bodyStyle={{ padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <Typography.Text strong style={{ fontSize: 14 }}>
+                          <Link to={`/installation-projects/${r.id}`}>{r.title}</Link>
+                        </Typography.Text>
 
-            { title: 'Técnico', render: (_, r) => r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-'), ellipsis: true },
-            { title: 'Supervisor', render: (_, r) => r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-'), ellipsis: true },
-            { title: 'Coordenador', render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'), ellipsis: true },
+                        <div style={{ marginTop: 6 }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            AF: {r.af || '-'}
+                          </Typography.Text>
+                        </div>
+                      </div>
 
-            { title: 'Caminhões', render: (_, r) => `${r.trucksDone}/${r.trucksTotal}` },
-            {
-              title: 'Início (prev.)',
-              render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
-            },
-            {
-              title: 'Fim (prev.)',
-              render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
-            },
-            { title: 'Status', dataIndex: 'status', render: (s: Status) => statusTag(s) },
-          ]}
-        />
+                      <div style={{ flexShrink: 0 }}>{statusTag(r.status)}</div>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: 'grid', gap: 6, maxWidth: '100%' }}>
+                      <p style={line}>
+                        <b>Cliente:</b> {r.client?.name || (r.clientId ? `#${r.clientId}` : '-')}
+                      </p>
+                      <p style={line}>
+                        <b>Técnico:</b> {r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-')}
+                      </p>
+                      <p style={line}>
+                        <b>Supervisor:</b> {r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-')}
+                      </p>
+                      <p style={line}>
+                        <b>Coordenador:</b> {r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-')}
+                      </p>
+                      <p style={line}>
+                        <b>Caminhões:</b> {r.trucksDone}/{r.trucksTotal}
+                      </p>
+                      <p style={line}>
+                        <b>Início:</b> {r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'}
+                        {'  '}•{'  '}
+                        <b>Fim:</b> {r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'}
+                      </p>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <Button block type="primary" onClick={() => navigate(`/installation-projects/${r.id}`)}>
+                        Abrir projeto
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+
+                {/* ✅ paginação no mobile */}
+                {total > pageSize && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+                    <Pagination
+                      current={page}
+                      pageSize={pageSize}
+                      total={total}
+                      size="small"
+                      showSizeChanger
+                      pageSizeOptions={['5', '10', '20']}
+                      onChange={(p, ps) => {
+                        setPage(p);
+                        setPageSize(ps);
+                      }}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <Typography.Text type="secondary">Nenhum projeto encontrado.</Typography.Text>
+            )}
+          </div>
+        ) : (
+          /* ✅ DESKTOP: Table normal */
+          <Table
+            rowKey="id"
+            loading={projectsQuery.isLoading}
+            dataSource={rows}
+            pagination={{ pageSize: 10 }}
+            size="middle"
+            columns={[
+              {
+                title: 'Projeto',
+                dataIndex: 'title',
+                render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
+                ellipsis: true,
+              },
+              { title: 'AF', dataIndex: 'af', render: (v) => v || '-', ellipsis: true },
+              { title: 'Cliente', render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'), ellipsis: true },
+              { title: 'Técnico', render: (_, r) => r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-'), ellipsis: true },
+              { title: 'Supervisor', render: (_, r) => r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-'), ellipsis: true },
+              { title: 'Coordenador', render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'), ellipsis: true },
+              { title: 'Caminhões', render: (_, r) => `${r.trucksDone}/${r.trucksTotal}` },
+              {
+                title: 'Início (prev.)',
+                render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
+              },
+              {
+                title: 'Fim (prev.)',
+                render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
+              },
+              { title: 'Status', dataIndex: 'status', render: (s: Status) => statusTag(s) },
+            ]}
+          />
+        )}
       </Card>
 
       <Modal
@@ -305,10 +422,10 @@ export default function InstallationProjectsPage() {
         title="Novo Projeto"
         okText="Criar"
         confirmLoading={createProject.isPending}
-        width={isMobile ? '96vw' : 820}              // ✅ responsivo
+        width={isMobile ? '96vw' : 820}
         style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
-        bodyStyle={{ paddingTop: 12 }}
+        bodyStyle={{ paddingTop: 12, maxWidth: '100%' }}
         afterOpenChange={(o) => {
           if (o) {
             setTechSearch('');
@@ -354,13 +471,8 @@ export default function InstallationProjectsPage() {
           } catch {}
         }}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ trucksTotal: 1, equipmentsPerDay: 1 }}
-        >
-          {/* Técnico / Supervisor */}
-          <div style={grid('1fr 1fr')}>
+        <Form form={form} layout="vertical" initialValues={{ trucksTotal: 1, equipmentsPerDay: 1 }}>
+          <div style={gridStyle('1fr 1fr')}>
             <Form.Item
               label="Técnico / Prestador (obrigatório)"
               name="technicianId"
@@ -402,14 +514,13 @@ export default function InstallationProjectsPage() {
             <Form.Item
               label="Coordenador"
               tooltip="Definido automaticamente pelo supervisor"
-              style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }} // ✅ desktop mantém full width
+              style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
             >
               <Input value={coordinatorPreviewText} disabled />
             </Form.Item>
           </div>
 
-          {/* Nome do projeto / AF */}
-          <div style={grid('2fr 1fr')}>
+          <div style={gridStyle('2fr 1fr')}>
             <Form.Item
               label="Nome do Projeto"
               name="title"
@@ -436,8 +547,7 @@ export default function InstallationProjectsPage() {
             />
           </Form.Item>
 
-          {/* Qtd / por dia / data início */}
-          <div style={grid('1fr 1fr 1fr')}>
+          <div style={gridStyle('1fr 1fr 1fr')}>
             <Form.Item
               label="Qtd. Veículos (total)"
               name="trucksTotal"
@@ -473,8 +583,7 @@ export default function InstallationProjectsPage() {
             <Input placeholder="Nome do contato" />
           </Form.Item>
 
-          {/* Email / Telefone */}
-          <div style={grid('1.4fr 1fr')}>
+          <div style={gridStyle('1.4fr 1fr')}>
             <Form.Item
               label="E-mail (obrigatório)"
               name="contactEmail"

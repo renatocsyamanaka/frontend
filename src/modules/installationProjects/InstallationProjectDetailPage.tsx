@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -18,6 +18,9 @@ import {
   message,
   Select,
   Spin,
+  Grid,
+  Progress,
+  Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -30,8 +33,10 @@ import {
   SendOutlined,
   UnorderedListOutlined,
   CalendarOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import * as XLSX from 'xlsx';
 import { api } from '../../lib/api';
 
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
@@ -43,7 +48,6 @@ type RoleLite = { id: number; name: string; level: number };
 type UserLite = {
   id: number;
   name: string;
-
   role?: RoleLite;
   roleId?: number;
   roleLevel?: number;
@@ -76,12 +80,12 @@ type ProgressVehicle = {
 
 type ProjectProgress = {
   id: number;
-  date: string; // ISO
-  trucksDoneToday: number; // backend calcula = vehicles.length
+  date: string;
+  trucksDoneToday: number;
   notes?: string | null;
   author?: UserLite;
   createdAt?: string;
-  vehicles?: ProgressVehicle[]; // placas/séries
+  vehicles?: ProgressVehicle[];
 };
 
 type ClientFull = {
@@ -110,47 +114,45 @@ type InstallationProject = {
   id: number;
   title: string;
   status: Status;
-
   af?: string | null;
-
   clientId: number | null;
   client?: Client | null;
-
   supervisorId?: number | null;
   coordinatorId?: number | null;
   supervisor?: UserLite | null;
   coordinator?: UserLite | null;
-
   technicianId?: number | null;
   technician?: UserLite | null;
-
   contactName?: string | null;
   contactEmail?: string | null;
   contactPhone?: string | null;
-
   notes?: string | null;
-
   startPlannedAt?: string | null;
   startAt?: string | null;
   endAt?: string | null;
-
   endPlannedAt?: string | null;
-
   trucksTotal: number;
   trucksDone: number;
-
   equipmentsTotal: number;
   equipmentsPerDay?: number | null;
   daysEstimated?: number | null;
-
   whatsappGroupName?: string | null;
   whatsappGroupLink?: string | null;
-
   items?: ProjectItem[];
   progress?: ProjectProgress[];
 };
 
-// ✅ se seu backend devolver "data", isso ajuda
+type ImportSummary = {
+  loading: boolean;
+  percent: number;
+  totalRows: number;
+  validRows: number;
+  importedCount: number;
+  duplicatesInFile: string[];
+  alreadyPublished: string[];
+  invalidRows: number;
+};
+
 function unwrap<T>(resData: any): T {
   return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
 }
@@ -161,7 +163,6 @@ function statusTag(s: Status) {
   return <Tag color="green">Finalizado</Tag>;
 }
 
-// ✅ roles conforme seu print do banco
 const ROLE_ID_TECNICO = 1;
 const ROLE_ID_SUPERVISOR = 3;
 const ROLE_ID_PSO = 8;
@@ -186,11 +187,9 @@ function isSupervisor(u: UserLite) {
 function isTechnicianOrPSO(u: UserLite) {
   const id = getRoleId(u);
   const name = getRoleName(u);
-  // ✅ estrito
   return id === ROLE_ID_TECNICO || id === ROLE_ID_PSO || name === 'Tecnico' || name === 'PSO';
 }
 
-// ✅ helpers para LINK DE GRUPO (não é número)
 function safeUrl(value?: string | null) {
   const v = String(value || '').trim();
   if (!v) return null;
@@ -208,11 +207,24 @@ function isWhatsAppGroupLink(value?: string | null) {
   return url.includes('chat.whatsapp.com/');
 }
 
+function normalizeHeader(value: string) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 export default function InstallationProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
   const nav = useNavigate();
   const qc = useQueryClient();
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
+
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
   const [clientViewOpen, setClientViewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -221,7 +233,6 @@ export default function InstallationProjectDetailPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressListOpen, setProgressListOpen] = useState(false);
 
-  // ✅ buscas independentes pros selects do EDIT
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
 
@@ -230,14 +241,24 @@ export default function InstallationProjectDetailPage() {
   const [itemForm] = Form.useForm();
   const [progressForm] = Form.useForm();
 
+  const [importSummary, setImportSummary] = useState<ImportSummary>({
+    loading: false,
+    percent: 0,
+    totalRows: 0,
+    validRows: 0,
+    importedCount: 0,
+    duplicatesInFile: [],
+    alreadyPublished: [],
+    invalidRows: 0,
+  });
+
   const watchedVehicles = Form.useWatch('vehicles', progressForm) as any[] | undefined;
 
-  // ✅ BUSCA USERS (um único endpoint)
   const usersQuery = useQuery<UserLite[]>({
     queryKey: ['users', { techSearch, supervisorSearch }],
     queryFn: async () => {
       const q = (techSearch || supervisorSearch || '').trim();
-      const params = q ? { q } : {}; // ✅ não manda q vazio
+      const params = q ? { q } : {};
       const res = await api.get('/users', { params });
       return unwrap<UserLite[]>(res.data);
     },
@@ -277,6 +298,17 @@ export default function InstallationProjectDetailPage() {
   const p = projectQuery.data;
   const currentClientId = projectQuery.data?.clientId ?? null;
 
+  const existingPublishedPlates = useMemo(() => {
+    const set = new Set<string>();
+    (p?.progress || []).forEach((prog) => {
+      (prog.vehicles || []).forEach((v) => {
+        const normalized = normalizePlate(v.plate || '');
+        if (normalized) set.add(normalized);
+      });
+    });
+    return set;
+  }, [p?.progress]);
+
   const clientsQuery = useQuery<ClientRow[]>({
     queryKey: ['clients'],
     queryFn: async () => (await api.get('/clients')).data,
@@ -284,7 +316,6 @@ export default function InstallationProjectDetailPage() {
     retry: false,
   });
 
-  // ✅ lista de coordenadores (level >= 4) - fica como está
   const coordinatorsQuery = useQuery<UserOption[]>({
     queryKey: ['users', 'coordinators'],
     queryFn: async () => (await api.get('/users', { params: { minLevel: 4 } })).data,
@@ -293,7 +324,6 @@ export default function InstallationProjectDetailPage() {
     refetchOnWindowFocus: false,
   });
 
-  // ✅ detalhe do cliente (abre modal)
   const clientDetailQuery = useQuery<ClientFull>({
     queryKey: ['client-detail', currentClientId],
     enabled: !!currentClientId && clientViewOpen,
@@ -304,7 +334,6 @@ export default function InstallationProjectDetailPage() {
     retry: false,
   });
 
-  // ✅ helper pra achar nome por ID (fallback)
   const technicianNameById = (id?: number | null) => {
     if (!id) return null;
     const u = technicianOptions.find((x) => x.id === id);
@@ -323,7 +352,6 @@ export default function InstallationProjectDetailPage() {
     return u?.name || `#${id}`;
   };
 
-  // ✅ buscar coordenador do supervisor (backend)
   const coordinatorFromSupervisor = useMutation({
     mutationFn: async (supervisorId: number) => {
       const res = await api.get(`/users/${supervisorId}/coordinator`);
@@ -449,6 +477,161 @@ export default function InstallationProjectDetailPage() {
     return /^[A-Z]{3}[0-9]{4}$/.test(v) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v);
   }
 
+  async function extractVehiclesFromExcelRows(rows: any[]) {
+    if (!Array.isArray(rows) || !rows.length) {
+      return {
+        vehicles: [] as { plate: string; serial: string }[],
+        duplicatesInFile: [] as string[],
+        alreadyPublished: [] as string[],
+        invalidRows: 0,
+      };
+    }
+
+    const unique = new Map<string, { plate: string; serial: string }>();
+    const duplicatePlatesInFile = new Set<string>();
+    const alreadyPublishedSet = new Set<string>();
+    let invalidRows = 0;
+
+    const total = rows.length;
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      const normalizedRow: Record<string, any> = {};
+
+      Object.keys(row || {}).forEach((key) => {
+        normalizedRow[normalizeHeader(key)] = row[key];
+      });
+
+      const plateRaw = normalizedRow['PLACA'] ?? normalizedRow['PLATE'];
+      const serialRaw =
+        normalizedRow['SERIE/ SERIAL'] ??
+        normalizedRow['SERIE/SERIAL'] ??
+        normalizedRow['SERIE'] ??
+        normalizedRow['SERIAL'] ??
+        normalizedRow['N SERIE'];
+
+      const plate = normalizePlate(String(plateRaw || ''));
+      const serial = String(serialRaw || '').trim();
+
+      if (!plate || !serial || !isValidPlate(plate)) {
+        invalidRows += 1;
+      } else {
+        const key = `${plate}__${serial}`;
+
+        if (existingPublishedPlates.has(plate)) {
+          alreadyPublishedSet.add(plate);
+        }
+
+        if (unique.has(key)) {
+          duplicatePlatesInFile.add(plate);
+        } else {
+          unique.set(key, { plate, serial });
+        }
+      }
+
+      const percent = Math.min(100, Math.round(((i + 1) / total) * 100));
+      setImportSummary((prev) => ({
+        ...prev,
+        loading: true,
+        percent,
+        totalRows: total,
+      }));
+
+      if (i % 50 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    return {
+      vehicles: Array.from(unique.values()),
+      duplicatesInFile: Array.from(duplicatePlatesInFile),
+      alreadyPublished: Array.from(alreadyPublishedSet),
+      invalidRows,
+    };
+  }
+
+  const importVehiclesFromExcel = async (file: File) => {
+    try {
+      setImportSummary({
+        loading: true,
+        percent: 5,
+        totalRows: 0,
+        validRows: 0,
+        importedCount: 0,
+        duplicatesInFile: [],
+        alreadyPublished: [],
+        invalidRows: 0,
+      });
+
+      const buffer = await file.arrayBuffer();
+      setImportSummary((prev) => ({ ...prev, percent: 20 }));
+
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+
+      if (!firstSheetName) {
+        setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
+        message.error('Arquivo Excel sem abas.');
+        return;
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      setImportSummary((prev) => ({
+        ...prev,
+        percent: 35,
+        totalRows: Array.isArray(rows) ? rows.length : 0,
+      }));
+
+      const { vehicles, duplicatesInFile, alreadyPublished, invalidRows } =
+        await extractVehiclesFromExcelRows(rows);
+
+      if (!vehicles.length) {
+        setImportSummary({
+          loading: false,
+          percent: 100,
+          totalRows: Array.isArray(rows) ? rows.length : 0,
+          validRows: 0,
+          importedCount: 0,
+          duplicatesInFile,
+          alreadyPublished,
+          invalidRows,
+        });
+
+        message.warning(
+          'Nenhum veículo válido encontrado. Verifique se o Excel possui as colunas "PLACA" e "SERIE/ SERIAL".'
+        );
+        return;
+      }
+
+      progressForm.setFieldsValue({ vehicles });
+
+      setImportSummary({
+        loading: false,
+        percent: 100,
+        totalRows: Array.isArray(rows) ? rows.length : 0,
+        validRows: vehicles.length,
+        importedCount: vehicles.length,
+        duplicatesInFile,
+        alreadyPublished,
+        invalidRows,
+      });
+
+      if (alreadyPublished.length > 0) {
+        message.warning(
+          `Importação concluída. ${vehicles.length} veículo(s) carregado(s), mas ${alreadyPublished.length} placa(s) já estavam lançadas anteriormente.`
+        );
+      } else {
+        message.success(`${vehicles.length} veículo(s) importado(s) do Excel.`);
+      }
+    } catch (error) {
+      console.error(error);
+      setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
+      message.error('Falha ao ler o arquivo Excel.');
+    }
+  };
+
   const addProgress = useMutation({
     mutationFn: async (payload: { date: string; notes?: string | null; vehicles: { plate: string; serial: string }[] }) => {
       const res = await api.post(`/installation-projects/${projectId}/progress`, payload);
@@ -458,6 +641,16 @@ export default function InstallationProjectDetailPage() {
       message.success('Progresso lançado!');
       setProgressOpen(false);
       progressForm.resetFields();
+      setImportSummary({
+        loading: false,
+        percent: 0,
+        totalRows: 0,
+        validRows: 0,
+        importedCount: 0,
+        duplicatesInFile: [],
+        alreadyPublished: [],
+        invalidRows: 0,
+      });
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao lançar progresso'),
@@ -491,14 +684,74 @@ export default function InstallationProjectDetailPage() {
   const coordinatorLabel = p.coordinator?.name || coordinatorNameById(p.coordinatorId) || '-';
   const technicianLabel = p.technician?.name || technicianNameById(p.technicianId) || '-';
 
+  const wrapAny = { overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const };
+
+  const pageWrap: React.CSSProperties = { display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' };
+  const actionsWrap: React.CSSProperties = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    width: '100%',
+  };
+  const twoCols: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
+    gap: isMobile ? 12 : 16,
+    alignItems: 'start',
+    maxWidth: '100%',
+  };
+
+  const MobileSummary = () => (
+    <Card title={<Space><UnorderedListOutlined /> Resumo</Space>} styles={{ body: { padding: 12 } }}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <Typography.Text strong style={{ fontSize: 14 }}>Status</Typography.Text>
+          <div>{statusTag(p.status)}</div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 6 }}>
+          <Typography.Text style={{ ...wrapAny }}><b>Técnico:</b> {technicianLabel}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Supervisor:</b> {supervisorLabel}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Coordenador:</b> {coordinatorLabel}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>AF:</b> {p.af || '-'}</Typography.Text>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography.Text style={{ ...wrapAny }}><b>Cliente:</b> {p.client?.name || (p.clientId ? `#${p.clientId}` : '-')}</Typography.Text>
+            <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p.clientId}>
+              Abrir cliente
+            </Button>
+          </div>
+
+          <Typography.Text style={{ ...wrapAny }}><b>Prev. início:</b> {p.startPlannedAt ? dayjs(p.startPlannedAt).format('DD/MM/YYYY') : '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Prev. fim:</b> {p.endPlannedAt ? dayjs(p.endPlannedAt).format('DD/MM/YYYY') : '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Início:</b> {p.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Fim:</b> {p.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}</Typography.Text>
+
+          <Typography.Text style={{ ...wrapAny }}><b>Caminhões:</b> {p.trucksDone}/{p.trucksTotal}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Equipamentos (total):</b> {p.equipmentsTotal ?? 0}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Equip./dia:</b> {p.equipmentsPerDay ?? '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Dias estimados:</b> {p.daysEstimated ?? '-'}</Typography.Text>
+
+          <Divider style={{ margin: '8px 0' }} />
+
+          <Typography.Text style={{ ...wrapAny }}><b>Contato:</b> {p.contactName || '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>E-mail:</b> {p.contactEmail || '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>Telefone:</b> {p.contactPhone || '-'}</Typography.Text>
+          <Typography.Text style={{ whiteSpace: 'pre-wrap', ...wrapAny }}><b>Observações:</b> {p.notes || '-'}</Typography.Text>
+        </div>
+      </div>
+    </Card>
+  );
+
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Space wrap>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/installation-projects')}>
+    <div style={pageWrap}>
+      <div style={actionsWrap}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/installation-projects')} block={isMobile}>
           Voltar para projetos
         </Button>
 
-        <Button icon={<EditOutlined />} onClick={() => setEditOpen(true)}>
+        <Button icon={<EditOutlined />} onClick={() => setEditOpen(true)} block={isMobile}>
           Editar
         </Button>
 
@@ -506,14 +759,7 @@ export default function InstallationProjectDetailPage() {
           icon={<WhatsAppOutlined />}
           onClick={() => setWaOpen(true)}
           style={{ backgroundColor: '#25D366', borderColor: '#25D366', color: '#fff' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#1ebe5d';
-            e.currentTarget.style.borderColor = '#1ebe5d';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#25D366';
-            e.currentTarget.style.borderColor = '#25D366';
-          }}
+          block={isMobile}
         >
           WhatsApp
         </Button>
@@ -522,12 +768,19 @@ export default function InstallationProjectDetailPage() {
           icon={<MailOutlined />}
           onClick={() => sendStartEmail.mutate()}
           loading={sendStartEmail.isPending}
-          disabled={!p.contactEmail}
+          disabled={!p.contactEmail || p.status !== 'A_INICIAR'}
+          block={isMobile}
         >
           Enviar e-mail de início
         </Button>
 
-        <Button icon={<SendOutlined />} loading={sendDailyEmail.isPending} onClick={handleSendDaily}>
+        <Button
+          icon={<SendOutlined />}
+          loading={sendDailyEmail.isPending}
+          onClick={handleSendDaily}
+          block={isMobile}
+          disabled={p.status === 'A_INICIAR'}
+        >
           Enviar reporte diário (hoje)
         </Button>
 
@@ -535,8 +788,9 @@ export default function InstallationProjectDetailPage() {
           icon={<MailOutlined />}
           onClick={() => sendFinalEmail.mutate()}
           loading={sendFinalEmail.isPending}
-          disabled={!p.contactEmail}
+          disabled={!p.contactEmail || p.status !== 'FINALIZADO'}
           danger
+          block={isMobile}
         >
           Enviar compilado final
         </Button>
@@ -547,6 +801,7 @@ export default function InstallationProjectDetailPage() {
           disabled={p.status !== 'A_INICIAR'}
           loading={startProject.isPending}
           onClick={() => startProject.mutate()}
+          block={isMobile}
         >
           Iniciar
         </Button>
@@ -557,57 +812,63 @@ export default function InstallationProjectDetailPage() {
           disabled={p.status !== 'INICIADO'}
           loading={finishProject.isPending}
           onClick={() => finishProject.mutate()}
+          block={isMobile}
         >
           Finalizar
         </Button>
-      </Space>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
-        <div style={{ gridColumn: 1, minWidth: 0 }}>
-          <Card title={<Space><UnorderedListOutlined /> Resumo</Space>}>
-            <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="Técnico / Prestador">{technicianLabel}</Descriptions.Item>
-              <Descriptions.Item label="Supervisor">{supervisorLabel}</Descriptions.Item>
-              <Descriptions.Item label="Coordenador">{coordinatorLabel}</Descriptions.Item>
+      <div style={twoCols}>
+        <div style={{ minWidth: 0 }}>
+          {isMobile ? (
+            <MobileSummary />
+          ) : (
+            <Card title={<Space><UnorderedListOutlined /> Resumo</Space>}>
+              <Descriptions bordered size="small" column={1}>
+                <Descriptions.Item label="Técnico / Prestador">{technicianLabel}</Descriptions.Item>
+                <Descriptions.Item label="Supervisor">{supervisorLabel}</Descriptions.Item>
+                <Descriptions.Item label="Coordenador">{coordinatorLabel}</Descriptions.Item>
+                <Descriptions.Item label="AF">{p.af || '-'}</Descriptions.Item>
 
-              <Descriptions.Item label="AF">{p.af || '-'}</Descriptions.Item>
+                <Descriptions.Item label="Cliente">
+                  <Space wrap>
+                    <span style={wrapAny as any}>{p.client?.name || (p.clientId ? `#${p.clientId}` : '-')}</span>
+                    <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p.clientId}>
+                      Abrir cliente
+                    </Button>
+                  </Space>
+                </Descriptions.Item>
 
-              <Descriptions.Item label="Cliente">
-                <Space wrap>
-                  <span>{p.client?.name || (p.clientId ? `#${p.clientId}` : '-')}</span>
-                  <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p.clientId}>
-                    Abrir cliente
-                  </Button>
-                </Space>
-              </Descriptions.Item>
+                <Descriptions.Item label="Prev. início">
+                  {p.startPlannedAt ? dayjs(p.startPlannedAt).format('DD/MM/YYYY') : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Prev. fim">
+                  {p.endPlannedAt ? dayjs(p.endPlannedAt).format('DD/MM/YYYY') : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Início">
+                  {p.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Fim">
+                  {p.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}
+                </Descriptions.Item>
 
-              <Descriptions.Item label="Prev. início">
-                {p.startPlannedAt ? dayjs(p.startPlannedAt).format('DD/MM/YYYY') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Prev. fim">
-                {p.endPlannedAt ? dayjs(p.endPlannedAt).format('DD/MM/YYYY') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Início">
-                {p.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Fim">
-                {p.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}
-              </Descriptions.Item>
+                <Descriptions.Item label="Caminhões (feito / total)">{`${p.trucksDone}/${p.trucksTotal}`}</Descriptions.Item>
+                <Descriptions.Item label="Equipamentos (total)">{p.equipmentsTotal ?? 0}</Descriptions.Item>
+                <Descriptions.Item label="Equip./dia">{p.equipmentsPerDay ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="Dias estimados">{p.daysEstimated ?? '-'}</Descriptions.Item>
 
-              <Descriptions.Item label="Caminhões (feito / total)">{`${p.trucksDone}/${p.trucksTotal}`}</Descriptions.Item>
-              <Descriptions.Item label="Equipamentos (total)">{p.equipmentsTotal ?? 0}</Descriptions.Item>
-              <Descriptions.Item label="Equip./dia">{p.equipmentsPerDay ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Dias estimados">{p.daysEstimated ?? '-'}</Descriptions.Item>
-
-              <Descriptions.Item label="Contato">{p.contactName || '-'}</Descriptions.Item>
-              <Descriptions.Item label="E-mail">{p.contactEmail || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Telefone">{p.contactPhone || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Observações">{p.notes || '-'}</Descriptions.Item>
-            </Descriptions>
-          </Card>
+                <Descriptions.Item label="Contato">{p.contactName || '-'}</Descriptions.Item>
+                <Descriptions.Item label="E-mail">{p.contactEmail || '-'}</Descriptions.Item>
+                <Descriptions.Item label="Telefone">{p.contactPhone || '-'}</Descriptions.Item>
+                <Descriptions.Item label="Observações">
+                  <span style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{p.notes || '-'}</span>
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
         </div>
 
-        <div style={{ gridColumn: 2, display: 'grid', gap: 16, minWidth: 0 }}>
+        <div style={{ display: 'grid', gap: isMobile ? 12 : 16, minWidth: 0 }}>
           <Card
             title="Itens / Equipamentos"
             extra={
@@ -615,6 +876,7 @@ export default function InstallationProjectDetailPage() {
                 Adicionar item
               </Button>
             }
+            styles={{ body: { padding: isMobile ? 12 : 24 } }}
           >
             <List
               dataSource={itemsSorted}
@@ -622,13 +884,16 @@ export default function InstallationProjectDetailPage() {
               renderItem={(it) => (
                 <List.Item>
                   <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div>
-                      <Typography.Text strong>{it.equipmentName}</Typography.Text>
+                    <div style={{ minWidth: 0 }}>
+                      <Typography.Text strong style={wrapAny as any}>
+                        {it.equipmentName}
+                      </Typography.Text>
                       {it.equipmentCode ? (
-                        <>
-                          <Divider type="vertical" />
-                          <Typography.Text type="secondary">{it.equipmentCode}</Typography.Text>
-                        </>
+                        <div style={{ marginTop: 2 }}>
+                          <Typography.Text type="secondary" style={wrapAny as any}>
+                            {it.equipmentCode}
+                          </Typography.Text>
+                        </div>
                       ) : null}
                     </div>
                     <Tag>{`Qtd: ${it.qty}`}</Tag>
@@ -639,7 +904,7 @@ export default function InstallationProjectDetailPage() {
           </Card>
 
           <Card
-            title={<Space><CalendarOutlined />Diário</Space>}
+            title={<Space><CalendarOutlined /> Diário</Space>}
             extra={
               <Space>
                 <Button icon={<UnorderedListOutlined />} onClick={() => setProgressListOpen(true)}>
@@ -650,13 +915,14 @@ export default function InstallationProjectDetailPage() {
                 </Button>
               </Space>
             }
+            styles={{ body: { padding: isMobile ? 12 : 24 } }}
           >
             <List
               dataSource={progressSorted}
               locale={{ emptyText: 'Nenhum progresso lançado.' }}
               renderItem={(pr) => (
                 <List.Item>
-                  <div style={{ width: '100%', display: 'grid', gap: 6 }}>
+                  <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
                     <Space wrap>
                       <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
                       <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
@@ -664,9 +930,9 @@ export default function InstallationProjectDetailPage() {
                     </Space>
 
                     {pr.vehicles?.length ? (
-                      <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
+                      <div style={{ marginTop: 4, display: 'grid', gap: 2, ...wrapAny }}>
                         {pr.vehicles.map((v, idx) => (
-                          <div key={v.id ?? idx}>
+                          <div key={`${v.plate}-${v.serial}-${idx}`} style={wrapAny as any}>
                             <b>PLACA:</b> {v.plate} <span style={{ marginLeft: 10 }} />
                             <b>SÉRIE:</b> {v.serial}
                           </div>
@@ -674,7 +940,7 @@ export default function InstallationProjectDetailPage() {
                       </div>
                     ) : null}
 
-                    {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap' }}>{pr.notes}</Typography.Text> : null}
+                    {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{pr.notes}</Typography.Text> : null}
                   </div>
                 </List.Item>
               )}
@@ -683,7 +949,6 @@ export default function InstallationProjectDetailPage() {
         </div>
       </div>
 
-      {/* ===== MODAL: CLIENTE ===== */}
       <Modal
         title="Cliente - Visualizar"
         open={clientViewOpen}
@@ -693,7 +958,9 @@ export default function InstallationProjectDetailPage() {
             Fechar
           </Button>,
         ]}
-        width={900}
+        width={isMobile ? '96vw' : 900}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
+        centered
       >
         {!currentClientId ? (
           <Typography.Text type="secondary">Este projeto não tem cliente vinculado.</Typography.Text>
@@ -704,43 +971,33 @@ export default function InstallationProjectDetailPage() {
         ) : clientDetailQuery.isError ? (
           <Typography.Text type="danger">Falha ao carregar o cliente.</Typography.Text>
         ) : (
-          <Descriptions bordered size="small" column={2}>
+          <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
             <Descriptions.Item label="ID_cliente">{clientDetailQuery.data?.idCliente}</Descriptions.Item>
             <Descriptions.Item label="tipo_cliente">{clientDetailQuery.data?.tipoCliente}</Descriptions.Item>
-
             <Descriptions.Item label="cliente">{clientDetailQuery.data?.name}</Descriptions.Item>
             <Descriptions.Item label="nome_fantasia">{clientDetailQuery.data?.nomeFantasia}</Descriptions.Item>
-
             <Descriptions.Item label="cpf/cnpj">{clientDetailQuery.data?.documento}</Descriptions.Item>
             <Descriptions.Item label="segmentacao">{clientDetailQuery.data?.segmentacao}</Descriptions.Item>
-
             <Descriptions.Item label="estado">{clientDetailQuery.data?.estado}</Descriptions.Item>
             <Descriptions.Item label="cidade">{clientDetailQuery.data?.cidade}</Descriptions.Item>
-
             <Descriptions.Item label="bairro">{clientDetailQuery.data?.bairro}</Descriptions.Item>
             <Descriptions.Item label="cep">{clientDetailQuery.data?.cep}</Descriptions.Item>
-
-            <Descriptions.Item label="logradouro" span={2}>
-              {clientDetailQuery.data?.logradouro}
+            <Descriptions.Item label="logradouro" span={isMobile ? 1 : 2}>
+              <span style={wrapAny as any}>{clientDetailQuery.data?.logradouro}</span>
             </Descriptions.Item>
-
-            <Descriptions.Item label="complemento" span={2}>
-              {clientDetailQuery.data?.complemento}
+            <Descriptions.Item label="complemento" span={isMobile ? 1 : 2}>
+              <span style={wrapAny as any}>{clientDetailQuery.data?.complemento}</span>
             </Descriptions.Item>
-
             <Descriptions.Item label="latitude">{clientDetailQuery.data?.latitude}</Descriptions.Item>
             <Descriptions.Item label="longitude">{clientDetailQuery.data?.longitude}</Descriptions.Item>
-
             <Descriptions.Item label="email1">{clientDetailQuery.data?.email1}</Descriptions.Item>
             <Descriptions.Item label="telefone1">{clientDetailQuery.data?.telefone1}</Descriptions.Item>
-
             <Descriptions.Item label="email2">{clientDetailQuery.data?.email2}</Descriptions.Item>
             <Descriptions.Item label="telefone2">{clientDetailQuery.data?.telefone2}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>
 
-      {/* ===== MODAL: VER MAIS PROGRESSO ===== */}
       <Modal
         open={progressListOpen}
         title={
@@ -755,14 +1012,16 @@ export default function InstallationProjectDetailPage() {
             Fechar
           </Button>,
         ]}
-        width={900}
+        width={isMobile ? '96vw' : 900}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
+        centered
       >
         <List
           dataSource={progressSorted}
           locale={{ emptyText: 'Nenhum progresso lançado.' }}
           renderItem={(pr) => (
             <List.Item>
-              <div style={{ width: '100%', display: 'grid', gap: 6 }}>
+              <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
                 <Space wrap>
                   <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
                   <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
@@ -770,9 +1029,9 @@ export default function InstallationProjectDetailPage() {
                 </Space>
 
                 {pr.vehicles?.length ? (
-                  <div style={{ marginTop: 4, display: 'grid', gap: 2 }}>
+                  <div style={{ marginTop: 4, display: 'grid', gap: 2, ...wrapAny }}>
                     {pr.vehicles.map((v, idx) => (
-                      <div key={v.id ?? idx}>
+                      <div key={`${v.plate}-${v.serial}-${idx}`} style={wrapAny as any}>
                         <b>PLACA:</b> {v.plate} <span style={{ marginLeft: 10 }} />
                         <b>SÉRIE:</b> {v.serial}
                       </div>
@@ -780,14 +1039,13 @@ export default function InstallationProjectDetailPage() {
                   </div>
                 ) : null}
 
-                {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap' }}>{pr.notes}</Typography.Text> : null}
+                {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{pr.notes}</Typography.Text> : null}
               </div>
             </List.Item>
           )}
         />
       </Modal>
 
-      {/* ===== MODAL EDITAR ===== */}
       <Modal
         open={editOpen}
         title="Editar Projeto"
@@ -811,7 +1069,6 @@ export default function InstallationProjectDetailPage() {
               contactEmail: v.contactEmail ?? null,
               contactPhone: v.contactPhone ?? null,
               notes: v.notes ?? null,
-              // ❌ NÃO enviar coordinatorId (auto)
             });
           } catch {}
         }}
@@ -824,11 +1081,9 @@ export default function InstallationProjectDetailPage() {
               title: p.title,
               af: p.af ?? null,
               clientId: p.clientId ?? null,
-
               technicianId: p.technicianId ?? null,
               supervisorId: p.supervisorId ?? null,
               coordinatorId: p.coordinatorId ?? null,
-
               trucksTotal: p.trucksTotal ?? 0,
               equipmentsPerDay: p.equipmentsPerDay ?? null,
               startPlannedAt: p.startPlannedAt ? dayjs(p.startPlannedAt) : null,
@@ -839,7 +1094,8 @@ export default function InstallationProjectDetailPage() {
             });
           }
         }}
-        width={820}
+        width={isMobile ? '96vw' : 820}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
       >
         <Form
@@ -857,7 +1113,13 @@ export default function InstallationProjectDetailPage() {
             }
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: 12,
+            }}
+          >
             <Form.Item
               name="technicianId"
               label="Técnico / Prestador (obrigatório)"
@@ -900,7 +1162,7 @@ export default function InstallationProjectDetailPage() {
               name="coordinatorId"
               label="Coordenador (auto)"
               tooltip="Preenchido automaticamente pelo supervisor"
-              style={{ gridColumn: '1 / -1' }}
+              style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
             >
               <Select
                 disabled
@@ -939,7 +1201,7 @@ export default function InstallationProjectDetailPage() {
             />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="trucksTotal" label="Qtd. veículos (total)" rules={[{ required: true, message: 'Informe' }]}>
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
@@ -956,7 +1218,7 @@ export default function InstallationProjectDetailPage() {
             <Input />
           </Form.Item>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
             <Form.Item name="contactEmail" label="E-mail">
               <Input />
             </Form.Item>
@@ -971,7 +1233,6 @@ export default function InstallationProjectDetailPage() {
         </Form>
       </Modal>
 
-      {/* ===== MODAL WHATSAPP ===== */}
       <Modal
         open={waOpen}
         title="WhatsApp"
@@ -995,6 +1256,9 @@ export default function InstallationProjectDetailPage() {
             });
           }
         }}
+        width={isMobile ? '96vw' : 520}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
+        centered
       >
         <Form form={waForm} layout="vertical">
           <Form.Item name="whatsappGroupName" label="Nome do grupo (opcional)">
@@ -1034,7 +1298,6 @@ export default function InstallationProjectDetailPage() {
         </Form>
       </Modal>
 
-      {/* ===== MODAL ADD ITEM ===== */}
       <Modal
         open={itemOpen}
         title="Adicionar item"
@@ -1051,6 +1314,9 @@ export default function InstallationProjectDetailPage() {
             });
           } catch {}
         }}
+        width={isMobile ? '96vw' : 520}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
+        centered
       >
         <Form form={itemForm} layout="vertical" initialValues={{ qty: 1 }}>
           <Form.Item name="equipmentName" label="Nome do equipamento" rules={[{ required: true, message: 'Informe' }]}>
@@ -1065,7 +1331,6 @@ export default function InstallationProjectDetailPage() {
         </Form>
       </Modal>
 
-      {/* ===== MODAL ADD PROGRESS ===== */}
       <Modal
         open={progressOpen}
         title="Lançar progresso"
@@ -1093,13 +1358,86 @@ export default function InstallationProjectDetailPage() {
               vehicles: [{ plate: '', serial: '' }],
               notes: null,
             });
+            setImportSummary({
+              loading: false,
+              percent: 0,
+              totalRows: 0,
+              validRows: 0,
+              importedCount: 0,
+              duplicatesInFile: [],
+              alreadyPublished: [],
+              invalidRows: 0,
+            });
           }
         }}
+        width={isMobile ? '96vw' : 820}
+        style={isMobile ? { maxWidth: '96vw' } : {}}
+        centered
       >
         <Form form={progressForm} layout="vertical">
           <Form.Item name="date" label="Data" rules={[{ required: true, message: 'Selecione a data' }]}>
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
           </Form.Item>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography.Text strong>Importar via Excel</Typography.Text>
+
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                await importVehiclesFromExcel(file);
+                e.currentTarget.value = '';
+              }}
+            />
+
+            <Button icon={<UploadOutlined />} onClick={() => excelInputRef.current?.click()}>
+              Importar Excel
+            </Button>
+          </div>
+
+          {(importSummary.loading || importSummary.totalRows > 0) && (
+            <Card size="small" styles={{ body: { padding: 12, marginBottom: 12 } }}>
+              <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                <Progress percent={importSummary.percent} status={importSummary.loading ? 'active' : 'normal'} />
+                <Typography.Text type="secondary">
+                  Linhas lidas: {importSummary.totalRows} • Válidas: {importSummary.importedCount} • Inválidas: {importSummary.invalidRows}
+                </Typography.Text>
+
+                {!importSummary.loading && importSummary.alreadyPublished.length > 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message={`${importSummary.alreadyPublished.length} placa(s) já estavam publicadas anteriormente`}
+                    description={importSummary.alreadyPublished.join(', ')}
+                  />
+                )}
+
+                {!importSummary.loading && importSummary.duplicatesInFile.length > 0 && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={`${importSummary.duplicatesInFile.length} placa(s) duplicadas no próprio Excel`}
+                    description={importSummary.duplicatesInFile.join(', ')}
+                  />
+                )}
+              </Space>
+            </Card>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Typography.Text strong>Veículos instalados no dia</Typography.Text>
@@ -1120,64 +1458,77 @@ export default function InstallationProjectDetailPage() {
           >
             {(fields, { add, remove }, { errors }) => (
               <>
-                {fields.map((field, idx) => (
-                  <div
-                    key={field.key}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr auto',
-                      gap: 8,
-                      marginBottom: 8,
-                      alignItems: 'start',
-                    }}
-                  >
-                    <Form.Item
-                      {...field}
-                      label={idx === 0 ? 'Placa' : ''}
-                      name={[field.name, 'plate']}
-                      rules={[
-                        { required: true, message: 'Informe a placa' },
-                        {
-                          validator: async (_, value) => {
-                            if (!value) return;
-                            if (!isValidPlate(value)) throw new Error('Placa inválida (ex: ABC-1234 ou ABC-1E34)');
-                          },
-                        },
-                      ]}
-                    >
-                      <Input
-                        placeholder="Ex: ABC-1234"
-                        maxLength={8}
-                        onChange={(e) => {
-                          const formatted = normalizePlate(e.target.value);
-                          progressForm.setFieldValue(['vehicles', field.name, 'plate'], formatted);
-                        }}
-                      />
-                    </Form.Item>
+                {fields.map((field, idx) => {
+                  const currentPlate = normalizePlate(progressForm.getFieldValue(['vehicles', field.name, 'plate']) || '');
+                  const alreadyExists = currentPlate && existingPublishedPlates.has(currentPlate);
 
-                    <Form.Item
-                      {...field}
-                      label={idx === 0 ? 'Série / Serial' : ''}
-                      name={[field.name, 'serial']}
-                      rules={[
-                        { required: true, message: 'Informe a série' },
-                        { min: 3, message: 'Série muito curta' },
-                        { max: 60, message: 'Série muito longa' },
-                      ]}
+                  return (
+                    <div
+                      key={field.key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                        gap: 8,
+                        marginBottom: 8,
+                        alignItems: 'start',
+                      }}
                     >
-                      <Input placeholder="Ex: 2344343" />
-                    </Form.Item>
+                      <div>
+                        <Form.Item
+                          label={idx === 0 ? 'Placa' : ''}
+                          name={[field.name, 'plate']}
+                          rules={[
+                            { required: true, message: 'Informe a placa' },
+                            {
+                              validator: async (_, value) => {
+                                if (!value) return;
+                                if (!isValidPlate(value)) throw new Error('Placa inválida (ex: ABC-1234 ou ABC-1E34)');
+                              },
+                            },
+                          ]}
+                        >
+                          <Input
+                            placeholder="Ex: ABC-1234"
+                            maxLength={8}
+                            onChange={(e) => {
+                              const formatted = normalizePlate(e.target.value);
+                              progressForm.setFieldValue(['vehicles', field.name, 'plate'], formatted);
+                            }}
+                          />
+                        </Form.Item>
+                        {alreadyExists ? <Tag color="warning">Placa já publicada anteriormente</Tag> : null}
+                      </div>
 
-                    <div style={{ paddingTop: idx === 0 ? 30 : 0 }}>
-                      <Button danger onClick={() => remove(field.name)} disabled={fields.length === 1}>
-                        Remover
-                      </Button>
+                      <Form.Item
+                        label={idx === 0 ? 'Série / Serial' : ''}
+                        name={[field.name, 'serial']}
+                        rules={[
+                          { required: true, message: 'Informe a série' },
+                          { min: 3, message: 'Série muito curta' },
+                          { max: 60, message: 'Série muito longa' },
+                        ]}
+                      >
+                        <Input placeholder="Ex: 112334" />
+                      </Form.Item>
+
+                      <div style={{ paddingTop: isMobile ? 0 : idx === 0 ? 30 : 0 }}>
+                        <Button
+                          danger
+                          onClick={() => remove(field.name)}
+                          disabled={fields.length === 1}
+                          block={isMobile}
+                        >
+                          Remover
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <Form.ErrorList errors={errors} />
-                <Button onClick={() => add({ plate: '', serial: '' })}>+ Adicionar veículo</Button>
+                <Button onClick={() => add({ plate: '', serial: '' })} block={isMobile}>
+                  + Adicionar veículo
+                </Button>
               </>
             )}
           </Form.List>
