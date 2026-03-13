@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import {
+  Avatar,
   Button,
   Card,
   Checkbox,
@@ -23,6 +24,7 @@ import {
   message,
   Spin,
   Switch,
+  Tooltip,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -34,6 +36,7 @@ import {
   EditOutlined,
   HistoryOutlined,
   CheckOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -43,9 +46,27 @@ type SimpleUser = {
   id: number;
   name: string;
   email?: string | null;
+  phone?: string | null;
+  isActive?: boolean;
+  avatarUrl?: string | null;
   role?: { id: number; name: string; level: number };
   roleId?: number;
   roleLevel?: number;
+  manager?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
+  vendorCode?: string | null;
+  serviceAreaCode?: string | null;
+  serviceAreaName?: string | null;
+  addressStreet?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  addressDistrict?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressZip?: string | null;
+  addressCountry?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 type ClientRow = {
@@ -255,11 +276,21 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   BATCH_APPROVAL: 'Aprovação em lote',
 };
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online/api';
+
 function unwrapList<T>(resData: any): T[] {
   if (Array.isArray(resData)) return resData;
   if (resData && Array.isArray(resData.data)) return resData.data;
   return [];
 }
+
+const abs = (url?: string | null) => {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_URL}/${String(url).replace(/^\/+/, '')}`;
+};
+
+const initial = (s?: string | null) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
 
 function requestStatusTag(status: PartRequest['status']) {
   return (
@@ -311,10 +342,12 @@ export default function PartRequestsPage() {
   const [openEditRequest, setOpenEditRequest] = useState(false);
   const [openHistory, setOpenHistory] = useState(false);
   const [openBatchApprove, setOpenBatchApprove] = useState(false);
+  const [openProviderModal, setOpenProviderModal] = useState(false);
 
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
+  const [providerUser, setProviderUser] = useState<SimpleUser | null>(null);
 
   const [approveState, setApproveState] = useState<{
     open: boolean;
@@ -349,7 +382,7 @@ export default function PartRequestsPage() {
   } = useQuery<PartRequest[]>({
     queryKey: ['part-requests', queryParams],
     queryFn: async () => (await api.get('/part-requests', { params: queryParams })).data,
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const {
@@ -621,6 +654,13 @@ export default function PartRequestsPage() {
     []
   );
 
+  const currentProviderId = requestDetails?.providerId || requestDetails?.technicianId || null;
+
+  const currentProviderFromList = useMemo(() => {
+    if (!currentProviderId) return null;
+    return (providersQuery.data || []).find((u) => Number(u.id) === Number(currentProviderId)) || null;
+  }, [currentProviderId, providersQuery.data]);
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div
@@ -651,7 +691,7 @@ export default function PartRequestsPage() {
         </Space>
       </div>
 
-      <Card bodyStyle={{ padding: 12 }}>
+      <Card styles={{ body: { padding: 12 } }}>
         <Form
           form={filterForm}
           layout="vertical"
@@ -699,7 +739,7 @@ export default function PartRequestsPage() {
         </Form>
       </Card>
 
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           rowKey="id"
           columns={requestColumns}
@@ -775,10 +815,7 @@ export default function PartRequestsPage() {
           <Row gutter={[12, 8]}>
             <Col xs={24} md={8}>
               <Form.Item name="originType" label="Origem" style={{ marginBottom: 12 }}>
-                <Select
-                  disabled
-                  options={[{ value: 'INTERNAL', label: 'Interno' }]}
-                />
+                <Select disabled options={[{ value: 'INTERNAL', label: 'Interno' }]} />
               </Form.Item>
             </Col>
 
@@ -971,7 +1008,7 @@ export default function PartRequestsPage() {
                   <Card
                     key={field.key}
                     size="small"
-                    bodyStyle={{ padding: 12 }}
+                    styles={{ body: { padding: 12 } }}
                     title={`Item ${idx + 1}`}
                     extra={
                       fields.length > 1 ? (
@@ -1103,7 +1140,7 @@ export default function PartRequestsPage() {
             </Button>
           </Space>
 
-          <Card bodyStyle={{ padding: 0 }}>
+          <Card styles={{ body: { padding: 0 } }}>
             <Table
               rowKey="id"
               columns={catalogColumns}
@@ -1239,7 +1276,7 @@ export default function PartRequestsPage() {
               </Button>
             </Space>
 
-            <Card size="small" bodyStyle={{ padding: 10 }}>
+            <Card size="small" styles={{ body: { padding: 10 } }}>
               <Descriptions title="Dados gerais" bordered size="small" column={2}>
                 <Descriptions.Item label="Número">{requestDetails.requestNumber}</Descriptions.Item>
                 <Descriptions.Item label="Status">{requestStatusTag(requestDetails.status)}</Descriptions.Item>
@@ -1253,15 +1290,39 @@ export default function PartRequestsPage() {
                 <Descriptions.Item label="Gestor">
                   {requestDetails.manager?.name || requestDetails.managerId || '-'}
                 </Descriptions.Item>
-                <Descriptions.Item label="Prestador / Técnico">
-                  {requestDetails.providerNameSnapshot || requestDetails.technicianNameSnapshot || '-'}
+
+                <Descriptions.Item label="Prestador / Técnico" span={2}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span>
+                      {requestDetails.providerNameSnapshot || requestDetails.technicianNameSnapshot || '-'}
+                    </span>
+
+                    <Button
+                      icon={<EyeOutlined />}
+                      disabled={!currentProviderId}
+                      onClick={() => {
+                        if (!currentProviderId) return;
+                        setProviderUser(currentProviderFromList);
+                        setOpenProviderModal(true);
+                      }}
+                    >
+                      Ver dados do prestador
+                    </Button>
+                  </div>
                 </Descriptions.Item>
+
                 <Descriptions.Item label="Atendimento">
                   {fulfillmentTypeLabel(requestDetails.fulfillmentType)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Número da NF">
-                  {requestDetails.invoiceNumber || '-'}
-                </Descriptions.Item>
+                <Descriptions.Item label="Número da NF">{requestDetails.invoiceNumber || '-'}</Descriptions.Item>
                 <Descriptions.Item label="Expedido">
                   {requestDetails.isExpedited ? <Tag color="green">Sim</Tag> : <Tag>Não</Tag>}
                 </Descriptions.Item>
@@ -1271,25 +1332,39 @@ export default function PartRequestsPage() {
               </Descriptions>
             </Card>
 
-            <Card size="small" title="Itens" bodyStyle={{ padding: 10 }}>
+            <Card size="small" title="Itens" styles={{ body: { padding: 10 } }}>
               <div style={{ display: 'grid', gap: 10 }}>
                 {(requestDetails.items || []).length ? (
                   requestDetails.items!.map((item) => (
-                    <Card key={item.id} size="small" bodyStyle={{ padding: 10 }}>
+                    <Card key={item.id} size="small" styles={{ body: { padding: 10 } }}>
                       <div style={{ display: 'grid', gap: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                           <div>
-                            <Text strong style={{ display: 'block' }}>{item.partName}</Text>
+                            <Text strong style={{ display: 'block' }}>
+                              {item.partName}
+                            </Text>
                             <Text type="secondary">{item.partCode || 'Sem código'}</Text>
                           </div>
                           {itemStatusTag(item.itemStatus)}
                         </div>
 
                         <Row gutter={[8, 8]}>
-                          <Col xs={12} md={6}><Text type="secondary">Solicitada</Text><div>{item.requestedQty}</div></Col>
-                          <Col xs={12} md={6}><Text type="secondary">Aprovada</Text><div>{item.approvedQty}</div></Col>
-                          <Col xs={12} md={6}><Text type="secondary">Entregue</Text><div>{item.deliveredQty}</div></Col>
-                          <Col xs={12} md={6}><Text type="secondary">Pendente</Text><div>{item.pendingQty}</div></Col>
+                          <Col xs={12} md={6}>
+                            <Text type="secondary">Solicitada</Text>
+                            <div>{item.requestedQty}</div>
+                          </Col>
+                          <Col xs={12} md={6}>
+                            <Text type="secondary">Aprovada</Text>
+                            <div>{item.approvedQty}</div>
+                          </Col>
+                          <Col xs={12} md={6}>
+                            <Text type="secondary">Entregue</Text>
+                            <div>{item.deliveredQty}</div>
+                          </Col>
+                          <Col xs={12} md={6}>
+                            <Text type="secondary">Pendente</Text>
+                            <div>{item.pendingQty}</div>
+                          </Col>
                         </Row>
 
                         <Space wrap>
@@ -1349,16 +1424,14 @@ export default function PartRequestsPage() {
         <div style={{ display: 'grid', gap: 8 }}>
           {(requestDetails?.history || []).length ? (
             requestDetails!.history!.map((h) => (
-              <Card key={h.id} size="small" bodyStyle={{ padding: 10 }}>
+              <Card key={h.id} size="small" styles={{ body: { padding: 10 } }}>
                 <Space direction="vertical" size={2}>
                   <Text strong>{historyActionLabel(h.actionType)}</Text>
                   <Text type="secondary">
                     {h.performedByName || '-'}
                     {h.performedByProfile ? ` • ${h.performedByProfile}` : ''}
                   </Text>
-                  <Text type="secondary">
-                    {new Date(h.createdAt).toLocaleString('pt-BR')}
-                  </Text>
+                  <Text type="secondary">{new Date(h.createdAt).toLocaleString('pt-BR')}</Text>
                   {h.comments ? <Text>{h.comments}</Text> : null}
                 </Space>
               </Card>
@@ -1400,7 +1473,7 @@ export default function PartRequestsPage() {
             if (!item) return null;
 
             return (
-              <Card key={row.itemId} size="small" bodyStyle={{ padding: 12 }}>
+              <Card key={row.itemId} size="small" styles={{ body: { padding: 12 } }}>
                 <div style={{ display: 'grid', gap: 10 }}>
                   <Checkbox
                     checked={row.selected}
@@ -1435,9 +1508,7 @@ export default function PartRequestsPage() {
                         onChange={(value) => {
                           setBatchRows((prev) =>
                             prev.map((r) =>
-                              r.itemId === row.itemId
-                                ? { ...r, approvedQty: Number(value || 0) }
-                                : r
+                              r.itemId === row.itemId ? { ...r, approvedQty: Number(value || 0) } : r
                             )
                           );
                         }}
@@ -1573,7 +1644,12 @@ export default function PartRequestsPage() {
         destroyOnClose
       >
         <Form form={approveForm} layout="vertical">
-          <Form.Item name="approvedQty" label="Quantidade aprovada" rules={[{ required: true }]} style={{ marginBottom: 12 }}>
+          <Form.Item
+            name="approvedQty"
+            label="Quantidade aprovada"
+            rules={[{ required: true }]}
+            style={{ marginBottom: 12 }}
+          >
             <InputNumber style={{ width: '100%' }} min={0} max={approveState.item?.requestedQty || 0} />
           </Form.Item>
 
@@ -1628,6 +1704,136 @@ export default function PartRequestsPage() {
             <TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar src={abs(providerUser?.avatarUrl)} size={48}>
+              {initial(providerUser?.name)}
+            </Avatar>
+            <div>
+              <div style={{ fontWeight: 600 }}>{providerUser?.name || 'Prestador'}</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>{providerUser?.role?.name || '-'}</div>
+            </div>
+          </div>
+        }
+        open={openProviderModal}
+        onCancel={() => {
+          setOpenProviderModal(false);
+          setProviderUser(null);
+        }}
+        footer={
+          <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
+            <Tooltip
+              title={
+                providerUser?.lat != null && providerUser?.lng != null ? 'Ver no mapa' : 'Sem coordenadas'
+              }
+            >
+              <Button
+                icon={<EnvironmentOutlined />}
+                disabled={!(providerUser?.lat != null && providerUser?.lng != null)}
+                onClick={() => {
+                  if (!(providerUser?.lat != null && providerUser?.lng != null)) return;
+                  const url = `https://www.google.com/maps?q=${providerUser.lat},${providerUser.lng}`;
+                  window.open(url, '_blank');
+                }}
+              >
+                Ver no mapa
+              </Button>
+            </Tooltip>
+
+            <Button
+              onClick={() => {
+                setOpenProviderModal(false);
+                setProviderUser(null);
+              }}
+            >
+              Fechar
+            </Button>
+          </Space>
+        }
+        destroyOnClose
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+      >
+        {providersQuery.isLoading ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin />
+          </div>
+        ) : providerUser ? (
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={8}>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Card size="small" title="Profissional">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Cargo">{providerUser.role?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Gestor">{providerUser.manager?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Local">{providerUser.location?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Status">
+                      {providerUser.isActive ? 'Ativo' : 'Inativo'}
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+
+                <Card size="small" title="Contato">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="E-mail">{providerUser.email || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Telefone">{providerUser.phone || '—'}</Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              </Space>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Card size="small" title="Área de atendimento">
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="Código fornecedor">{providerUser.vendorCode || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Código da área">{providerUser.serviceAreaCode || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Nome da área">{providerUser.serviceAreaName || '—'}</Descriptions.Item>
+                </Descriptions>
+              </Card>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Card size="small" title="Endereço">
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="Logradouro">
+                    {providerUser.addressStreet || '—'} {providerUser.addressNumber || ''}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Complemento">{providerUser.addressComplement || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Bairro">{providerUser.addressDistrict || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Cidade/UF">
+                    {providerUser.addressCity || '—'}
+                    {providerUser.addressState ? ` / ${providerUser.addressState}` : ''}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="CEP">{providerUser.addressZip || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="País">{providerUser.addressCountry || '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Coordenadas">
+                    {providerUser.lat != null && providerUser.lng != null ? (
+                      <Tag
+                        color="green"
+                        style={{
+                          maxWidth: '100%',
+                          display: 'inline-block',
+                          whiteSpace: 'normal',
+                          overflowWrap: 'anywhere',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {providerUser.lat}, {providerUser.lng}
+                      </Tag>
+                    ) : (
+                      <Tag>Sem coordenadas</Tag>
+                    )}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            </Col>
+          </Row>
+        ) : (
+          <Text type="secondary">Prestador não encontrado.</Text>
+        )}
       </Modal>
     </div>
   );
