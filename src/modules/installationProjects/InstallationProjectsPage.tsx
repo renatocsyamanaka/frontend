@@ -20,7 +20,10 @@ import {
   Grid,
   Pagination,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../../lib/api';
 
@@ -38,6 +41,75 @@ type UserLite = {
 };
 
 type Option = { id: number; name: string };
+
+type InstallationProject = {
+  id: number;
+  title: string;
+  af?: string | null;
+  status: Status;
+
+  clientId: number | null;
+  client?: { id: number; name: string } | null;
+
+  technicianId?: number | null;
+  technicianIds?: number[];
+  technician?: { id: number; name: string } | null;
+  techniciansList?: { id: number; name: string }[];
+  technicianNames?: string[];
+
+  supervisorId: number;
+  supervisor?: { id: number; name: string } | null;
+
+  coordinatorId?: number | null;
+  coordinator?: { id: number; name: string } | null;
+
+  startPlannedAt: string;
+  endPlannedAt?: string | null;
+
+  trucksTotal: number;
+  trucksDone: number;
+
+  equipmentsPerDay: number;
+  daysEstimated?: number | null;
+
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactEmails?: string[];
+  contactPhone?: string | null;
+  notes?: string | null;
+};
+
+type CreateDTO = {
+  title: string;
+  clientId: number | null;
+
+  technicianIds: number[];
+  technicianId?: number | null;
+  supervisorId: number;
+
+  startPlannedAt: string;
+  equipmentsPerDay: number;
+  trucksTotal: number;
+
+  af?: string | null;
+
+  contactName?: string | null;
+  contactEmails: string[];
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+
+  notes?: string | null;
+};
+
+type ResizableTitleProps = React.HTMLAttributes<HTMLTableCellElement> & {
+  onResize?: (e: React.SyntheticEvent<Element>, data: { size: { width: number; height: number } }) => void;
+  width?: number;
+};
+
+type ColumnResizeItem = {
+  key: string;
+  width: number;
+};
 
 function unwrap<T>(resData: any): T {
   return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
@@ -72,53 +144,31 @@ function isTechnicianOrPSO(u: UserLite) {
   return false;
 }
 
-type InstallationProject = {
-  id: number;
-  title: string;
-  af?: string | null;
-  status: Status;
+function normalizeEmailList(input: unknown): string[] {
+  let arr: unknown[] = [];
 
-  clientId: number | null;
-  client?: { id: number; name: string } | null;
+  if (!input) return [];
 
-  technicianId?: number | null;
-  technician?: { id: number; name: string } | null;
+  if (Array.isArray(input)) {
+    arr = input;
+  } else if (typeof input === 'string') {
+    arr = input.split(/[;,]/);
+  } else {
+    arr = [input];
+  }
 
-  supervisorId: number;
-  supervisor?: { id: number; name: string } | null;
+  return [
+    ...new Set(
+      arr
+        .map((item) => String(item || '').trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
 
-  coordinatorId?: number | null;
-  coordinator?: { id: number; name: string } | null;
-
-  startPlannedAt: string;
-  endPlannedAt?: string | null;
-
-  trucksTotal: number;
-  trucksDone: number;
-
-  equipmentsPerDay: number;
-  daysEstimated?: number | null;
-};
-
-type CreateDTO = {
-  title: string;
-  clientId: number | null;
-
-  technicianId: number;
-  supervisorId: number;
-
-  startPlannedAt: string;
-  equipmentsPerDay: number;
-  trucksTotal: number;
-
-  af?: string | null;
-
-  contactName?: string | null;
-  contactEmail: string;
-  contactPhone?: string | null;
-
-  notes?: string | null;
-};
+function isValidEmail(email?: string | null) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
 
 function statusTag(s: Status) {
   if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
@@ -126,12 +176,33 @@ function statusTag(s: Status) {
   return <Tag color="green">Finalizado</Tag>;
 }
 
+const ResizableTitle = (props: ResizableTitleProps) => {
+  const { onResize, width, ...restProps } = props;
+
+  if (!width) {
+    return <th {...restProps} />;
+  }
+
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      handle={<span className="react-resizable-handle" onClick={(e) => e.stopPropagation()} />}
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} />
+    </Resizable>
+  );
+};
+
 export default function InstallationProjectsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status | 'TODOS'>('TODOS');
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const screens = Grid.useBreakpoint();
@@ -140,14 +211,41 @@ export default function InstallationProjectsPage() {
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
 
-  // ✅ paginação para mobile (cards)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const [columnSizes, setColumnSizes] = useState<ColumnResizeItem[]>([
+    { key: 'title', width: 190 },
+    { key: 'af', width: 120 },
+    { key: 'client', width: 220 },
+    { key: 'technician', width: 220 },
+    { key: 'coordinator', width: 170 },
+    { key: 'trucks', width: 110 },
+    { key: 'start', width: 110 },
+    { key: 'end', width: 110 },
+    { key: 'status', width: 110 },
+  ]);
+
   const onChangeStatus = (v: any) => {
     setStatus(v);
-    setPage(1); // ✅ sempre volta pra primeira página ao filtrar
+    setPage(1);
   };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
+
+  const getColumnWidth = (key: string, fallback: number) =>
+    columnSizes.find((c) => c.key === key)?.width ?? fallback;
+
+  const handleResize =
+    (key: string) =>
+    (_: React.SyntheticEvent<Element>, { size }: { size: { width: number; height: number } }) => {
+      setColumnSizes((prev) =>
+        prev.map((col) => (col.key === key ? { ...col, width: Math.max(size.width, 80) } : col))
+      );
+    };
 
   const clientsQuery = useQuery<Client[]>({
     queryKey: ['clients'],
@@ -191,7 +289,8 @@ export default function InstallationProjectsPage() {
     queryFn: async () => {
       const params: any = {};
       if (status !== 'TODOS') params.status = status;
-      return (await api.get('/installation-projects', { params })).data;
+      const res = await api.get('/installation-projects', { params });
+      return unwrap<InstallationProject[]>(res.data);
     },
     retry: false,
     refetchOnWindowFocus: false,
@@ -213,14 +312,38 @@ export default function InstallationProjectsPage() {
 
   const rows = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
 
-  // ✅ paginação frontend só para mobile cards
-  const total = rows.length;
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((r) => {
+      const technicianText = r.technicianNames?.length
+        ? r.technicianNames.join(' ')
+        : r.techniciansList?.length
+          ? r.techniciansList.map((t) => t.name).join(' ')
+          : r.technician?.name || '';
+
+      const haystack = [
+        r.title,
+        r.af,
+        r.client?.name,
+        technicianText,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [rows, search]);
+
+  const total = filteredRows.length;
 
   const pagedRows = useMemo(() => {
-    if (!isMobile) return rows;
+    if (!isMobile) return filteredRows;
     const start = (page - 1) * pageSize;
-    return rows.slice(start, start + pageSize);
-  }, [rows, isMobile, page, pageSize]);
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, isMobile, page, pageSize]);
 
   const endPreview = (() => {
     const trucksTotal = Number(form.getFieldValue('trucksTotal') ?? 0);
@@ -240,12 +363,91 @@ export default function InstallationProjectsPage() {
     maxWidth: '100%',
   });
 
-  // ✅ evita overflow em textos longos no mobile
   const line = { fontSize: 12, margin: 0, overflowWrap: 'anywhere' as const };
+
+  const desktopColumns: ColumnsType<InstallationProject> = [
+    {
+      title: 'Projeto',
+      dataIndex: 'title',
+      key: 'title',
+      width: getColumnWidth('title', 190),
+      ellipsis: true,
+      render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
+    },
+    {
+      title: 'AF',
+      dataIndex: 'af',
+      key: 'af',
+      width: getColumnWidth('af', 120),
+      ellipsis: true,
+      render: (v) => v || '-',
+    },
+    {
+      title: 'Cliente',
+      key: 'client',
+      width: getColumnWidth('client', 220),
+      ellipsis: true,
+      render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'),
+    },
+    {
+      title: 'Técnico / Prestador',
+      key: 'technician',
+      width: getColumnWidth('technician', 220),
+      ellipsis: true,
+      render: (_, r) => {
+        if (r.technicianNames?.length) return r.technicianNames.join(', ');
+        if (r.techniciansList?.length) return r.techniciansList.map((t) => t.name).join(', ');
+        return r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
+      },
+    },
+    {
+      title: 'Coordenador',
+      key: 'coordinator',
+      width: getColumnWidth('coordinator', 170),
+      ellipsis: true,
+      render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'),
+    },
+    {
+      title: 'Caminhões',
+      key: 'trucks',
+      width: getColumnWidth('trucks', 110),
+      align: 'center',
+      render: (_, r) => `${r.trucksDone}/${r.trucksTotal}`,
+    },
+    {
+      title: 'Início',
+      key: 'start',
+      width: getColumnWidth('start', 110),
+      align: 'center',
+      render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
+    },
+    {
+      title: 'Fim',
+      key: 'end',
+      width: getColumnWidth('end', 110),
+      align: 'center',
+      render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: getColumnWidth('status', 110),
+      align: 'center',
+      render: (s: Status) => statusTag(s),
+    },
+  ];
+
+  const mergedColumns = desktopColumns.map((col) => ({
+    ...col,
+    onHeaderCell: () => ({
+      width: typeof col.width === 'number' ? col.width : undefined,
+      onResize: handleResize(String(col.key)),
+    }),
+  }));
 
   return (
     <div style={{ display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' }}>
-      {/* Header responsivo */}
       <div
         style={{
           display: 'flex',
@@ -260,7 +462,13 @@ export default function InstallationProjectsPage() {
           Projetos de Instalação
         </Typography.Title>
 
-        <Space wrap style={{ width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'flex-end' : 'initial' }}>
+        <Space
+          wrap
+          style={{
+            width: isMobile ? '100%' : 'auto',
+            justifyContent: isMobile ? 'flex-end' : 'initial',
+          }}
+        >
           <Button icon={<ReloadOutlined />} onClick={() => projectsQuery.refetch()} block={isMobile}>
             Atualizar
           </Button>
@@ -301,7 +509,16 @@ export default function InstallationProjectsPage() {
         }
         bodyStyle={{ padding: isMobile ? 12 : 24, maxWidth: '100%' }}
       >
-        {/* ✅ MOBILE: cards + paginação */}
+        <div style={{ marginBottom: 16 }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Pesquisar por nome do projeto, AF, cliente ou técnico"
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+          />
+        </div>
+
         {isMobile ? (
           <div style={{ display: 'grid', gap: 12, maxWidth: '100%' }}>
             {projectsQuery.isLoading ? (
@@ -310,56 +527,65 @@ export default function InstallationProjectsPage() {
               </div>
             ) : total ? (
               <>
-                {pagedRows.map((r) => (
-                  <Card key={r.id} size="small" style={{ borderRadius: 12, maxWidth: '100%' }} bodyStyle={{ padding: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <Typography.Text strong style={{ fontSize: 14 }}>
-                          <Link to={`/installation-projects/${r.id}`}>{r.title}</Link>
-                        </Typography.Text>
+                {pagedRows.map((r) => {
+                  const technicianLabel = r.technicianNames?.length
+                    ? r.technicianNames.join(', ')
+                    : r.techniciansList?.length
+                      ? r.techniciansList.map((t) => t.name).join(', ')
+                      : r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
 
-                        <div style={{ marginTop: 6 }}>
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            AF: {r.af || '-'}
+                  return (
+                    <Card
+                      key={r.id}
+                      size="small"
+                      style={{ borderRadius: 12, maxWidth: '100%' }}
+                      bodyStyle={{ padding: 12 }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <Typography.Text strong style={{ fontSize: 14 }}>
+                            <Link to={`/installation-projects/${r.id}`}>{r.title}</Link>
                           </Typography.Text>
+
+                          <div style={{ marginTop: 6 }}>
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                              AF: {r.af || '-'}
+                            </Typography.Text>
+                          </div>
                         </div>
+
+                        <div style={{ flexShrink: 0 }}>{statusTag(r.status)}</div>
                       </div>
 
-                      <div style={{ flexShrink: 0 }}>{statusTag(r.status)}</div>
-                    </div>
+                      <div style={{ marginTop: 10, display: 'grid', gap: 6, maxWidth: '100%' }}>
+                        <p style={line}>
+                          <b>Cliente:</b> {r.client?.name || (r.clientId ? `#${r.clientId}` : '-')}
+                        </p>
+                        <p style={line}>
+                          <b>Técnico:</b> {technicianLabel}
+                        </p>
+                        <p style={line}>
+                          <b>Coordenador:</b> {r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-')}
+                        </p>
+                        <p style={line}>
+                          <b>Caminhões:</b> {r.trucksDone}/{r.trucksTotal}
+                        </p>
+                        <p style={line}>
+                          <b>Início:</b> {r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'}
+                          {'  '}•{'  '}
+                          <b>Fim:</b> {r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'}
+                        </p>
+                      </div>
 
-                    <div style={{ marginTop: 10, display: 'grid', gap: 6, maxWidth: '100%' }}>
-                      <p style={line}>
-                        <b>Cliente:</b> {r.client?.name || (r.clientId ? `#${r.clientId}` : '-')}
-                      </p>
-                      <p style={line}>
-                        <b>Técnico:</b> {r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-')}
-                      </p>
-                      <p style={line}>
-                        <b>Supervisor:</b> {r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-')}
-                      </p>
-                      <p style={line}>
-                        <b>Coordenador:</b> {r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-')}
-                      </p>
-                      <p style={line}>
-                        <b>Caminhões:</b> {r.trucksDone}/{r.trucksTotal}
-                      </p>
-                      <p style={line}>
-                        <b>Início:</b> {r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'}
-                        {'  '}•{'  '}
-                        <b>Fim:</b> {r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'}
-                      </p>
-                    </div>
+                      <div style={{ marginTop: 12 }}>
+                        <Button block type="primary" onClick={() => navigate(`/installation-projects/${r.id}`)}>
+                          Abrir projeto
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
 
-                    <div style={{ marginTop: 12 }}>
-                      <Button block type="primary" onClick={() => navigate(`/installation-projects/${r.id}`)}>
-                        Abrir projeto
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-
-                {/* ✅ paginação no mobile */}
                 {total > pageSize && (
                   <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
                     <Pagination
@@ -382,36 +608,20 @@ export default function InstallationProjectsPage() {
             )}
           </div>
         ) : (
-          /* ✅ DESKTOP: Table normal */
           <Table
             rowKey="id"
             loading={projectsQuery.isLoading}
-            dataSource={rows}
+            dataSource={filteredRows}
             pagination={{ pageSize: 10 }}
             size="middle"
-            columns={[
-              {
-                title: 'Projeto',
-                dataIndex: 'title',
-                render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
-                ellipsis: true,
+            tableLayout="fixed"
+            scroll={{ x: mergedColumns.reduce((acc, col) => acc + Number(col.width || 0), 0) }}
+            components={{
+              header: {
+                cell: ResizableTitle,
               },
-              { title: 'AF', dataIndex: 'af', render: (v) => v || '-', ellipsis: true },
-              { title: 'Cliente', render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'), ellipsis: true },
-              { title: 'Técnico', render: (_, r) => r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-'), ellipsis: true },
-              { title: 'Supervisor', render: (_, r) => r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-'), ellipsis: true },
-              { title: 'Coordenador', render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'), ellipsis: true },
-              { title: 'Caminhões', render: (_, r) => `${r.trucksDone}/${r.trucksTotal}` },
-              {
-                title: 'Início (prev.)',
-                render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
-              },
-              {
-                title: 'Fim (prev.)',
-                render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
-              },
-              { title: 'Status', dataIndex: 'status', render: (s: Status) => statusTag(s) },
-            ]}
+            }}
+            columns={mergedColumns as any}
           />
         )}
       </Card>
@@ -437,10 +647,10 @@ export default function InstallationProjectsPage() {
               clientId: null,
               af: null,
               contactName: null,
-              contactEmail: null,
+              contactEmails: [],
               contactPhone: null,
               notes: null,
-              technicianId: null,
+              technicianIds: [],
               supervisorId: null,
             });
           }
@@ -449,20 +659,25 @@ export default function InstallationProjectsPage() {
           try {
             const v = await form.validateFields();
 
+            const technicianIds = Array.isArray(v.technicianIds)
+              ? [...new Set(v.technicianIds.map((n: any) => Number(n)).filter(Boolean))]
+              : [];
+
+            const contactEmails = normalizeEmailList(v.contactEmails);
+
             const payload: CreateDTO = {
               title: v.title,
               af: v.af ?? null,
               clientId: v.clientId ?? null,
-
-              technicianId: Number(v.technicianId),
+              technicianIds,
+              technicianId: technicianIds[0] ?? null,
               supervisorId: Number(v.supervisorId),
-
               trucksTotal: Number(v.trucksTotal),
               equipmentsPerDay: Number(v.equipmentsPerDay),
               startPlannedAt: (v.startPlannedAt as Dayjs).format('YYYY-MM-DD'),
-
               contactName: v.contactName ?? null,
-              contactEmail: v.contactEmail,
+              contactEmails,
+              contactEmail: contactEmails[0] ?? null,
               contactPhone: v.contactPhone ?? null,
               notes: v.notes ?? null,
             };
@@ -475,12 +690,22 @@ export default function InstallationProjectsPage() {
           <div style={gridStyle('1fr 1fr')}>
             <Form.Item
               label="Técnico / Prestador (obrigatório)"
-              name="technicianId"
-              rules={[{ required: true, message: 'Selecione um técnico/prestador' }]}
+              name="technicianIds"
+              rules={[
+                { required: true, message: 'Selecione pelo menos um técnico/prestador' },
+                {
+                  validator: async (_, value) => {
+                    if (!Array.isArray(value) || !value.length) {
+                      throw new Error('Selecione pelo menos um técnico/prestador');
+                    }
+                  },
+                },
+              ]}
             >
               <Select
+                mode="multiple"
                 showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
                 filterOption={false}
                 onSearch={(v) => setTechSearch(v)}
                 onDropdownVisibleChange={(isOpen) => {
@@ -585,14 +810,29 @@ export default function InstallationProjectsPage() {
 
           <div style={gridStyle('1.4fr 1fr')}>
             <Form.Item
-              label="E-mail (obrigatório)"
-              name="contactEmail"
+              label="E-mails (obrigatório)"
+              name="contactEmails"
               rules={[
-                { required: true, message: 'Informe o e-mail do cliente' },
-                { type: 'email', message: 'E-mail inválido' },
+                { required: true, message: 'Informe pelo menos um e-mail' },
+                {
+                  validator: async (_, value) => {
+                    const emails = normalizeEmailList(value);
+                    if (!emails.length) {
+                      throw new Error('Informe pelo menos um e-mail');
+                    }
+                    const invalid = emails.find((email) => !isValidEmail(email));
+                    if (invalid) {
+                      throw new Error(`E-mail inválido: ${invalid}`);
+                    }
+                  },
+                },
               ]}
             >
-              <Input placeholder="email@cliente.com" />
+              <Select
+                mode="tags"
+                tokenSeparators={[',', ';', ' ']}
+                placeholder="Digite um ou mais e-mails"
+              />
             </Form.Item>
 
             <Form.Item label="Telefone (opcional)" name="contactPhone">

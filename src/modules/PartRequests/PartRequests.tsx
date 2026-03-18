@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
+import { api, API_URL } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import {
   Avatar,
@@ -276,7 +276,6 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   BATCH_APPROVAL: 'Aprovação em lote',
 };
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online/api';
 
 function unwrapList<T>(resData: any): T[] {
   if (Array.isArray(resData)) return resData;

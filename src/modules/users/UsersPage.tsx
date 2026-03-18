@@ -23,6 +23,9 @@ import {
   Row,
   Col,
   Grid,
+  Popconfirm,
+  Empty,
+  Divider,
 } from 'antd';
 import {
   EditOutlined,
@@ -33,6 +36,9 @@ import {
   SearchOutlined,
   EyeOutlined,
   ApartmentOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
@@ -44,7 +50,14 @@ const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
 /** ===== Helpers globais (ABS URL) ===== */
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online/api';
+const RAW_API_URL = import.meta.env.VITE_API_URL?.trim();
+
+if (!RAW_API_URL) {
+  throw new Error('VITE_API_URL não definida no arquivo .env');
+}
+
+const API_URL = RAW_API_URL.replace(/\/+$/, '');
+
 const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
@@ -71,10 +84,69 @@ const normalizeRoleName = (s?: string | null) =>
     .toLowerCase();
 
 const TIPO_ATENDIMENTO_OPTIONS = [
-  { value: 'FX', label: 'FX - Fixo' },
-  { value: 'VL', label: 'VL - Volante' },
-  { value: 'FV', label: 'FV - Fixo e Volante' },
+  { value: 'FX', label: 'Fixo' },
+  { value: 'VL', label: 'Volante' },
+  { value: 'FV', label: 'Fixo e Volante' },
 ];
+
+const SECTOR_OPTIONS = [
+  { value: 'OPERACOES', label: 'Operações' },
+  { value: 'LOGISTICA', label: 'Logística' },
+  { value: 'SISTEMAS', label: 'Sistemas' },
+  { value: 'ATENDIMENTO', label: 'Atendimento' },
+];
+
+const DEFAULT_SECTORS = ['OPERACOES'];
+
+const sectorLabelMap = SECTOR_OPTIONS.reduce<Record<string, string>>((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
+
+const getSectorLabel = (sector?: string | null) =>
+  sector ? sectorLabelMap[sector] || sector : '';
+
+const PERMISSION_OPTIONS = [
+  { value: 'DASHBOARD_VIEW', label: 'Dashboard' },
+  { value: 'INSTALLATION_PROJECTS_VIEW', label: 'Projetos de Instalação' },
+  { value: 'PART_REQUESTS_VIEW', label: 'Pedido de Peças' },
+  { value: 'MY_PART_REQUESTS_VIEW', label: 'Meus Pedidos de Peças' },
+  { value: 'TECHS_MAP_VIEW', label: 'Mapa Técnicos' },
+  { value: 'USERS_VIEW', label: 'Colaboradores' },
+  { value: 'ORG_VIEW', label: 'Organograma' },
+  { value: 'LOCATIONS_VIEW', label: 'Localidades' },
+  { value: 'CLIENTS_VIEW', label: 'Clientes' },
+  { value: 'TASKS_VIEW', label: 'Demandas' },
+  { value: 'TECH_TYPES_VIEW', label: 'Tipos de Técnicos' },
+  { value: 'NEEDS_VIEW', label: 'Requisições' },
+  { value: 'NEEDS_MAP_VIEW', label: 'Mapa de Requisições' },
+  { value: 'ASSIGNMENTS_VIEW', label: 'Agenda' },
+  { value: 'OVERTIME_VIEW', label: 'Banco de Horas' },
+  { value: 'TIMEOFF_VIEW', label: 'Folgas / Time Off' },
+  { value: 'NEWS_VIEW', label: 'Notícias' },
+  { value: 'NEWS_ADMIN_VIEW', label: 'Notícias Admin' },
+];
+
+const DEFAULT_PERMISSIONS = ['DASHBOARD_VIEW', 'ASSIGNMENTS_VIEW'];
+
+const permissionLabelMap = PERMISSION_OPTIONS.reduce<Record<string, string>>((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
+
+const getPermissionLabel = (permission?: string | null) =>
+  permission ? permissionLabelMap[permission] || permission : '';
+
+const getTipoAtendimentoLabel = (
+  value?: 'FX' | 'VL' | 'FV' | null,
+  descricao?: string | null
+) => {
+  if (descricao?.trim()) return descricao;
+  if (value === 'FX') return 'Fixo';
+  if (value === 'VL') return 'Volante';
+  if (value === 'FV') return 'Fixo e Volante';
+  return '';
+};
 
 type Role = { id: number; name: string; level: number };
 type SimpleUser = { id: number; name: string };
@@ -110,6 +182,31 @@ type User = {
   serviceAreaName?: string | null;
   tipoAtendimento?: 'FX' | 'VL' | 'FV' | null;
   tipoAtendimentoDescricao?: string | null;
+
+  permissions?: string[] | null;
+  sectors?: string[] | null;
+};
+
+type RegistrationRequest = {
+  id: number;
+  fullName: string;
+  email: string;
+  sex?: 'M' | 'F' | 'O' | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewNotes?: string | null;
+  createdAt?: string;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  role?: Role | null;
+  manager?: SimpleUser | null;
+  approvedBy?: SimpleUser | null;
+  rejectedBy?: SimpleUser | null;
+  roleId?: number;
+  managerId?: number | null;
+  permissions?: string[] | null;
+  sectors?: string[] | null;
 };
 
 const BASE_ROLE_OPTIONS = [
@@ -186,6 +283,13 @@ function OrgMiniCard({ person }: { person: any }) {
   );
 }
 
+const requestStatusTag = (status?: string) => {
+  if (status === 'PENDING') return <Tag color="gold">Pendente</Tag>;
+  if (status === 'APPROVED') return <Tag color="green">Aprovada</Tag>;
+  if (status === 'REJECTED') return <Tag color="red">Reprovada</Tag>;
+  return <Tag>{status || '—'}</Tag>;
+};
+
 export function UsersPage() {
   const qc = useQueryClient();
   const screens = useBreakpoint();
@@ -196,6 +300,7 @@ export function UsersPage() {
   const canCreateWorker = myLevel >= 2;
   const canCreateAnyUser = myLevel >= 5;
   const canEditAnyUser = myLevel >= 5;
+  const canReviewRegistrationRequests = myLevel >= 3;
 
   const isWorkerRoleName = (roleName?: string | null) => {
     const r = normalizeRoleName(roleName);
@@ -223,7 +328,6 @@ export function UsersPage() {
   const [fRoles, setFRoles] = useState<number[] | undefined>(undefined);
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [fManagerId, setFManagerId] = useState<number | undefined>(undefined);
-  const [fLocationId, setFLocationId] = useState<number | undefined>(undefined);
 
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -288,10 +392,9 @@ export function UsersPage() {
       if (fActive === 'ACTIVE' && !u.isActive) return false;
       if (fActive === 'INACTIVE' && u.isActive) return false;
       if (fManagerId && u.manager?.id !== fManagerId) return false;
-      if (fLocationId && u.location?.id !== fLocationId) return false;
       return true;
     });
-  }, [data, fSearch, fRoles, fActive, fManagerId, fLocationId]);
+  }, [data, fSearch, fRoles, fActive, fManagerId]);
 
   const [workerOpen, setWorkerOpen] = useState(false);
   const [workerForm] = Form.useForm();
@@ -378,43 +481,6 @@ export function UsersPage() {
   const editRoleId = Form.useWatch('roleId', editForm);
   const editSelectedIsWorker = isWorkerRoleId(editRoleId) || editing?.loginEnabled === false;
 
-const updateUser = useMutation({
-  mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
-    (await api.patch(`/users/${id}`, payload)).data,
-  onSuccess: async (u: User) => {
-    if (editAvatarFile) {
-      const fd = new FormData();
-      fd.append('file', editAvatarFile);
-      await api.post(`/users/${u.id}/avatar`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setEditAvatarFile(null);
-    }
-
-    // atualiza cache local da lista imediatamente
-    qc.setQueryData<User[]>(['users'], (old) =>
-      (old || []).map((item) => (item.id === u.id ? { ...item, ...u } : item))
-    );
-
-    // atualiza modal de visualização, se estiver aberto para o mesmo usuário
-    setViewUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
-
-    // atualiza edição local
-    setEditing((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
-
-    // atualiza dados de endereço local
-    setAddrUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
-
-    message.success('Usuário atualizado');
-
-    await qc.invalidateQueries({ queryKey: ['users'] });
-
-    setEditOpen(false);
-    setEditing(null);
-  },
-  onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao atualizar'),
-});
-
   const [addrOpen, setAddrOpen] = useState(false);
   const [addrUser, setAddrUser] = useState<User | null>(null);
 
@@ -484,16 +550,155 @@ const updateUser = useMutation({
       sex: u.sex || null,
       roleId: u.role?.id,
       managerId: u.manager?.id,
-      locationId: u.location?.id,
       isActive: u.isActive,
       phone: u.phone || '',
       vendorCode: u.vendorCode || '',
       serviceAreaCode: u.serviceAreaCode || '',
       serviceAreaName: u.serviceAreaName || '',
       tipoAtendimento: u.tipoAtendimento || undefined,
+      estoqueAvancado: !!u.estoqueAvancado,
+      permissions: Array.isArray(u.permissions) && u.permissions.length ? u.permissions : DEFAULT_PERMISSIONS,
+      sectors: Array.isArray(u.sectors) && u.sectors.length ? u.sectors : DEFAULT_SECTORS,
     });
 
     setEditOpen(true);
+  };
+
+  const updateUser = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
+      (await api.patch(`/users/${id}`, payload)).data,
+    onSuccess: async (u: User) => {
+      if (editAvatarFile) {
+        const fd = new FormData();
+        fd.append('file', editAvatarFile);
+        await api.post(`/users/${u.id}/avatar`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        setEditAvatarFile(null);
+      }
+
+      qc.setQueryData<User[]>(['users'], (old) =>
+        (old || []).map((item) => (item.id === u.id ? { ...item, ...u } : item))
+      );
+
+      setViewUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+      setEditing((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+      setAddrUser((prev) => (prev && prev.id === u.id ? { ...prev, ...u } : prev));
+
+      message.success('Usuário atualizado');
+
+      await qc.invalidateQueries({ queryKey: ['users'] });
+
+      setEditOpen(false);
+      setEditing(null);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.error || 'Erro ao atualizar'),
+  });
+
+  /** =========================
+   * SOLICITAÇÕES DE CADASTRO
+   * ========================= */
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [requestSearch, setRequestSearch] = useState('');
+  const [requestStatusFilter, setRequestStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+
+  const [editApproveOpen, setEditApproveOpen] = useState(false);
+  const [editApproveForm] = Form.useForm();
+  const [editingRequest, setEditingRequest] = useState<RegistrationRequest | null>(null);
+  const editApprovePhone = Form.useWatch('phone', editApproveForm);
+
+  const {
+    data: registrationRequests,
+    isLoading: requestsLoading,
+    isFetching: requestsFetching,
+    refetch: refetchRequests,
+  } = useQuery<RegistrationRequest[]>({
+    queryKey: ['user-registration-requests'],
+    queryFn: async () => (await api.get('/user-registration-requests')).data,
+    enabled: canReviewRegistrationRequests && requestsOpen,
+  });
+
+  const filteredRequests = useMemo(() => {
+    const list = registrationRequests || [];
+
+    return list.filter((r) => {
+      if (requestSearch) {
+        const q = requestSearch.toLowerCase();
+        const inName = (r.fullName || '').toLowerCase().includes(q);
+        const inEmail = (r.email || '').toLowerCase().includes(q);
+        if (!inName && !inEmail) return false;
+      }
+
+      if (requestStatusFilter !== 'ALL' && r.status !== requestStatusFilter) return false;
+
+      return true;
+    });
+  }, [registrationRequests, requestSearch, requestStatusFilter]);
+
+  const approveRequest = useMutation({
+    mutationFn: async (id: number) =>
+      (await api.put(`/user-registration-requests/${id}/approve`, {
+        permissions: DEFAULT_PERMISSIONS,
+        sectors: DEFAULT_SECTORS,
+      })).data,
+    onSuccess: async () => {
+      message.success('Solicitação aprovada com sucesso');
+      await qc.invalidateQueries({ queryKey: ['user-registration-requests'] });
+      await qc.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Erro ao aprovar solicitação');
+    },
+  });
+
+  const rejectRequest = useMutation({
+    mutationFn: async ({ id, reviewNotes }: { id: number; reviewNotes?: string | null }) =>
+      (await api.put(`/user-registration-requests/${id}/reject`, { reviewNotes: reviewNotes || null })).data,
+    onSuccess: async () => {
+      message.success('Solicitação reprovada');
+      await qc.invalidateQueries({ queryKey: ['user-registration-requests'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Erro ao reprovar solicitação');
+    },
+  });
+
+  const approveRequestWithEdit = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
+      (await api.put(`/user-registration-requests/${id}/approve`, payload)).data,
+    onSuccess: async () => {
+      message.success('Solicitação editada e aprovada com sucesso');
+      await qc.invalidateQueries({ queryKey: ['user-registration-requests'] });
+      await qc.invalidateQueries({ queryKey: ['users'] });
+      setEditApproveOpen(false);
+      setEditingRequest(null);
+      editApproveForm.resetFields();
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Erro ao editar/aprovar solicitação');
+    },
+  });
+
+  const openEditApproveModal = (req: RegistrationRequest) => {
+    setEditingRequest(req);
+    editApproveForm.setFieldsValue({
+      fullName: req.fullName,
+      email: req.email,
+      sex: req.sex || null,
+      roleId: req.role?.id || req.roleId || undefined,
+      managerId: req.manager?.id || req.managerId || undefined,
+      phone: req.phone || '',
+      reviewNotes: req.reviewNotes || '',
+      permissions:
+        Array.isArray(req.permissions) && req.permissions.length
+          ? req.permissions
+          : DEFAULT_PERMISSIONS,
+      sectors:
+        Array.isArray(req.sectors) && req.sectors.length
+          ? req.sectors
+          : DEFAULT_SECTORS,
+    });
+    setEditApproveOpen(true);
   };
 
   return (
@@ -515,6 +720,19 @@ const updateUser = useMutation({
               Atualizar
             </Button>
 
+            {canReviewRegistrationRequests && (
+              <Button
+                block={isMobile}
+                icon={<UserAddOutlined />}
+                onClick={() => {
+                  setRequestsOpen(true);
+                  refetchRequests();
+                }}
+              >
+                Solicitações de cadastro
+              </Button>
+            )}
+
             {canCreateAnyUser && (
               <Button block={isMobile} type="primary" onClick={() => setCreateOpen(true)}>
                 Novo usuário
@@ -532,7 +750,7 @@ const updateUser = useMutation({
 
       <Card size="small">
         <Row gutter={[12, 12]}>
-          <Col xs={24} md={8} lg={6}>
+          <Col xs={24} md={8} lg={7}>
             <Input
               allowClear
               prefix={<SearchOutlined />}
@@ -542,7 +760,7 @@ const updateUser = useMutation({
             />
           </Col>
 
-          <Col xs={24} md={8} lg={6}>
+          <Col xs={24} md={8} lg={7}>
             <Select
               mode="multiple"
               allowClear
@@ -584,16 +802,7 @@ const updateUser = useMutation({
             />
           </Col>
 
-          <Col xs={24} md={12} lg={4}>
-            <LocationSelect
-              allowClear
-              placeholder="Filtrar por local"
-              onChange={(v) => setFLocationId(v as number | undefined)}
-              style={{ width: '100%' } as any}
-            />
-          </Col>
-
-          <Col xs={24} md={6} lg={4}>
+          <Col xs={24} md={12} lg={2}>
             <Button
               block
               onClick={() => {
@@ -601,7 +810,6 @@ const updateUser = useMutation({
                 setFRoles(undefined);
                 setFActive('ALL');
                 setFManagerId(undefined);
-                setFLocationId(undefined);
               }}
             >
               Limpar
@@ -621,70 +829,80 @@ const updateUser = useMutation({
           hideOnSinglePage: true,
           align: 'end',
         }}
-        renderItem={(u) => (
-          <List.Item>
-            <Card hoverable bodyStyle={{ padding: 16 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  justifyContent: 'flex-end',
-                  marginBottom: 10,
-                }}
-              >
-                {u.loginEnabled === false && <Tag color="blue">Sem login</Tag>}
-                {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
-                {!!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
-                {u.tipoAtendimento && <Tag color="cyan">{u.tipoAtendimento}</Tag>}
-              </div>
+        renderItem={(u) => {
+          const atendimentoLabel = getTipoAtendimentoLabel(u.tipoAtendimento, u.tipoAtendimentoDescricao);
 
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <Avatar src={abs(u.avatarUrl)} size={56}>
-                  {u.name?.[0]}
-                </Avatar>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Title level={5} style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {u.name}
-                  </Title>
-
-                  <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
-                  <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
-                  {u.tipoAtendimentoDescricao && (
-                    <div style={{ color: '#94a3b8' }}>Atendimento: {u.tipoAtendimentoDescricao}</div>
-                  )}
+          return (
+            <List.Item>
+              <Card hoverable bodyStyle={{ padding: 16 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end',
+                    marginBottom: 10,
+                  }}
+                >
+                  {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
+                  {!!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                  {!!atendimentoLabel && <Tag color="cyan">{atendimentoLabel}</Tag>}
                 </div>
-              </div>
 
-              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <Button
-                  block={isMobile}
-                  icon={<EyeOutlined />}
-                  onClick={() => {
-                    setViewUser(u);
-                    setViewOpen(true);
-                  }}
-                >
-                  Informações
-                </Button>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <Avatar src={abs(u.avatarUrl)} size={56}>
+                    {u.name?.[0]}
+                  </Avatar>
 
-                <Button
-                  block={isMobile}
-                  icon={<ApartmentOutlined />}
-                  onClick={() => {
-                    setViewUser(u);
-                    setStructureOpen(true);
-                    fetchStructure(u.id);
-                  }}
-                >
-                  Estrutura
-                </Button>
-              </div>
-            </Card>
-          </List.Item>
-        )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Title level={5} style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {u.name}
+                    </Title>
+
+                    <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
+                    <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
+
+                    {Array.isArray(u.sectors) && u.sectors.length > 0 && (
+                      <div style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Setor: {u.sectors.map(getSectorLabel).join(', ')}
+                      </div>
+                    )}
+
+                    {!!atendimentoLabel && (
+                      <div style={{ color: '#94a3b8' }}>Atendimento: {atendimentoLabel}</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Button
+                    block={isMobile}
+                    icon={<EyeOutlined />}
+                    onClick={() => {
+                      setViewUser(u);
+                      setViewOpen(true);
+                    }}
+                  >
+                    Informações
+                  </Button>
+
+                  <Button
+                    block={isMobile}
+                    icon={<ApartmentOutlined />}
+                    onClick={() => {
+                      setViewUser(u);
+                      setStructureOpen(true);
+                      fetchStructure(u.id);
+                    }}
+                  >
+                    Estrutura
+                  </Button>
+                </div>
+              </Card>
+            </List.Item>
+          );
+        }}
       />
 
       <Modal
@@ -753,7 +971,7 @@ const updateUser = useMutation({
           </Space>
         }
         destroyOnClose
-        width={isMobile ? '100%' : 900}
+        width={isMobile ? '100%' : 980}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         {viewUser && (
@@ -768,6 +986,14 @@ const updateUser = useMutation({
                     <Descriptions.Item label="Status">{viewUser.isActive ? 'Ativo' : 'Inativo'}</Descriptions.Item>
                     <Descriptions.Item label="Login">
                       {viewUser.loginEnabled === false ? 'Sem login' : 'Com login'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Estoque Avançado">
+                      {viewUser.estoqueAvancado ? 'Sim' : 'Não'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Setor">
+                      {Array.isArray(viewUser.sectors) && viewUser.sectors.length > 0
+                        ? viewUser.sectors.map(getSectorLabel).join(', ')
+                        : '—'}
                     </Descriptions.Item>
                   </Descriptions>
                 </Card>
@@ -788,9 +1014,23 @@ const updateUser = useMutation({
                   <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Tipo de atendimento">
-                    {viewUser.tipoAtendimentoDescricao || viewUser.tipoAtendimento || '—'}
+                    {getTipoAtendimentoLabel(viewUser.tipoAtendimento, viewUser.tipoAtendimentoDescricao) || '—'}
                   </Descriptions.Item>
                 </Descriptions>
+              </Card>
+
+              <Card size="small" title="Permissões" style={{ marginTop: 12 }}>
+                {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {viewUser.permissions.map((permission) => (
+                      <Tag key={permission} color="blue">
+                        {getPermissionLabel(permission)}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <Text type="secondary">Sem permissões definidas</Text>
+                )}
               </Card>
             </Col>
 
@@ -862,12 +1102,16 @@ const updateUser = useMutation({
           }}
           onOk={() => createForm.submit()}
           destroyOnClose
-          width={isMobile ? '100%' : 900}
+          width={isMobile ? '100%' : 980}
           style={isMobile ? { top: 0, padding: 0 } : undefined}
         >
           <Form
             layout="vertical"
             form={createForm}
+            initialValues={{
+              permissions: DEFAULT_PERMISSIONS,
+              sectors: DEFAULT_SECTORS,
+            }}
             onFinish={(v) => {
               const payload = {
                 name: v.name,
@@ -882,6 +1126,14 @@ const updateUser = useMutation({
                 serviceAreaCode: v.serviceAreaCode || null,
                 serviceAreaName: v.serviceAreaName || null,
                 tipoAtendimento: v.tipoAtendimento || null,
+                sectors:
+                  Array.isArray(v.sectors) && v.sectors.length
+                    ? v.sectors
+                    : DEFAULT_SECTORS,
+                permissions:
+                  Array.isArray(v.permissions) && v.permissions.length
+                    ? v.permissions
+                    : DEFAULT_PERMISSIONS,
               };
               createUser.mutate(payload);
             }}
@@ -970,16 +1222,60 @@ const updateUser = useMutation({
               </Col>
 
               {createSelectedIsWorker && (
-                <Col xs={24} md={12} lg={12}>
-                  <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
-                    <Select
-                      allowClear
-                      placeholder="Selecione"
-                      options={TIPO_ATENDIMENTO_OPTIONS}
-                    />
-                  </Form.Item>
-                </Col>
+                <>
+                  <Col xs={24} md={12} lg={12}>
+                    <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                      <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12} lg={12}>
+                    <Form.Item
+                      name="estoqueAvancado"
+                      label="Pertence ao Estoque Avançado?"
+                      valuePropName="checked"
+                      initialValue={false}
+                    >
+                      <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                    </Form.Item>
+                  </Col>
+                </>
               )}
+
+              <Col xs={24}>
+                <Form.Item
+                  name="sectors"
+                  label="Setor"
+                  rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Selecione o(s) setor(es) do usuário"
+                    options={SECTOR_OPTIONS}
+                  />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24}>
+                <Form.Item
+                  name="permissions"
+                  label="Abas / Permissões de acesso"
+                  rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                  tooltip="Selecione as páginas que esse usuário poderá acessar"
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Selecione as abas liberadas para este usuário"
+                    options={PERMISSION_OPTIONS}
+                  />
+                </Form.Item>
+              </Col>
             </Row>
 
             <Card size="small" title="Endereço (opcional)" style={{ marginTop: 8 }}>
@@ -1089,7 +1385,7 @@ const updateUser = useMutation({
         }}
         onOk={() => editForm.submit()}
         destroyOnClose
-        width={isMobile ? '100%' : 900}
+        width={isMobile ? '100%' : 980}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Form
@@ -1102,13 +1398,21 @@ const updateUser = useMutation({
               sex: v.sex,
               roleId: v.roleId,
               managerId: v.managerId ?? null,
-              locationId: v.locationId ?? null,
               isActive: v.isActive,
               phone: v.phone ?? null,
               vendorCode: v.vendorCode ?? null,
               serviceAreaCode: v.serviceAreaCode ?? null,
               serviceAreaName: v.serviceAreaName ?? null,
               tipoAtendimento: v.tipoAtendimento ?? null,
+              estoqueAvancado: !!v.estoqueAvancado,
+              sectors:
+                Array.isArray(v.sectors) && v.sectors.length
+                  ? v.sectors
+                  : DEFAULT_SECTORS,
+              permissions:
+                Array.isArray(v.permissions) && v.permissions.length
+                  ? v.permissions
+                  : DEFAULT_PERMISSIONS,
             };
             updateUser.mutate({ id: editing!.id, payload });
           }}
@@ -1145,19 +1449,15 @@ const updateUser = useMutation({
               </Form.Item>
             </Col>
 
-            {canEditAnyUser && (
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="locationId" label="Local">
-                  <LocationSelect />
-                </Form.Item>
-              </Col>
-            )}
-
             <Col xs={24} md={12} lg={8}>
               <Form.Item
                 name="email"
                 label="E-mail"
-                rules={editSelectedIsWorker ? [{ type: 'email', message: 'E-mail inválido' }] : [{ required: true, type: 'email' }]}
+                rules={
+                  editSelectedIsWorker
+                    ? [{ type: 'email', message: 'E-mail inválido' }]
+                    : [{ required: true, type: 'email' }]
+                }
               >
                 <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : ''} />
               </Form.Item>
@@ -1201,16 +1501,58 @@ const updateUser = useMutation({
             </Col>
 
             {editSelectedIsWorker && (
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
-                  <Select
-                    allowClear
-                    placeholder="Selecione"
-                    options={TIPO_ATENDIMENTO_OPTIONS}
-                  />
-                </Form.Item>
-              </Col>
+              <>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                    <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item
+                    name="estoqueAvancado"
+                    label="Pertence ao Estoque Avançado?"
+                    valuePropName="checked"
+                  >
+                    <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                  </Form.Item>
+                </Col>
+              </>
             )}
+
+            <Col xs={24}>
+              <Form.Item
+                name="sectors"
+                label="Setor"
+                rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecione o(s) setor(es) do usuário"
+                  options={SECTOR_OPTIONS}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item
+                name="permissions"
+                label="Abas / Permissões de acesso"
+                rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecione as abas liberadas para este usuário"
+                  options={PERMISSION_OPTIONS}
+                />
+              </Form.Item>
+            </Col>
 
             <Col xs={24} md={6}>
               <Form.Item name="isActive" label="Ativo" valuePropName="checked" style={{ marginTop: 8 }}>
@@ -1334,6 +1676,7 @@ const updateUser = useMutation({
           <Form
             layout="vertical"
             form={workerForm}
+            initialValues={{ sectors: DEFAULT_SECTORS }}
             onFinish={(v) => {
               const payload = {
                 name: v.name,
@@ -1345,6 +1688,10 @@ const updateUser = useMutation({
                 serviceAreaCode: v.serviceAreaCode || null,
                 serviceAreaName: v.serviceAreaName || null,
                 tipoAtendimento: v.tipoAtendimento || null,
+                sectors:
+                  Array.isArray(v.sectors) && v.sectors.length
+                    ? v.sectors
+                    : DEFAULT_SECTORS,
                 addressStreet: v.addressStreet,
                 addressNumber: v.addressNumber || '',
                 addressComplement: v.addressComplement || '',
@@ -1366,11 +1713,7 @@ const updateUser = useMutation({
                   label="Cargo"
                   rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
                 >
-                  <Select
-                    placeholder="Selecione"
-                    optionFilterProp="label"
-                    options={workerRoleOptions}
-                  />
+                  <Select placeholder="Selecione" optionFilterProp="label" options={workerRoleOptions} />
                 </Form.Item>
               </Col>
 
@@ -1432,10 +1775,23 @@ const updateUser = useMutation({
 
               <Col xs={24} md={6}>
                 <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
+                  <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24}>
+                <Form.Item
+                  name="sectors"
+                  label="Setor"
+                  rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+                >
                   <Select
+                    mode="multiple"
                     allowClear
-                    placeholder="Selecione"
-                    options={TIPO_ATENDIMENTO_OPTIONS}
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Selecione o(s) setor(es) do prestador"
+                    options={SECTOR_OPTIONS}
                   />
                 </Form.Item>
               </Col>
@@ -1643,6 +1999,375 @@ const updateUser = useMutation({
         ) : (
           <Text type="secondary">Selecione um colaborador</Text>
         )}
+      </Modal>
+
+      {/* =========================
+          MODAL: SOLICITAÇÕES
+         ========================= */}
+      <Modal
+        title="Solicitações de cadastro"
+        open={requestsOpen}
+        onCancel={() => setRequestsOpen(false)}
+        footer={null}
+        destroyOnClose
+        width={isMobile ? '100%' : 1100}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={12}>
+              <Input
+                allowClear
+                prefix={<SearchOutlined />}
+                placeholder="Buscar por nome ou e-mail"
+                value={requestSearch}
+                onChange={(e) => setRequestSearch(e.target.value)}
+              />
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Select
+                value={requestStatusFilter}
+                onChange={(v) => setRequestStatusFilter(v)}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'ALL', label: 'Todos os status' },
+                  { value: 'PENDING', label: 'Pendentes' },
+                  { value: 'APPROVED', label: 'Aprovadas' },
+                  { value: 'REJECTED', label: 'Reprovadas' },
+                ]}
+              />
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Button block icon={<ReloadOutlined />} loading={requestsFetching} onClick={() => refetchRequests()}>
+                Atualizar
+              </Button>
+            </Col>
+          </Row>
+
+          {requestsLoading ? (
+            <div style={{ textAlign: 'center', padding: 24 }}>
+              <Spin />
+            </div>
+          ) : !filteredRequests.length ? (
+            <Empty description="Nenhuma solicitação encontrada" />
+          ) : (
+            <List
+              dataSource={filteredRequests}
+              rowKey={(r) => r.id}
+              renderItem={(req) => (
+                <List.Item style={{ paddingInline: 0 }}>
+                  <Card style={{ width: '100%' }} bodyStyle={{ padding: 16 }}>
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24} lg={14}>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                          <Avatar src={abs(req.avatarUrl)} size={56}>
+                            {initial(req.fullName)}
+                          </Avatar>
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <Title level={5} style={{ margin: 0 }}>
+                                {req.fullName}
+                              </Title>
+                              {requestStatusTag(req.status)}
+                            </div>
+
+                            <div style={{ color: '#64748b', marginTop: 4 }}>{req.email}</div>
+
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                              <Tag>{req.role?.name || 'Sem cargo'}</Tag>
+                              <Tag>{req.manager?.name ? `Gestor: ${req.manager.name}` : 'Sem gestor'}</Tag>
+
+                              {Array.isArray(req.sectors) && req.sectors.length > 0 && (
+                                <Tag color="purple">
+                                  Setor: {req.sectors.map(getSectorLabel).join(', ')}
+                                </Tag>
+                              )}
+
+                              {req.phone ? <Tag>{req.phone}</Tag> : null}
+                            </div>
+
+                            {Array.isArray(req.permissions) && req.permissions.length > 0 && (
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                                {req.permissions.map((permission) => (
+                                  <Tag key={permission} color="blue">
+                                    {getPermissionLabel(permission)}
+                                  </Tag>
+                                ))}
+                              </div>
+                            )}
+
+                            <Descriptions
+                              size="small"
+                              column={isMobile ? 1 : 2}
+                              style={{ marginTop: 12 }}
+                              items={[
+                                {
+                                  key: 'sexo',
+                                  label: 'Sexo',
+                                  children:
+                                    req.sex === 'M'
+                                      ? 'Masculino'
+                                      : req.sex === 'F'
+                                      ? 'Feminino'
+                                      : req.sex === 'O'
+                                      ? 'Outro'
+                                      : '—',
+                                },
+                                {
+                                  key: 'dataSolicitacao',
+                                  label: 'Solicitado em',
+                                  children: req.createdAt
+                                    ? new Date(req.createdAt).toLocaleString('pt-BR')
+                                    : '—',
+                                },
+                                {
+                                  key: 'aprovadoPor',
+                                  label: 'Aprovado por',
+                                  children: req.approvedBy?.name || '—',
+                                },
+                                {
+                                  key: 'reprovadoPor',
+                                  label: 'Reprovado por',
+                                  children: req.rejectedBy?.name || '—',
+                                },
+                              ]}
+                            />
+
+                            {req.reviewNotes ? (
+                              <>
+                                <Divider style={{ margin: '12px 0' }} />
+                                <Text type="secondary">Observação:</Text>
+                                <div style={{ marginTop: 4 }}>{req.reviewNotes}</div>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </Col>
+
+                      <Col xs={24} lg={10}>
+                        <div
+                          style={{
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                          }}
+                        >
+                          <Card size="small" title="Ações" bodyStyle={{ padding: 12 }}>
+                            {req.status !== 'PENDING' ? (
+                              <Text type="secondary">Solicitação já analisada.</Text>
+                            ) : (
+                              <Space wrap>
+                                <Popconfirm
+                                  title="Aprovar solicitação?"
+                                  description="Isso criará o usuário definitivo com permissões e setor padrão."
+                                  onConfirm={() => approveRequest.mutate(req.id)}
+                                  okText="Aprovar"
+                                  cancelText="Cancelar"
+                                >
+                                  <Button
+                                    type="primary"
+                                    icon={<CheckOutlined />}
+                                    loading={approveRequest.isPending}
+                                  >
+                                    Aprovar
+                                  </Button>
+                                </Popconfirm>
+
+                                <Button
+                                  icon={<EditOutlined />}
+                                  onClick={() => openEditApproveModal(req)}
+                                >
+                                  Editar e aprovar
+                                </Button>
+
+                                <Popconfirm
+                                  title="Reprovar solicitação?"
+                                  description="Essa ação marcará a solicitação como recusada."
+                                  onConfirm={() =>
+                                    rejectRequest.mutate({
+                                      id: req.id,
+                                      reviewNotes: 'Solicitação reprovada pelo gestor',
+                                    })
+                                  }
+                                  okText="Reprovar"
+                                  cancelText="Cancelar"
+                                >
+                                  <Button
+                                    danger
+                                    icon={<CloseOutlined />}
+                                    loading={rejectRequest.isPending}
+                                  >
+                                    Reprovar
+                                  </Button>
+                                </Popconfirm>
+                              </Space>
+                            )}
+                          </Card>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Card>
+                </List.Item>
+              )}
+            />
+          )}
+        </div>
+      </Modal>
+
+      {/* =========================
+          MODAL: EDITAR E APROVAR
+         ========================= */}
+      <Modal
+        title={`Editar e aprovar${editingRequest ? ` — ${editingRequest.fullName}` : ''}`}
+        open={editApproveOpen}
+        onCancel={() => {
+          setEditApproveOpen(false);
+          setEditingRequest(null);
+          editApproveForm.resetFields();
+        }}
+        onOk={() => editApproveForm.submit()}
+        destroyOnClose
+        width={isMobile ? '100%' : 920}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+      >
+        <Form
+          layout="vertical"
+          form={editApproveForm}
+          initialValues={{
+            permissions: DEFAULT_PERMISSIONS,
+            sectors: DEFAULT_SECTORS,
+          }}
+          onFinish={(v) => {
+            if (!editingRequest) return;
+
+            const payload = {
+              fullName: v.fullName,
+              email: v.email,
+              sex: v.sex || null,
+              roleId: v.roleId,
+              managerId: v.managerId ?? null,
+              phone: v.phone || null,
+              reviewNotes: v.reviewNotes || null,
+              sectors:
+                Array.isArray(v.sectors) && v.sectors.length
+                  ? v.sectors
+                  : DEFAULT_SECTORS,
+              permissions:
+                Array.isArray(v.permissions) && v.permissions.length
+                  ? v.permissions
+                  : DEFAULT_PERMISSIONS,
+            };
+
+            approveRequestWithEdit.mutate({ id: editingRequest.id, payload });
+          }}
+        >
+          <Row gutter={[12, 12]}>
+            <Col xs={24}>
+              <Form.Item name="fullName" label="Nome completo" rules={[{ required: true, message: 'Informe o nome' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="email"
+                label="E-mail"
+                rules={[
+                  { required: true, message: 'Informe o e-mail' },
+                  { type: 'email', message: 'E-mail inválido' },
+                ]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item name="phone" label="Telefone">
+                <MaskedInput mask={phoneMask(editApprovePhone)} placeholder="(11) 99999-9999" />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Form.Item name="sex" label="Sexo">
+                <Select
+                  allowClear
+                  options={[
+                    { value: 'M', label: 'Masculino' },
+                    { value: 'F', label: 'Feminino' },
+                    { value: 'O', label: 'Outro' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={9}>
+              <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione o cargo' }]}>
+                <Select options={roleOptions} optionFilterProp="label" showSearch />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={9}>
+              <Form.Item name="managerId" label="Gestor">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Selecione o gestor"
+                  options={managerOptions}
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                  }
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item
+                name="sectors"
+                label="Setor"
+                rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecione o(s) setor(es) do usuário"
+                  options={SECTOR_OPTIONS}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item
+                name="permissions"
+                label="Abas / Permissões de acesso"
+                rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                tooltip="Escolha exatamente quais abas esse usuário poderá acessar após a aprovação"
+              >
+                <Select
+                  mode="multiple"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecione as abas liberadas"
+                  options={PERMISSION_OPTIONS}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item name="reviewNotes" label="Observação do aprovador">
+                <Input.TextArea rows={4} placeholder="Ex.: aprovado com ajuste de cargo / gestor / permissões / setor" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
       </Modal>
     </div>
   );

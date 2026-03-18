@@ -75,7 +75,14 @@ const REGIOES = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'] as const
 const { Title, Text } = Typography;
 
 /** ===== Helpers globais (ABS URL) ===== */
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.projetos-rc.online/api';
+const RAW_API_URL = import.meta.env.VITE_API_URL?.trim();
+
+if (!RAW_API_URL) {
+  throw new Error('VITE_API_URL não definida no arquivo .env');
+}
+
+const API_URL = RAW_API_URL.replace(/\/+$/, '');
+
 const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;

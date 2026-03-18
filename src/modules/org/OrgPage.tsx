@@ -1,457 +1,346 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { Avatar, Button, Space } from 'antd';
+import { Avatar, Card, Empty, Segmented, Spin, Typography } from 'antd';
 import { CaretDownOutlined, CaretRightOutlined } from '@ant-design/icons';
+import { api } from '../../lib/api';
 import './org.css';
-import { OrgChildrenModal } from './OrgChildrenModal';
-import type { OrgNode as ModalNode } from './OrgChildrenModal';
 
-type Node = ModalNode;
+const { Title, Text } = Typography;
 
-/* ---------------- hook mobile ---------------- */
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+type OrgNode = {
+  id: number;
+  name: string;
+  role?: string | null;
+  roleLevel?: number | null;
+  managerId?: number | null;
+  avatarUrl?: string | null;
+  sectors?: string[] | null;
+  children?: OrgNode[];
+};
+
+type SectorFilter =
+  | 'OPERACOES'
+  | 'LOGISTICA'
+  | 'SISTEMAS'
+  | 'ATENDIMENTO';
+
+function normalizeText(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeRole(role?: string | null) {
+  return normalizeText(role);
+}
+
+function normalizeSectors(value?: string[] | string | null) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((s) => normalizeText(s)).filter(Boolean))];
+  }
+
+  return [
+    ...new Set(
+      String(value)
+        .split(',')
+        .map((s) => normalizeText(s))
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function absImage(url?: string | null) {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+
+  const base = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+  const path = String(url).startsWith('/') ? url : `/${url}`;
+  return `${base}${path}`;
+}
+
+function hasSector(node: OrgNode, sector: SectorFilter) {
+  return normalizeSectors(node.sectors).includes(sector);
+}
+
+function isDirector(role?: string | null) {
+  return normalizeRole(role).includes('DIRETOR');
+}
+
+function isHiddenRole(role?: string | null) {
+  const r = normalizeRole(role);
+  return r.includes('ADMIN');
+}
+
+function roleWeight(role?: string | null, level?: number | null) {
+  const r = normalizeRole(role);
+  if (r.includes('DIRETOR')) return 600;
+  if (r.includes('GERENTE')) return 500;
+  if (r.includes('COORDENADOR')) return 400;
+  if (r.includes('SUPERVISOR')) return 300;
+  if (r.includes('ANALISTA')) return 200;
+  if (
+    r.includes('TECNICO') ||
+    r.includes('PSO') ||
+    r.includes('SPOT') ||
+    r.includes('PRP')
+  ) {
+    return 100;
+  }
+  return Number(level || 0);
+}
+
+function sortTree(nodes: OrgNode[]): OrgNode[] {
+  const sorted = [...nodes].sort((a, b) => {
+    const diff =
+      roleWeight(b.role, b.roleLevel) - roleWeight(a.role, a.roleLevel);
+    if (diff !== 0) return diff;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
   });
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const m = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const onChange = () => setIsMobile(m.matches);
+  return sorted.map((n) => ({
+    ...n,
+    children: sortTree(n.children || []),
+  }));
+}
 
-    // safari fallback
-    if ((m as any).addEventListener) (m as any).addEventListener('change', onChange);
-    else (m as any).addListener(onChange);
+function dedupeTree(nodes: OrgNode[]): OrgNode[] {
+  const seen = new Set<number>();
 
-    setIsMobile(m.matches);
+  const walk = (node: OrgNode): OrgNode | null => {
+    if (seen.has(node.id)) return null;
+    seen.add(node.id);
 
-    return () => {
-      if ((m as any).removeEventListener) (m as any).removeEventListener('change', onChange);
-      else (m as any).removeListener(onChange);
+    const children = (node.children || [])
+      .map(walk)
+      .filter(Boolean) as OrgNode[];
+
+    return {
+      ...node,
+      children,
     };
-  }, [breakpoint]);
-
-  return isMobile;
-}
-
-/* ---------------- helpers ---------------- */
-function normalizeRole(role?: string | null) {
-  return String(role || '').trim().toLowerCase();
-}
-function shouldHideFromOrg(role?: string | null) {
-  const r = normalizeRole(role);
-  if (r.includes('analist')) return true;
-  if (r.includes('admin')) return true;
-  return false;
-}
-function isCoordinator(role?: string | null) {
-  const r = normalizeRole(role);
-  return r.includes('coorden') || r.includes('coordinator');
-}
-function isSupervisor(role?: string | null) {
-  const r = normalizeRole(role);
-  return r.includes('supervis');
-}
-
-function collectIdsByPredicate(root: Node, pred: (n: Node) => boolean) {
-  const ids: number[] = [];
-  const walk = (n: Node) => {
-    if (pred(n)) ids.push(n.id);
-    (n.children || []).forEach(walk);
   };
-  walk(root);
-  return ids;
+
+  return nodes.map(walk).filter(Boolean) as OrgNode[];
 }
 
-/** Filtra árvore removendo nós e promovendo filhos */
-function filterTree(arr: Node[]): Node[] {
-  const walk = (n: Node): Node[] => {
-    const nextChildren = (n.children || []).flatMap(walk);
+function pruneHiddenRoles(nodes: OrgNode[]): OrgNode[] {
+  const walk = (node: OrgNode): OrgNode[] => {
+    const nextChildren = (node.children || []).flatMap(walk);
 
-    if (shouldHideFromOrg(n.role)) {
-      return nextChildren; // promove filhos
+    if (isHiddenRole(node.role)) {
+      return nextChildren;
     }
-    return [{ ...n, children: nextChildren }];
+
+    return [{ ...node, children: nextChildren }];
   };
 
-  return arr.flatMap(walk);
+  return nodes.flatMap(walk);
 }
 
-function countDesc(n?: Node): number {
-  if (!n?.children || n.children.length === 0) return 0;
-  let c = n.children.length;
-  for (const ch of n.children) c += countDesc(ch);
-  return c;
-}
-function collectDescCounts(arr: Node[]): Map<number, number> {
-  const map = new Map<number, number>();
-  const walk = (n: Node) => {
-    map.set(n.id, countDesc(n));
-    (n.children || []).forEach(walk);
-  };
-  arr.forEach(walk);
-  return map;
-}
+function filterTreeBySector(nodes: OrgNode[], sector: SectorFilter): OrgNode[] {
+  const walk = (node: OrgNode): OrgNode | null => {
+    const nextChildren = (node.children || [])
+      .map(walk)
+      .filter(Boolean) as OrgNode[];
 
-/** encontra caminho até o id */
-function findPathToId(roots: Node[], targetId: number): number[] | null {
-  const stack: { node: Node; path: number[] }[] = roots.map((r) => ({ node: r, path: [r.id] }));
-  while (stack.length) {
-    const { node, path } = stack.pop()!;
-    if (node.id === targetId) return path;
-    const kids = node.children || [];
-    for (let i = kids.length - 1; i >= 0; i--) {
-      stack.push({ node: kids[i], path: [...path, kids[i].id] });
+    const matches = hasSector(node, sector) || isDirector(node.role);
+
+    if (matches || nextChildren.length > 0) {
+      return {
+        ...node,
+        children: nextChildren,
+      };
     }
+
+    return null;
+  };
+
+  return nodes.map(walk).filter(Boolean) as OrgNode[];
+}
+
+function countDescendants(node: OrgNode): number {
+  const children = node.children || [];
+  let total = children.length;
+  for (const child of children) total += countDescendants(child);
+  return total;
+}
+
+/**
+ * Abre somente a raiz.
+ * Gerentes/coordenadores aparecem porque são filhos visíveis do diretor,
+ * mas continuam fechados.
+ */
+function collectInitialOpenIds(nodes: OrgNode[]) {
+  const openIds = new Set<number>();
+
+  for (const root of nodes) {
+    openIds.add(root.id);
   }
-  return null;
+
+  return openIds;
 }
 
-/** drill map parent -> selected child */
-function buildSelectedChildMap(drillPath: number[]) {
-  const map = new Map<number, number>();
-  for (let i = 0; i < drillPath.length - 1; i++) {
-    map.set(drillPath[i], drillPath[i + 1]);
-  }
-  return map;
+/**
+ * Se houver algum filho expandido nesse nível, mostra somente os expandidos.
+ * Se ninguém estiver expandido, mostra todos.
+ */
+function getVisibleChildren(children: OrgNode[], expanded: Set<number>) {
+  const expandedChildren = children.filter((c) => expanded.has(c.id));
+  return expandedChildren.length > 0 ? expandedChildren : children;
 }
 
-/** aplica drill: se existe seleção para este pai, mostra só o filho selecionado */
-function applyDrill(children: Node[] | undefined, selectedChildMap: Map<number, number>, parentId: number) {
-  const list = children || [];
-  const selected = selectedChildMap.get(parentId);
-  if (!selected) return list;
-  return list.filter((c) => c.id === selected);
-}
-
-/* ---------------- Card ---------------- */
-function OrgCard({
-  n,
-  hasChildren,
-  isCollapsed,
-  qty,
+function OrgClassicNode({
+  node,
+  expanded,
   onToggle,
 }: {
-  n: Node;
-  hasChildren: boolean;
-  isCollapsed: boolean;
-  qty: number;
-  onToggle: () => void;
+  node: OrgNode;
+  expanded: Set<number>;
+  onToggle: (id: number) => void;
 }) {
-  return (
-    <div className="org-node" data-node-card>
-      <Avatar size={64} src={n.avatarUrl || undefined}>
-        {n.name?.[0]}
-      </Avatar>
+  const allChildren = node.children || [];
+  const hasChildren = allChildren.length > 0;
+  const isOpen = expanded.has(node.id);
+  const totalBelow = countDescendants(node);
 
-      <div className="org-meta">
-        <div className="org-name">{n.name}</div>
-        {n.role && <div className="org-role">{n.role}</div>}
+  const visibleChildren = hasChildren ? getVisibleChildren(allChildren, expanded) : [];
+  const showConnectorToChildren =
+    hasChildren && isOpen && visibleChildren.length > 0;
+
+  return (
+    <div className="org-block">
+      <div className="org-classic-card">
+        <div className="org-classic-card-left">
+          <Avatar
+            className="org-classic-avatar"
+            size={56}
+            src={absImage(node.avatarUrl)}
+          >
+            {node.name?.[0]}
+          </Avatar>
+
+          <div className="org-classic-meta">
+            <div className="org-classic-name">{node.name}</div>
+            <div className="org-classic-role">{node.role || 'Sem cargo'}</div>
+          </div>
+        </div>
+
+        {hasChildren && (
+          <button
+            className="org-classic-toggle"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.id);
+            }}
+          >
+            {isOpen ? <CaretDownOutlined /> : <CaretRightOutlined />}
+            <span>{totalBelow}</span>
+          </button>
+        )}
       </div>
 
-      {hasChildren && (
-        <button
-          className="org-toggle inside"
-          aria-label={isCollapsed ? 'Expandir' : 'Recolher'}
-          title={`${isCollapsed ? 'Expandir' : 'Recolher'} — ${qty} abaixo`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
+      {showConnectorToChildren && <div className="org-connector-vertical" />}
+
+      {showConnectorToChildren && (
+        <div
+          className={`org-children-grid ${
+            visibleChildren.length > 4 ? 'cols-4' : ''
+          }`}
         >
-          {isCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />}
-          <span className="org-count">{qty}</span>
-        </button>
+          {visibleChildren.map((child) => (
+            <div key={child.id} className="org-child-col">
+              <OrgClassicNode
+                node={child}
+                expanded={expanded}
+                onToggle={onToggle}
+              />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-/* ---------------- Branch ---------------- */
-function Branch({
-  n,
-  collapsed,
-  setCollapsed,
-  descCounts,
-  wrapRef,
-  selectedChildMap,
-  onDrillExpand,
-  onDrillCollapse,
-  isMobile,
-}: {
-  n: Node;
-  collapsed: Set<number>;
-  setCollapsed: React.Dispatch<React.SetStateAction<Set<number>>>;
-  descCounts: Map<number, number>;
-  wrapRef: React.RefObject<HTMLDivElement>;
-
-  selectedChildMap: Map<number, number>;
-  onDrillExpand: (id: number) => void;
-  onDrillCollapse: (id: number) => void;
-
-  isMobile: boolean;
-}) {
-  const childrenCount = n.children?.length ?? 0;
-  const hasChildren = childrenCount > 0;
-  const isCollapsed = collapsed.has(n.id);
-  const qtyDesc = descCounts.get(n.id) ?? 0;
-
-  const ulRef = useRef<HTMLUListElement>(null);
-  const [rowCompact, setRowCompact] = useState(false);
-
-  // ✅ no MOBILE não mede rowCompact (evita “tremedeira” e overflow)
-  useEffect(() => {
-    if (isMobile) {
-      setRowCompact(false);
-      return;
-    }
-    if (isCollapsed || !ulRef.current || !wrapRef.current) {
-      setRowCompact(false);
-      return;
-    }
-    if (childrenCount > 4) {
-      setRowCompact(false);
-      return;
-    }
-
-    const COMPACT_MARGIN_PX = 24;
-    let raf = 0;
-
-    const check = () => {
-      raf = requestAnimationFrame(() => {
-        const ul = ulRef.current;
-        const wrap = wrapRef.current;
-        if (!ul || !wrap) return;
-
-        const rowWidth = ul.scrollWidth;
-        const wrapWidth = wrap.clientWidth - 60;
-        const overflow = rowWidth - wrapWidth;
-
-        setRowCompact((prev) => {
-          if (prev) return overflow > -COMPACT_MARGIN_PX;
-          return overflow > COMPACT_MARGIN_PX;
-        });
-      });
-    };
-
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(wrapRef.current);
-    window.addEventListener('resize', check);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      window.removeEventListener('resize', check);
-    };
-  }, [isMobile, isCollapsed, childrenCount, wrapRef]);
-
-  const handleToggle = () => {
-    const willExpand = isCollapsed;
-
-    if (willExpand) {
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(n.id);
-        return next;
-      });
-      onDrillExpand(n.id);
-      return;
-    }
-
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.add(n.id);
-      return next;
-    });
-    onDrillCollapse(n.id);
-  };
-
-  const drilledChildren = applyDrill(n.children, selectedChildMap, n.id);
-
-  // desktop: supervisor com muitos vira grid 3; mobile: sempre coluna
-  const isSup = isSupervisor(n.role);
-  const grid3 = !isMobile && isSup && drilledChildren.length > 3;
-
-  return (
-    <li className={isCollapsed ? 'collapsed' : ''} data-node-id={n.id}>
-      <div className="org-head">
-        <OrgCard n={n} hasChildren={hasChildren} isCollapsed={isCollapsed} qty={qtyDesc} onToggle={handleToggle} />
-      </div>
-
-      {hasChildren && !isCollapsed && (
-        <ul
-          ref={ulRef}
-          className={[
-            isMobile ? 'children-mobile' : '',
-            !isMobile && !grid3 && rowCompact ? 'row-compact' : '',
-            !isMobile && grid3 ? 'grid-children-3' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {drilledChildren.map((c) => (
-            <Branch
-              key={c.id}
-              n={c}
-              collapsed={collapsed}
-              setCollapsed={setCollapsed}
-              descCounts={descCounts}
-              wrapRef={wrapRef}
-              selectedChildMap={selectedChildMap}
-              onDrillExpand={onDrillExpand}
-              onDrillCollapse={onDrillCollapse}
-              isMobile={isMobile}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-/* ---------------- Página ---------------- */
 export function OrgPage() {
-  const isMobile = useIsMobile(768);
+  const [sectorFilter, setSectorFilter] = useState<SectorFilter>('OPERACOES');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  const { data, isLoading } = useQuery<Node[]>({
-    queryKey: ['org'],
+  const { data, isLoading } = useQuery<OrgNode[]>({
+    queryKey: ['org-tree'],
     queryFn: async () => (await api.get('/org/tree')).data,
   });
 
-  const filteredData = useMemo(() => filterTree(data || []), [data]);
+  const visibleRoots = useMemo(() => {
+    const base = Array.isArray(data) ? data : [];
+    const bySector = filterTreeBySector(base, sectorFilter);
+    const withoutHidden = pruneHiddenRoles(bySector);
+    const unique = dedupeTree(withoutHidden);
+    return sortTree(unique);
+  }, [data, sectorFilter]);
 
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-  const [drillPath, setDrillPath] = useState<number[]>([]);
-  const selectedChildMap = useMemo(() => buildSelectedChildMap(drillPath), [drillPath]);
-  const descCounts = useMemo(() => collectDescCounts(filteredData || []), [filteredData]);
-
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  // inicia colapsando filhos dos coordenadores
-  const [didInitCollapse, setDidInitCollapse] = useState(false);
   useEffect(() => {
-    if (!filteredData?.length || didInitCollapse) return;
+    setExpanded(collectInitialOpenIds(visibleRoots));
+  }, [visibleRoots]);
 
-    const toCollapse = new Set<number>();
-    const walk = (n: Node) => {
-      if (isCoordinator(n.role) && n.children?.length) toCollapse.add(n.id);
-      n.children?.forEach(walk);
-    };
-    filteredData.forEach(walk);
-
-    if (toCollapse.size) setCollapsed(toCollapse);
-    setDidInitCollapse(true);
-  }, [filteredData, didInitCollapse]);
-
-  const onDrillExpand = (id: number) => {
-    const path = findPathToId(filteredData, id);
-    if (!path) return;
-
-    setDrillPath(path);
-
-    // se expandiu COORDENADOR: colapsa supervisores abaixo dele
-    const findNode = (roots: Node[], targetId: number): Node | null => {
-      const stack = [...roots];
-      while (stack.length) {
-        const n = stack.pop()!;
-        if (n.id === targetId) return n;
-        (n.children || []).forEach((c) => stack.push(c));
+  const toggleNode = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
       }
-      return null;
-    };
-
-    const node = findNode(filteredData, id);
-    if (!node) return;
-
-    if (isCoordinator(node.role)) {
-      const supervisorIds = collectIdsByPredicate(node, (x) => isSupervisor(x.role));
-      if (supervisorIds.length) {
-        setCollapsed((prev) => {
-          const next = new Set(prev);
-          supervisorIds.forEach((sid) => next.add(sid));
-          return next;
-        });
-      }
-    }
-  };
-
-  const onDrillCollapse = (id: number) => {
-    setDrillPath((prev) => {
-      const idx = prev.indexOf(id);
-      if (idx === -1) return prev;
-      return prev.slice(0, idx);
+      return next;
     });
   };
-
-  const idsComFilhos = useMemo(() => {
-    const s = new Set<number>();
-    (filteredData || []).forEach(function walk(n: Node) {
-      if (n.children?.length) s.add(n.id);
-      n.children?.forEach(walk);
-    });
-    return s;
-  }, [filteredData]);
-
-  const collapseAll = () => {
-    setCollapsed(new Set(idsComFilhos));
-    setDrillPath([]);
-  };
-  const expandAll = () => {
-    setCollapsed(new Set());
-    setDrillPath([]);
-  };
-
-  const virtualRootId = 0;
-  const drilledRoots = useMemo(() => {
-    const selected = selectedChildMap.get(virtualRootId);
-    if (!selected) return filteredData;
-    return filteredData.filter((r) => r.id === selected);
-  }, [filteredData, selectedChildMap]);
-
-  // modal (mantido)
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalParent, setModalParent] = useState<Node | null>(null);
 
   return (
-    <div>
-      <div className="org-title-row">
-        <h2>Organograma</h2>
+    <div className="org-classic-page">
+      <div className="org-classic-header">
+        <div>
+          <Title level={3} style={{ marginBottom: 8 }}>
+            Organograma 
+          </Title>
+        </div>
 
-        {/* ✅ wrap no mobile */}
-        <Space wrap>
-          {drillPath.length > 0 && <Button onClick={() => setDrillPath([])}>Limpar foco</Button>}
-          <Button onClick={expandAll}>Expandir tudo</Button>
-          <Button onClick={collapseAll}>Recolher tudo</Button>
-        </Space>
+        <Segmented
+          value={sectorFilter}
+          onChange={(v) => setSectorFilter(v as SectorFilter)}
+          options={[
+            { label: 'Operações', value: 'OPERACOES' },
+            { label: 'Logística', value: 'LOGISTICA' },
+            { label: 'Sistemas', value: 'SISTEMAS' },
+            { label: 'Atendimento', value: 'ATENDIMENTO' },
+          ]}
+        />
       </div>
 
       {isLoading ? (
-        'Carregando...'
+        <div className="org-classic-loading">
+          <Spin />
+        </div>
+      ) : visibleRoots.length === 0 ? (
+        <Card>
+          <Empty description="Nenhum colaborador encontrado nesta área." />
+        </Card>
       ) : (
-        <div className={`orgchart-wrapper ${isMobile ? 'is-mobile' : ''}`} ref={wrapRef}>
-          <ul className={`orgchart ${isMobile ? 'orgchart-mobile' : ''}`}>
-            {drilledRoots.map((root) => (
-              <Branch
-                key={root.id}
-                n={root}
-                collapsed={collapsed}
-                setCollapsed={setCollapsed}
-                descCounts={descCounts}
-                wrapRef={wrapRef}
-                selectedChildMap={selectedChildMap}
-                onDrillExpand={onDrillExpand}
-                onDrillCollapse={onDrillCollapse}
-                isMobile={isMobile}
-              />
-            ))}
-          </ul>
+        <div className="org-no-scroll-wrapper">
+          {visibleRoots.map((root) => (
+            <OrgClassicNode
+              key={root.id}
+              node={root}
+              expanded={expanded}
+              onToggle={toggleNode}
+            />
+          ))}
         </div>
       )}
-
-      <OrgChildrenModal open={modalOpen} onClose={() => setModalOpen(false)} parent={modalParent || undefined} />
     </div>
   );
 }

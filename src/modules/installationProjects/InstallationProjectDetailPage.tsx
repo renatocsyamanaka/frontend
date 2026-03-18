@@ -121,10 +121,17 @@ type InstallationProject = {
   coordinatorId?: number | null;
   supervisor?: UserLite | null;
   coordinator?: UserLite | null;
+
   technicianId?: number | null;
+  technicianIds?: number[];
   technician?: UserLite | null;
+  techniciansList?: UserOption[];
+  technicianNames?: string[];
+
   contactName?: string | null;
   contactEmail?: string | null;
+  contactEmails?: string[];
+
   contactPhone?: string | null;
   notes?: string | null;
   startPlannedAt?: string | null;
@@ -166,6 +173,7 @@ function statusTag(s: Status) {
 const ROLE_ID_TECNICO = 1;
 const ROLE_ID_SUPERVISOR = 3;
 const ROLE_ID_PSO = 8;
+const MAX_VEHICLES_PREVIEW = 10;
 
 function getRoleId(u?: UserLite | null) {
   return u?.role?.id ?? u?.roleId;
@@ -214,6 +222,30 @@ function normalizeHeader(value: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ');
+}
+
+function normalizeEmailList(input: unknown): string[] {
+  let arr: unknown[] = [];
+
+  if (!input) return [];
+
+  if (Array.isArray(input)) {
+    arr = input;
+  } else if (typeof input === 'string') {
+    arr = input.split(/[;,]/);
+  } else {
+    arr = [input];
+  }
+
+  return [...new Set(
+    arr
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
+function isValidEmail(email?: string | null) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
 export default function InstallationProjectDetailPage() {
@@ -333,12 +365,6 @@ export default function InstallationProjectDetailPage() {
     },
     retry: false,
   });
-
-  const technicianNameById = (id?: number | null) => {
-    if (!id) return null;
-    const u = technicianOptions.find((x) => x.id === id);
-    return u?.name || `#${id}`;
-  };
 
   const supervisorNameById = (id?: number | null) => {
     if (!id) return null;
@@ -666,6 +692,20 @@ export default function InstallationProjectDetailPage() {
     return [...src].sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
   }, [p?.progress]);
 
+  const technicianNames = useMemo(() => {
+    if (p?.technicianNames?.length) return p.technicianNames;
+    if (p?.techniciansList?.length) return p.techniciansList.map((t) => t.name);
+    if (p?.technician?.name) return [p.technician.name];
+    return [];
+  }, [p]);
+
+  const projectEmails = useMemo(() => {
+    const list = normalizeEmailList(p?.contactEmails?.length ? p.contactEmails : p?.contactEmail);
+    return list;
+  }, [p]);
+
+  const hasProjectEmails = projectEmails.length > 0;
+
   if (projectQuery.isLoading) {
     return <Typography.Text>Carregando projeto...</Typography.Text>;
   }
@@ -682,11 +722,18 @@ export default function InstallationProjectDetailPage() {
 
   const supervisorLabel = p.supervisor?.name || supervisorNameById(p.supervisorId) || '-';
   const coordinatorLabel = p.coordinator?.name || coordinatorNameById(p.coordinatorId) || '-';
-  const technicianLabel = p.technician?.name || technicianNameById(p.technicianId) || '-';
+  const technicianLabel = technicianNames.length ? technicianNames.join(', ') : '-';
+  const contactEmailsLabel = projectEmails.length ? projectEmails.join(', ') : '-';
 
   const wrapAny = { overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const };
 
-  const pageWrap: React.CSSProperties = { display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' };
+  const pageWrap: React.CSSProperties = {
+    display: 'grid',
+    gap: isMobile ? 12 : 16,
+    maxWidth: '100%',
+    overflowX: 'hidden',
+  };
+
   const actionsWrap: React.CSSProperties = {
     display: 'flex',
     flexWrap: 'wrap',
@@ -694,6 +741,7 @@ export default function InstallationProjectDetailPage() {
     alignItems: 'center',
     width: '100%',
   };
+
   const twoCols: React.CSSProperties = {
     display: 'grid',
     gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
@@ -736,7 +784,7 @@ export default function InstallationProjectDetailPage() {
           <Divider style={{ margin: '8px 0' }} />
 
           <Typography.Text style={{ ...wrapAny }}><b>Contato:</b> {p.contactName || '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>E-mail:</b> {p.contactEmail || '-'}</Typography.Text>
+          <Typography.Text style={{ ...wrapAny }}><b>E-mails:</b> {contactEmailsLabel}</Typography.Text>
           <Typography.Text style={{ ...wrapAny }}><b>Telefone:</b> {p.contactPhone || '-'}</Typography.Text>
           <Typography.Text style={{ whiteSpace: 'pre-wrap', ...wrapAny }}><b>Observações:</b> {p.notes || '-'}</Typography.Text>
         </div>
@@ -768,7 +816,7 @@ export default function InstallationProjectDetailPage() {
           icon={<MailOutlined />}
           onClick={() => sendStartEmail.mutate()}
           loading={sendStartEmail.isPending}
-          disabled={!p.contactEmail || p.status !== 'A_INICIAR'}
+          disabled={!hasProjectEmails || p.status !== 'A_INICIAR'}
           block={isMobile}
         >
           Enviar e-mail de início
@@ -779,7 +827,7 @@ export default function InstallationProjectDetailPage() {
           loading={sendDailyEmail.isPending}
           onClick={handleSendDaily}
           block={isMobile}
-          disabled={p.status === 'A_INICIAR'}
+          disabled={p.status === 'A_INICIAR' || !hasProjectEmails}
         >
           Enviar reporte diário (hoje)
         </Button>
@@ -788,7 +836,7 @@ export default function InstallationProjectDetailPage() {
           icon={<MailOutlined />}
           onClick={() => sendFinalEmail.mutate()}
           loading={sendFinalEmail.isPending}
-          disabled={!p.contactEmail || p.status !== 'FINALIZADO'}
+          disabled={!hasProjectEmails || p.status !== 'FINALIZADO'}
           danger
           block={isMobile}
         >
@@ -858,7 +906,7 @@ export default function InstallationProjectDetailPage() {
                 <Descriptions.Item label="Dias estimados">{p.daysEstimated ?? '-'}</Descriptions.Item>
 
                 <Descriptions.Item label="Contato">{p.contactName || '-'}</Descriptions.Item>
-                <Descriptions.Item label="E-mail">{p.contactEmail || '-'}</Descriptions.Item>
+                <Descriptions.Item label="E-mails">{contactEmailsLabel}</Descriptions.Item>
                 <Descriptions.Item label="Telefone">{p.contactPhone || '-'}</Descriptions.Item>
                 <Descriptions.Item label="Observações">
                   <span style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{p.notes || '-'}</span>
@@ -931,12 +979,22 @@ export default function InstallationProjectDetailPage() {
 
                     {pr.vehicles?.length ? (
                       <div style={{ marginTop: 4, display: 'grid', gap: 2, ...wrapAny }}>
-                        {pr.vehicles.map((v, idx) => (
+                        {pr.vehicles.slice(0, MAX_VEHICLES_PREVIEW).map((v, idx) => (
                           <div key={`${v.plate}-${v.serial}-${idx}`} style={wrapAny as any}>
                             <b>PLACA:</b> {v.plate} <span style={{ marginLeft: 10 }} />
                             <b>SÉRIE:</b> {v.serial}
                           </div>
                         ))}
+
+                        {pr.vehicles.length > MAX_VEHICLES_PREVIEW ? (
+                          <Button
+                            type="link"
+                            style={{ padding: 0, height: 'auto', justifyContent: 'flex-start' }}
+                            onClick={() => setProgressListOpen(true)}
+                          >
+                            + {pr.vehicles.length - MAX_VEHICLES_PREVIEW} placa(s). Clique em Ver mais
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -1056,17 +1114,24 @@ export default function InstallationProjectDetailPage() {
           try {
             const v = await editForm.validateFields();
 
+            const contactEmails = normalizeEmailList(v.contactEmails);
+            const technicianIds = Array.isArray(v.technicianIds)
+              ? [...new Set(v.technicianIds.map((n: any) => Number(n)).filter(Boolean))]
+              : [];
+
             updateProject.mutate({
               title: v.title,
               af: v.af ?? null,
               clientId: v.clientId ?? null,
-              technicianId: v.technicianId ? Number(v.technicianId) : null,
+              technicianIds,
+              technicianId: technicianIds[0] ?? null,
               supervisorId: v.supervisorId ? Number(v.supervisorId) : null,
               trucksTotal: v.trucksTotal ?? 0,
               equipmentsPerDay: v.equipmentsPerDay ?? null,
               startPlannedAt: v.startPlannedAt ? (v.startPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
               contactName: v.contactName ?? null,
-              contactEmail: v.contactEmail ?? null,
+              contactEmails,
+              contactEmail: contactEmails[0] ?? null,
               contactPhone: v.contactPhone ?? null,
               notes: v.notes ?? null,
             });
@@ -1077,18 +1142,29 @@ export default function InstallationProjectDetailPage() {
             setTechSearch('');
             setSupervisorSearch('');
 
+            const initialEmails = normalizeEmailList(
+              p.contactEmails?.length ? p.contactEmails : p.contactEmail
+            );
+
+            const initialTechnicianIds =
+              p.technicianIds?.length
+                ? p.technicianIds
+                : p.technicianId
+                  ? [p.technicianId]
+                  : [];
+
             editForm.setFieldsValue({
               title: p.title,
               af: p.af ?? null,
               clientId: p.clientId ?? null,
-              technicianId: p.technicianId ?? null,
+              technicianIds: initialTechnicianIds,
               supervisorId: p.supervisorId ?? null,
               coordinatorId: p.coordinatorId ?? null,
               trucksTotal: p.trucksTotal ?? 0,
               equipmentsPerDay: p.equipmentsPerDay ?? null,
               startPlannedAt: p.startPlannedAt ? dayjs(p.startPlannedAt) : null,
               contactName: p.contactName ?? null,
-              contactEmail: p.contactEmail ?? null,
+              contactEmails: initialEmails,
               contactPhone: p.contactPhone ?? null,
               notes: p.notes ?? null,
             });
@@ -1121,13 +1197,23 @@ export default function InstallationProjectDetailPage() {
             }}
           >
             <Form.Item
-              name="technicianId"
+              name="technicianIds"
               label="Técnico / Prestador (obrigatório)"
-              rules={[{ required: true, message: 'Selecione o técnico/prestador' }]}
+              rules={[
+                { required: true, message: 'Selecione pelo menos um técnico/prestador' },
+                {
+                  validator: async (_, value) => {
+                    if (!Array.isArray(value) || !value.length) {
+                      throw new Error('Selecione pelo menos um técnico/prestador');
+                    }
+                  },
+                },
+              ]}
             >
               <Select
+                mode="multiple"
                 showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
                 loading={usersQuery.isLoading}
                 filterOption={false}
                 onSearch={(v) => setTechSearch(v)}
@@ -1219,9 +1305,32 @@ export default function InstallationProjectDetailPage() {
           </Form.Item>
 
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item name="contactEmail" label="E-mail">
-              <Input />
+            <Form.Item
+              name="contactEmails"
+              label="E-mails"
+              rules={[
+                { required: true, message: 'Informe pelo menos um e-mail' },
+                {
+                  validator: async (_, value) => {
+                    const emails = normalizeEmailList(value);
+                    if (!emails.length) {
+                      throw new Error('Informe pelo menos um e-mail');
+                    }
+                    const invalid = emails.find((email) => !isValidEmail(email));
+                    if (invalid) {
+                      throw new Error(`E-mail inválido: ${invalid}`);
+                    }
+                  },
+                },
+              ]}
+            >
+              <Select
+                mode="tags"
+                tokenSeparators={[',', ';', ' ']}
+                placeholder="Digite um ou mais e-mails"
+              />
             </Form.Item>
+
             <Form.Item name="contactPhone" label="Telefone (opcional)">
               <Input />
             </Form.Item>
