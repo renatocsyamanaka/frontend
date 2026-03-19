@@ -19,6 +19,8 @@ import {
   Switch,
   Grid,
   Drawer,
+  Pagination,
+  Empty,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -281,6 +283,25 @@ export default function TechsPsoMapPage() {
   const [fitAllSignal, setFitAllSignal] = useState(0);
   const [fitFilteredSignal, setFitFilteredSignal] = useState(0);
 
+  /** lista resumida do painel + modal de ver mais */
+  const SIDEBAR_PREVIEW_COUNT = 3;
+  const MODAL_PAGE_SIZE = 9;
+
+  const [listModalOpen, setListModalOpen] = useState(false);
+  const [listPage, setListPage] = useState(1);
+
+  const sidebarPreviewUsers = useMemo(() => withCoords.slice(0, SIDEBAR_PREVIEW_COUNT), [withCoords]);
+
+  const paginatedUsers = useMemo(() => {
+    const start = (listPage - 1) * MODAL_PAGE_SIZE;
+    const end = start + MODAL_PAGE_SIZE;
+    return withCoords.slice(start, end);
+  }, [withCoords, listPage]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [q, regiao, tipo, onlyEA, coordId, supId, users]);
+
   useEffect(() => {
     setFocus(null);
     const id = setTimeout(() => setFitFilteredSignal((s) => s + 1), 0);
@@ -297,6 +318,7 @@ export default function TechsPsoMapPage() {
     setCoordId(undefined);
     setSupId(undefined);
     setFocus(null);
+    setListPage(1);
     if (!isMobile) setSidebarOpen(true);
     setTimeout(() => setFitAllSignal((s) => s + 1), 0);
   };
@@ -351,6 +373,71 @@ export default function TechsPsoMapPage() {
     wordBreak: 'break-word',
   };
 
+  const renderPrestadorItem = (t: User, compact = false) => {
+    const s = supervisorOf(t);
+    const c = coordinatorOf(t);
+    const tipoPrest = getPrestadorType(t);
+
+    return (
+      <div
+        key={t.id}
+        style={{
+          padding: compact ? '10px 0' : 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: compact ? 220 : '100%',
+            }}
+          >
+            {t.name}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <Tag>{tipoPrest}</Tag>
+            {t.tipoAtendimento && (
+              <Tag color={getTipoAtendimentoTagColor(t)}>{getTipoAtendimentoLabel(t)}</Tag>
+            )}
+            {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+          </div>
+
+          <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+            Sup.: {s?.name || '—'}
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: 12 }}>
+            Coord.: {c?.name || '—'}
+          </div>
+        </div>
+
+        <Space direction="vertical" size={6}>
+          <Button size="small" onClick={() => openDetails(t)}>
+            Detalhes
+          </Button>
+          <Button
+            size="small"
+            disabled={!(t.lat && t.lng)}
+            onClick={() => {
+              setFocus({ lat: t.lat!, lng: t.lng! });
+              setListModalOpen(false);
+              if (isMobile) setDrawerOpen(false);
+            }}
+          >
+            Ver no mapa
+          </Button>
+        </Space>
+      </div>
+    );
+  };
+
   const FiltersPanel = (
     <Card bordered={false} style={{ boxShadow: 'none' }}>
       <Space direction="vertical" style={{ width: '100%' }} size={12}>
@@ -368,133 +455,191 @@ export default function TechsPsoMapPage() {
 
         <div style={{ color: '#64748b' }}>{withCoords.length} prestador(es) com localização</div>
 
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="Buscar por nome, tipo ou atendimento"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      <div
+        style={{
+          display: 'grid',
+          gap: 10,
+          padding: 12,
+          border: '1px solid #f1f5f9',
+          borderRadius: 14,
+          background: '#fafcff',
+        }}
+      >
+        <div>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#475569',
+            }}
+          >
+            Buscar
+          </Text>
+          <Input
+            allowClear
+            prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+            placeholder="Buscar por nome, tipo ou atendimento"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            size="large"
+            style={{
+              width: '100%',
+              borderRadius: 10,
+            }}
+          />
+        </div>
 
-        <Select
-          allowClear
-          placeholder="Filtrar por tipo (Técnico, PSO, SPOT, PRP)"
-          value={tipo}
-          onChange={(v) => setTipo(v)}
-          options={[
-            { value: 'TECNICO', label: 'Técnico' },
-            { value: 'PSO', label: 'PSO' },
-            { value: 'SPOT', label: 'SPOT' },
-            { value: 'PRP', label: 'PRP' },
-          ]}
-          showSearch
-          optionFilterProp="label"
-        />
+        <div>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#475569',
+            }}
+          >
+            Tipo
+          </Text>
+          <Select
+            allowClear
+            size="large"
+            placeholder="Selecione o tipo"
+            value={tipo}
+            onChange={(v) => setTipo(v)}
+            options={[
+              { value: 'TECNICO', label: 'Técnico' },
+              { value: 'PSO', label: 'PSO' },
+              { value: 'SPOT', label: 'SPOT' },
+              { value: 'PRP', label: 'PRP' },
+            ]}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+          />
+        </div>
 
-        <Select
-          allowClear
-          placeholder="Filtrar por região"
-          value={regiao}
-          onChange={(v) => setRegiao(v)}
-          options={REGIOES.map((r) => ({ value: r, label: r }))}
-          showSearch
-          optionFilterProp="label"
-        />
+        <div>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#475569',
+            }}
+          >
+            Região
+          </Text>
+          <Select
+            allowClear
+            size="large"
+            placeholder="Selecione a região"
+            value={regiao}
+            onChange={(v) => setRegiao(v)}
+            options={REGIOES.map((r) => ({ value: r, label: r }))}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+          />
+        </div>
 
-        <Select
-          allowClear
-          placeholder="Filtrar por coordenador"
-          options={coordOptions}
-          value={coordId}
-          onChange={(v) => setCoordId(v)}
-          showSearch
-          optionFilterProp="label"
-        />
+        <div>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#475569',
+            }}
+          >
+            Coordenador
+          </Text>
+          <Select
+            allowClear
+            size="large"
+            placeholder="Selecione o coordenador"
+            options={coordOptions}
+            value={coordId}
+            onChange={(v) => setCoordId(v)}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+          />
+        </div>
 
-        <Select
-          allowClear
-          placeholder="Filtrar por supervisor"
-          options={supOptions}
-          value={supId}
-          onChange={(v) => setSupId(v)}
-          showSearch
-          optionFilterProp="label"
-        />
+        <div>
+          <Text
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#475569',
+            }}
+          >
+            Supervisor
+          </Text>
+          <Select
+            allowClear
+            size="large"
+            placeholder="Selecione o supervisor"
+            options={supOptions}
+            value={supId}
+            onChange={(v) => setSupId(v)}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+          />
+        </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ color: '#64748b' }}>Somente Estoque Avançado</Text>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: 4,
+          }}
+        >
+          <Text style={{ color: '#475569', fontWeight: 500 }}>Somente Estoque Avançado</Text>
           <Switch checked={onlyEA} onChange={setOnlyEA} />
         </div>
 
-        <Space wrap>
-          <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isFetching}>
+        <Space wrap style={{ width: '100%' }}>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => refetch()}
+            loading={isFetching}
+            style={{ borderRadius: 10 }}
+          >
             Atualizar
           </Button>
-          <Button icon={<CloseCircleOutlined />} onClick={handleClear}>
+          <Button
+            icon={<CloseCircleOutlined />}
+            onClick={handleClear}
+            style={{ borderRadius: 10 }}
+          >
             Limpar
           </Button>
         </Space>
+      </div>
 
         <div style={{ borderTop: '1px solid #eee', marginTop: 8, paddingTop: 8 }}>
-          {withCoords.map((t) => {
-            const s = supervisorOf(t);
-            const c = coordinatorOf(t);
-            const tipoPrest = getPrestadorType(t);
+          {sidebarPreviewUsers.map((t) => (
+            <div key={t.id}>{renderPrestadorItem(t, true)}</div>
+          ))}
 
-            return (
-              <div
-                key={t.id}
-                style={{
-                  padding: '10px 0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 220,
-                    }}
-                  >
-                    {t.name}
-                  </div>
+          {withCoords.length > SIDEBAR_PREVIEW_COUNT && (
+            <div style={{ marginTop: 12 }}>
+              <Button block type="default" onClick={() => setListModalOpen(true)}>
+                Ver mais ({withCoords.length - SIDEBAR_PREVIEW_COUNT} restantes)
+              </Button>
+            </div>
+          )}
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                    <Tag>{tipoPrest}</Tag>
-                    {t.tipoAtendimento && (
-                      <Tag color={getTipoAtendimentoTagColor(t)}>{getTipoAtendimentoLabel(t)}</Tag>
-                    )}
-                    {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
-                  </div>
-
-                  <div style={{ color: '#64748b', fontSize: 12 }}>Sup.: {s?.name || '—'}</div>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>Coord.: {c?.name || '—'}</div>
-                </div>
-
-                <Space direction="vertical" size={6}>
-                  <Button size="small" onClick={() => openDetails(t)}>
-                    Detalhes
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={!(t.lat && t.lng)}
-                    onClick={() => {
-                      setFocus({ lat: t.lat!, lng: t.lng! });
-                      if (isMobile) setDrawerOpen(false);
-                    }}
-                  >
-                    Ver no mapa
-                  </Button>
-                </Space>
-              </div>
-            );
-          })}
           {withCoords.length === 0 && <div style={{ color: '#94a3b8' }}>Nenhum prestador com coordenadas</div>}
         </div>
       </Space>
@@ -509,7 +654,7 @@ export default function TechsPsoMapPage() {
       {!isMobile && sidebarOpen && <Card>{FiltersPanel}</Card>}
 
       {isMobile && (
-        <Card bodyStyle={{ padding: 12 }}>
+        <Card styles={{ body: { padding: 12 } }}>
           <Space style={{ width: '100%', justifyContent: 'space-between' }}>
             <div style={{ display: 'grid' }}>
               <Text strong>Mapa Prestadores</Text>
@@ -536,7 +681,7 @@ export default function TechsPsoMapPage() {
         </div>
       )}
 
-      <Card bodyStyle={{ padding: 0 }} style={{ overflow: 'hidden' }}>
+      <Card styles={{ body: { padding: 0 } }} style={{ overflow: 'hidden' }}>
         <MapContainer
           center={withCoords[0]?.lat ? [withCoords[0].lat!, withCoords[0].lng!] : defaultCenter}
           zoom={6}
@@ -662,10 +807,107 @@ export default function TechsPsoMapPage() {
         onClose={() => setDrawerOpen(false)}
         width="92vw"
         destroyOnClose
-        bodyStyle={{ padding: 12 }}
+        styles={{ body: { padding: 12 } }}
       >
         {FiltersPanel}
       </Drawer>
+
+      <Modal
+        open={listModalOpen}
+        onCancel={() => setListModalOpen(false)}
+        footer={null}
+        width={isMobile ? '96vw' : 1100}
+        style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 50 }}
+        destroyOnClose={false}
+        title={`Prestadores com localização (${withCoords.length})`}
+      >
+        {withCoords.length === 0 ? (
+          <Empty description="Nenhum prestador encontrado" />
+        ) : (
+          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+            <Row gutter={[16, 16]}>
+              {paginatedUsers.map((t) => {
+                const s = supervisorOf(t);
+                const c = coordinatorOf(t);
+                const tipoPrest = getPrestadorType(t);
+                const avatar = abs(t.avatarUrl);
+
+                return (
+                  <Col xs={24} md={12} lg={8} key={t.id}>
+                    <Card
+                      size="small"
+                      style={{ height: '100%', borderRadius: 12 }}
+                      styles={{ body: { padding: 14 } }}
+                    >
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                        <Avatar src={avatar} size={48}>
+                          {initial(t.name)}
+                        </Avatar>
+
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              lineHeight: 1.3,
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {t.name}
+                          </div>
+
+                          <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <Tag>{tipoPrest}</Tag>
+                            {t.tipoAtendimento && (
+                              <Tag color={getTipoAtendimentoTagColor(t)}>
+                                {getTipoAtendimentoLabel(t)}
+                              </Tag>
+                            )}
+                            {t.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                          </div>
+
+                          <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                            Sup.: {s?.name || '—'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                            Coord.: {c?.name || '—'}
+                          </div>
+
+                          <Space wrap style={{ marginTop: 12 }}>
+                            <Button size="small" onClick={() => openDetails(t)}>
+                              Detalhes
+                            </Button>
+                            <Button
+                              size="small"
+                              disabled={!(t.lat && t.lng)}
+                              onClick={() => {
+                                setFocus({ lat: t.lat!, lng: t.lng! });
+                                setListModalOpen(false);
+                                if (isMobile) setDrawerOpen(false);
+                              }}
+                            >
+                              Ver no mapa
+                            </Button>
+                          </Space>
+                        </div>
+                      </div>
+                    </Card>
+                  </Col>
+                );
+              })}
+            </Row>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Pagination
+                current={listPage}
+                pageSize={MODAL_PAGE_SIZE}
+                total={withCoords.length}
+                onChange={(page) => setListPage(page)}
+                showSizeChanger={false}
+              />
+            </div>
+          </Space>
+        )}
+      </Modal>
 
       <Modal
         open={detailsOpen}
@@ -703,7 +945,7 @@ export default function TechsPsoMapPage() {
           <Row gutter={[18, 18]}>
             <Col xs={24} lg={8}>
               <Space direction="vertical" style={{ width: '100%' }} size={16}>
-                <Card size="small" title="Profissional" bodyStyle={{ paddingTop: 12 }}>
+                <Card size="small" title="Profissional" styles={{ body: { paddingTop: 12 } }}>
                   <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                     <Descriptions.Item label="Cargo">{detailsUser.role?.name || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Tipo">{getPrestadorType(detailsUser)}</Descriptions.Item>
@@ -728,7 +970,7 @@ export default function TechsPsoMapPage() {
                   </Descriptions>
                 </Card>
 
-                <Card size="small" title="Contato" bodyStyle={{ paddingTop: 12 }}>
+                <Card size="small" title="Contato" styles={{ body: { paddingTop: 12 } }}>
                   <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                     <Descriptions.Item label="E-mail">{detailsUser.email || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Telefone">{detailsUser.phone || '—'}</Descriptions.Item>
@@ -738,7 +980,7 @@ export default function TechsPsoMapPage() {
             </Col>
 
             <Col xs={24} lg={8}>
-              <Card size="small" title="Área de atendimento" bodyStyle={{ paddingTop: 12 }}>
+              <Card size="small" title="Área de atendimento" styles={{ body: { paddingTop: 12 } }}>
                 <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                   <Descriptions.Item label="Código fornecedor">{detailsUser.vendorCode || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Código da área">{detailsUser.serviceAreaCode || '—'}</Descriptions.Item>
@@ -749,7 +991,7 @@ export default function TechsPsoMapPage() {
             </Col>
 
             <Col xs={24} lg={8}>
-              <Card size="small" title="Endereço" bodyStyle={{ paddingTop: 12 }}>
+              <Card size="small" title="Endereço" styles={{ body: { paddingTop: 12 } }}>
                 <Descriptions column={1} size="middle" labelStyle={labelStyle} contentStyle={contentStyle}>
                   <Descriptions.Item label="Logradouro">
                     {detailsUser.addressStreet || '—'} {detailsUser.addressNumber || ''}
@@ -757,7 +999,7 @@ export default function TechsPsoMapPage() {
                   <Descriptions.Item label="Complemento">{detailsUser.addressComplement || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Bairro">{detailsUser.addressDistrict || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Cidade/UF">
-                    {(detailsUser.addressCity || '—')}
+                    {detailsUser.addressCity || '—'}
                     {detailsUser.addressState ? ` / ${detailsUser.addressState}` : ''}
                   </Descriptions.Item>
                   <Descriptions.Item label="CEP">{detailsUser.addressZip || '—'}</Descriptions.Item>

@@ -123,12 +123,6 @@ export function AppLayout() {
       permission: 'ORG_VIEW',
     },
     {
-      key: '/locations',
-      label: 'Localidades',
-      icon: <EnvironmentOutlined />,
-      permission: 'LOCATIONS_VIEW',
-    },
-    {
       key: '/clients',
       label: 'Clientes',
       icon: <ProfileOutlined />,
@@ -163,18 +157,6 @@ export function AppLayout() {
       label: 'Agenda',
       icon: <ScheduleOutlined />,
       permission: 'ASSIGNMENTS_VIEW',
-    },
-    {
-      key: '/overtime',
-      label: 'Banco de Horas',
-      icon: <CalendarOutlined />,
-      permission: 'OVERTIME_VIEW',
-    },
-    {
-      key: '/timeoff',
-      label: 'Folgas / Time Off',
-      icon: <CalendarOutlined />,
-      permission: 'TIMEOFF_VIEW',
     },
     {
       key: '/news',

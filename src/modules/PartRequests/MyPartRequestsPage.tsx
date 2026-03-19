@@ -149,16 +149,11 @@ type PartRequest = {
 };
 
 const REQUEST_STATUS_OPTIONS = [
-  { value: 'DRAFT', label: 'Rascunho' },
   { value: 'SUBMITTED', label: 'Enviado' },
-  { value: 'UNDER_REVIEW', label: 'Em análise' },
   { value: 'PARTIALLY_APPROVED', label: 'Aprovado parcialmente' },
   { value: 'APPROVED', label: 'Aprovado' },
-  { value: 'PARTIALLY_FULFILLED', label: 'Atendido parcialmente' },
-  { value: 'FULFILLED', label: 'Atendido' },
   { value: 'REJECTED', label: 'Rejeitado' },
   { value: 'CANCELLED', label: 'Cancelado' },
-  { value: 'REOPENED', label: 'Reaberto' },
 ];
 
 const REQUEST_STATUS_COLOR: Record<PartRequest['status'], string> = {

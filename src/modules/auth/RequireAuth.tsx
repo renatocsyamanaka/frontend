@@ -1,10 +1,25 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { Spin } from 'antd';
 import { useAuth } from './AuthProvider';
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { token, loading } = useAuth();
   const loc = useLocation();
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   if (!token) {
     return <Navigate to="/login" state={{ from: loc }} replace />;

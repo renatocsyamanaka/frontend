@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, API_URL } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
@@ -25,6 +25,9 @@ import {
   Spin,
   Switch,
   Tooltip,
+  Badge,
+  Alert,
+  List,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -37,6 +40,7 @@ import {
   HistoryOutlined,
   CheckOutlined,
   EnvironmentOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -177,6 +181,9 @@ type PartRequest = {
   items?: PartRequestItem[];
   history?: PartRequestHistory[];
   createdAt?: string;
+  visualizado?: boolean;
+  visualizadoPor?: string | null;
+  visualizadoEm?: string | null;
 };
 
 type BatchRow = {
@@ -186,6 +193,12 @@ type BatchRow = {
   managerNote?: string;
   reasonCode?: string;
   reasonDetails?: string;
+};
+
+type UnreadCountResponse = {
+  ok?: boolean;
+  data?: { count: number };
+  count?: number;
 };
 
 const REQUEST_STATUS_OPTIONS = [
@@ -274,8 +287,8 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   REQUEST_UPDATED: 'Pedido atualizado',
   REQUEST_STATUS_UPDATED: 'Status do pedido atualizado',
   BATCH_APPROVAL: 'Aprovação em lote',
+  VIEWED: 'Pedido visualizado',
 };
-
 
 function unwrapList<T>(resData: any): T[] {
   if (Array.isArray(resData)) return resData;
@@ -283,10 +296,17 @@ function unwrapList<T>(resData: any): T[] {
   return [];
 }
 
+function unwrapCount(resData: any) {
+  if (typeof resData?.data?.count === 'number') return resData.data.count;
+  if (typeof resData?.count === 'number') return resData.count;
+  return 0;
+}
+
 const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
-  return `${API_URL}/${String(url).replace(/^\/+/, '')}`;
+  const origin = API_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  return `${origin}/${String(url).replace(/^\/+/, '')}`;
 };
 
 const initial = (s?: string | null) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
@@ -321,6 +341,13 @@ function canBatchApprove(item: PartRequestItem) {
   return ['PENDING_REVIEW', 'REOPENED'].includes(item.itemStatus);
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('pt-BR');
+}
+
 export default function PartRequestsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -342,6 +369,7 @@ export default function PartRequestsPage() {
   const [openHistory, setOpenHistory] = useState(false);
   const [openBatchApprove, setOpenBatchApprove] = useState(false);
   const [openProviderModal, setOpenProviderModal] = useState(false);
+  const [openUnreadModal, setOpenUnreadModal] = useState(false);
 
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -364,6 +392,9 @@ export default function PartRequestsPage() {
   const [editRequestForm] = Form.useForm();
   const [approveForm] = Form.useForm();
   const [rejectForm] = Form.useForm();
+
+  const firstUnreadShownRef = useRef(false);
+  const prevUnreadCountRef = useRef(0);
 
   const queryParams = useMemo(() => {
     const params: Record<string, any> = {};
@@ -391,6 +422,43 @@ export default function PartRequestsPage() {
     queryKey: ['part-request-details', selectedId],
     queryFn: async () => (await api.get(`/part-requests/${selectedId}`)).data,
     enabled: !!selectedId,
+  });
+
+  const unreadCountQuery = useQuery<number>({
+    queryKey: ['part-requests-unread-count'],
+    queryFn: async () => {
+      const res = await api.get('/part-requests/nao-visualizados/count');
+      return unwrapCount(res.data);
+    },
+    refetchInterval: 10000,
+    staleTime: 5000,
+  });
+
+  const unreadRequestsQuery = useQuery<PartRequest[]>({
+    queryKey: ['part-requests-unread-list'],
+    queryFn: async () => {
+      const res = await api.get('/part-requests', {
+        params: { visualizado: false },
+      });
+      return unwrapList<PartRequest>(res.data);
+    },
+    refetchInterval: 10000,
+    staleTime: 5000,
+  });
+
+  const markAsViewed = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.put(`/part-requests/${id}/visualizar`);
+      return res.data;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['part-requests'] }),
+        qc.invalidateQueries({ queryKey: ['part-request-details'] }),
+        qc.invalidateQueries({ queryKey: ['part-requests-unread-count'] }),
+        qc.invalidateQueries({ queryKey: ['part-requests-unread-list'] }),
+      ]);
+    },
   });
 
   const clientsQuery = useQuery<ClientRow[]>({
@@ -459,6 +527,9 @@ export default function PartRequestsPage() {
     return (requestDetails?.items || []).filter(canBatchApprove);
   }, [requestDetails]);
 
+  const unreadCount = unreadCountQuery.data || 0;
+  const unreadRequests = unreadRequestsQuery.data || [];
+
   useEffect(() => {
     if (!openNew) return;
 
@@ -477,6 +548,20 @@ export default function PartRequestsPage() {
       technicianNameSnapshot: null,
     });
   }, [openNew, user, newForm]);
+
+  useEffect(() => {
+    if (unreadCount > 0 && !firstUnreadShownRef.current) {
+      setOpenUnreadModal(true);
+      firstUnreadShownRef.current = true;
+    }
+
+    if (prevUnreadCountRef.current > 0 && unreadCount > prevUnreadCountRef.current) {
+      message.info(`Chegou${unreadCount - prevUnreadCountRef.current > 1 ? 'ram' : ''} ${unreadCount - prevUnreadCountRef.current} novo(s) pedido(s).`);
+      setOpenUnreadModal(true);
+    }
+
+    prevUnreadCountRef.current = unreadCount;
+  }, [unreadCount]);
 
   const createRequest = useMutation({
     mutationFn: async (payload: any) => (await api.post('/part-requests', payload)).data,
@@ -587,6 +672,15 @@ export default function PartRequestsPage() {
     onError: (e: any) => message.error(e?.response?.data?.message || 'Falha na aprovação em lote'),
   });
 
+  const openRequestDetails = async (id: number) => {
+    setSelectedId(id);
+    setOpenDetails(true);
+
+    try {
+      await markAsViewed.mutateAsync(id);
+    } catch {}
+  };
+
   const requestColumns = useMemo(
     () => [
       { title: 'Número', dataIndex: 'requestNumber', key: 'requestNumber', width: 170 },
@@ -602,6 +696,13 @@ export default function PartRequestsPage() {
         key: 'requestType',
         width: 140,
         render: (value: PartRequest['requestType']) => REQUEST_TYPE_LABEL[value] || value,
+      },
+      {
+        title: 'Lido',
+        key: 'visualizado',
+        width: 140,
+        render: (_: any, row: PartRequest) =>
+          row.visualizado ? <Tag color="green">Lido</Tag> : <Tag color="red">Novo</Tag>,
       },
       {
         title: 'Status',
@@ -624,8 +725,7 @@ export default function PartRequestsPage() {
           <Button
             icon={<EyeOutlined />}
             onClick={() => {
-              setSelectedId(row.id);
-              setOpenDetails(true);
+              openRequestDetails(row.id);
             }}
           >
             Ver
@@ -671,9 +771,15 @@ export default function PartRequestsPage() {
           gap: 10,
         }}
       >
-        <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
-          Pedido de Peças
-        </Title>
+        <Space align="center" wrap>
+          <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
+            Pedido de Peças
+          </Title>
+
+          <Badge count={unreadCount} size="small">
+            <BellOutlined style={{ fontSize: 20 }} />
+          </Badge>
+        </Space>
 
         <Space direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: isMobile ? '100%' : 'auto' }}>
           <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()} block={isMobile}>
@@ -689,6 +795,19 @@ export default function PartRequestsPage() {
           </Button>
         </Space>
       </div>
+
+      {unreadCount > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={`Há ${unreadCount} pedido(s) novo(s) aguardando leitura`}
+          action={
+            <Button size="small" onClick={() => setOpenUnreadModal(true)}>
+              Abrir alertas
+            </Button>
+          }
+        />
+      ) : null}
 
       <Card styles={{ body: { padding: 12 } }}>
         <Form
@@ -749,6 +868,68 @@ export default function PartRequestsPage() {
           size="small"
         />
       </Card>
+
+      <Modal
+        title={
+          <Space>
+            <BellOutlined />
+            Pedidos novos
+          </Space>
+        }
+        open={openUnreadModal}
+        onCancel={() => setOpenUnreadModal(false)}
+        footer={[
+          <Button key="close" onClick={() => setOpenUnreadModal(false)}>
+            Fechar
+          </Button>,
+        ]}
+        width={isMobile ? '96vw' : 760}
+        destroyOnClose
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          {unreadRequests.length ? (
+            <List
+              dataSource={unreadRequests}
+              renderItem={(row) => (
+                <List.Item
+                  actions={[
+                    <Button
+                      key="open"
+                      type="primary"
+                      icon={<EyeOutlined />}
+                      onClick={async () => {
+                        setOpenUnreadModal(false);
+                        await openRequestDetails(row.id);
+                      }}
+                    >
+                      Abrir pedido
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Space wrap>
+                        <Text strong>{row.requestNumber}</Text>
+                        <Tag color="red">Novo</Tag>
+                        {requestStatusTag(row.status)}
+                      </Space>
+                    }
+                    description={
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <Text>Solicitante: {row.requesterName || '-'}</Text>
+                        <Text>Cliente: {row.clientNameSnapshot || row.client?.name || '-'}</Text>
+                        <Text>Tipo: {REQUEST_TYPE_LABEL[row.requestType] || row.requestType}</Text>
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          ) : (
+            <Text type="secondary">Nenhum pedido novo.</Text>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         title="Novo pedido de peças"
@@ -1316,6 +1497,14 @@ export default function PartRequestsPage() {
                       Ver dados do prestador
                     </Button>
                   </div>
+                </Descriptions.Item>
+
+                <Descriptions.Item label="Recebido por">
+                  {requestDetails.visualizadoPor || (requestDetails.visualizado ? 'Usuário' : 'Ainda não lido')}
+                </Descriptions.Item>
+
+                <Descriptions.Item label="Recebido em">
+                  {formatDateTime(requestDetails.visualizadoEm)}
                 </Descriptions.Item>
 
                 <Descriptions.Item label="Atendimento">

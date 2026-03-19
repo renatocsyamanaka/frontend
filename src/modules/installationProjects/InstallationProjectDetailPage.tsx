@@ -248,6 +248,11 @@ function isValidEmail(email?: string | null) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
+function parseDateOnly(value?: string | null) {
+  if (!value) return null;
+  return dayjs(String(value).slice(0, 10), 'YYYY-MM-DD');
+}
+
 export default function InstallationProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
@@ -706,26 +711,17 @@ export default function InstallationProjectDetailPage() {
 
   const hasProjectEmails = projectEmails.length > 0;
 
-  if (projectQuery.isLoading) {
-    return <Typography.Text>Carregando projeto...</Typography.Text>;
-  }
-
-  if (projectQuery.isError || !p) {
-    return (
-      <Card>
-        <Typography.Text type="danger">Falha ao carregar projeto.</Typography.Text>
-        <Divider />
-        <Button onClick={() => nav('/installation-projects')}>Voltar</Button>
-      </Card>
-    );
-  }
-
-  const supervisorLabel = p.supervisor?.name || supervisorNameById(p.supervisorId) || '-';
-  const coordinatorLabel = p.coordinator?.name || coordinatorNameById(p.coordinatorId) || '-';
+  const supervisorLabel = p?.supervisor?.name || supervisorNameById(p?.supervisorId) || '-';
+  const coordinatorLabel = p?.coordinator?.name || coordinatorNameById(p?.coordinatorId) || '-';
   const technicianLabel = technicianNames.length ? technicianNames.join(', ') : '-';
   const contactEmailsLabel = projectEmails.length ? projectEmails.join(', ') : '-';
 
   const wrapAny = { overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const };
+
+  const progressPercent = useMemo(() => {
+    if (!p?.trucksTotal || p.trucksTotal <= 0) return 0;
+    return Math.min(100, Math.round((p.trucksDone / p.trucksTotal) * 100));
+  }, [p?.trucksDone, p?.trucksTotal]);
 
   const pageWrap: React.CSSProperties = {
     display: 'grid',
@@ -750,47 +746,244 @@ export default function InstallationProjectDetailPage() {
     maxWidth: '100%',
   };
 
-  const MobileSummary = () => (
-    <Card title={<Space><UnorderedListOutlined /> Resumo</Space>} styles={{ body: { padding: 12 } }}>
-      <div style={{ display: 'grid', gap: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <Typography.Text strong style={{ fontSize: 14 }}>Status</Typography.Text>
-          <div>{statusTag(p.status)}</div>
-        </div>
+  const InfoRow = ({
+    label,
+    value,
+    action,
+  }: {
+    label: string;
+    value?: React.ReactNode;
+    action?: React.ReactNode;
+  }) => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: '8px 0',
+        borderBottom: '1px solid #f0f0f0',
+        flexWrap: 'wrap',
+      }}
+    >
+      <Typography.Text type="secondary">{label}</Typography.Text>
+      <div
+        style={{
+          textAlign: 'right',
+          minWidth: 0,
+          flex: 1,
+          ...wrapAny,
+        }}
+      >
+        <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
+          <span>{value ?? '-'}</span>
+          {action}
+        </Space>
+      </div>
+    </div>
+  );
 
-        <div style={{ display: 'grid', gap: 6 }}>
-          <Typography.Text style={{ ...wrapAny }}><b>Técnico:</b> {technicianLabel}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Supervisor:</b> {supervisorLabel}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Coordenador:</b> {coordinatorLabel}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>AF:</b> {p.af || '-'}</Typography.Text>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography.Text style={{ ...wrapAny }}><b>Cliente:</b> {p.client?.name || (p.clientId ? `#${p.clientId}` : '-')}</Typography.Text>
-            <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p.clientId}>
-              Abrir cliente
-            </Button>
-          </div>
-
-          <Typography.Text style={{ ...wrapAny }}><b>Prev. início:</b> {p.startPlannedAt ? dayjs(p.startPlannedAt).format('DD/MM/YYYY') : '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Prev. fim:</b> {p.endPlannedAt ? dayjs(p.endPlannedAt).format('DD/MM/YYYY') : '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Início:</b> {p.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Fim:</b> {p.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}</Typography.Text>
-
-          <Typography.Text style={{ ...wrapAny }}><b>Caminhões:</b> {p.trucksDone}/{p.trucksTotal}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Equipamentos (total):</b> {p.equipmentsTotal ?? 0}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Equip./dia:</b> {p.equipmentsPerDay ?? '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Dias estimados:</b> {p.daysEstimated ?? '-'}</Typography.Text>
-
-          <Divider style={{ margin: '8px 0' }} />
-
-          <Typography.Text style={{ ...wrapAny }}><b>Contato:</b> {p.contactName || '-'}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>E-mails:</b> {contactEmailsLabel}</Typography.Text>
-          <Typography.Text style={{ ...wrapAny }}><b>Telefone:</b> {p.contactPhone || '-'}</Typography.Text>
-          <Typography.Text style={{ whiteSpace: 'pre-wrap', ...wrapAny }}><b>Observações:</b> {p.notes || '-'}</Typography.Text>
-        </div>
+  const StatCard = ({
+    label,
+    value,
+  }: {
+    label: string;
+    value: React.ReactNode;
+  }) => (
+    <Card
+      size="small"
+      styles={{ body: { padding: 14 } }}
+      style={{
+        borderRadius: 14,
+      }}
+    >
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {label}
+      </Typography.Text>
+      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>
+        {value}
       </div>
     </Card>
   );
+
+  const SummaryContent = () => (
+    <Card
+      title={
+        <Space size={8}>
+          <UnorderedListOutlined />
+          <span>Resumo do projeto</span>
+        </Space>
+      }
+      styles={{
+        body: { padding: isMobile ? 14 : 20 },
+      }}
+      style={{ borderRadius: 16 }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <Typography.Title level={isMobile ? 5 : 4} style={{ margin: 0 }}>
+              {p?.title}
+            </Typography.Title>
+            <Typography.Text type="secondary" style={{ ...wrapAny }}>
+              {p?.client?.name || (p?.clientId ? `Cliente #${p.clientId}` : 'Sem cliente vinculado')}
+            </Typography.Text>
+          </div>
+
+          <div>{p ? statusTag(p.status) : null}</div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',
+            gap: 12,
+          }}
+        >
+          <StatCard label="Caminhões" value={`${p?.trucksDone ?? 0}/${p?.trucksTotal ?? 0}`} />
+          <StatCard label="Equipamentos" value={p?.equipmentsTotal ?? 0} />
+          <StatCard label="Equip./dia" value={p?.equipmentsPerDay ?? '-'} />
+          <StatCard label="Dias estimados" value={p?.daysEstimated ?? '-'} />
+        </div>
+
+        <Card
+          size="small"
+          styles={{ body: { padding: 14 } }}
+          style={{ borderRadius: 14, background: '#fafafa' }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Typography.Text strong>Andamento geral</Typography.Text>
+            <Typography.Text type="secondary">{progressPercent}%</Typography.Text>
+          </div>
+
+          <Progress percent={progressPercent} />
+        </Card>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: 16,
+          }}
+        >
+          <Card
+            size="small"
+            title="Responsáveis"
+            styles={{ body: { padding: 14 } }}
+            style={{ borderRadius: 14 }}
+          >
+            <InfoRow label="Técnico / Prestador" value={technicianLabel} />
+            <InfoRow label="Supervisor" value={supervisorLabel} />
+            <InfoRow label="Coordenador" value={coordinatorLabel} />
+            <div style={{ paddingTop: 8 }}>
+              <InfoRow label="AF" value={p?.af || '-'} />
+            </div>
+          </Card>
+
+          <Card
+            size="small"
+            title="Datas"
+            styles={{ body: { padding: 14 } }}
+            style={{ borderRadius: 14 }}
+          >
+            <InfoRow
+              label="Prev. início"
+              value={parseDateOnly(p?.startPlannedAt)?.format('DD/MM/YYYY') || '-'}
+            />
+            <InfoRow
+              label="Prev. fim"
+              value={parseDateOnly(p?.endPlannedAt)?.format('DD/MM/YYYY') || '-'}
+            />
+            <InfoRow
+              label="Início"
+              value={p?.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}
+            />
+            <div style={{ paddingTop: 8 }}>
+              <InfoRow
+                label="Fim"
+                value={p?.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}
+              />
+            </div>
+          </Card>
+
+          <Card
+            size="small"
+            title="Cliente"
+            styles={{ body: { padding: 14 } }}
+            style={{ borderRadius: 14 }}
+          >
+            <InfoRow
+              label="Nome"
+              value={p?.client?.name || (p?.clientId ? `#${p.clientId}` : '-')}
+              action={
+                <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p?.clientId}>
+                  Abrir cliente
+                </Button>
+              }
+            />
+          </Card>
+
+          <Card
+            size="small"
+            title="Contato"
+            styles={{ body: { padding: 14 } }}
+            style={{ borderRadius: 14 }}
+          >
+            <InfoRow label="Contato" value={p?.contactName || '-'} />
+            <InfoRow label="E-mails" value={contactEmailsLabel} />
+            <InfoRow label="Telefone" value={p?.contactPhone || '-'} />
+          </Card>
+        </div>
+
+        <Card
+          size="small"
+          title="Observações"
+          styles={{ body: { padding: 14 } }}
+          style={{ borderRadius: 14 }}
+        >
+          <Typography.Text style={{ whiteSpace: 'pre-wrap', ...wrapAny }}>
+            {p?.notes || '-'}
+          </Typography.Text>
+        </Card>
+      </div>
+    </Card>
+  );
+
+  if (projectQuery.isLoading) {
+    return <Typography.Text>Carregando projeto...</Typography.Text>;
+  }
+
+  if (projectQuery.isError || !p) {
+    return (
+      <Card>
+        <Typography.Text type="danger">Falha ao carregar projeto.</Typography.Text>
+        <Divider />
+        <Button onClick={() => nav('/installation-projects')}>Voltar</Button>
+      </Card>
+    );
+  }
 
   return (
     <div style={pageWrap}>
@@ -868,52 +1061,7 @@ export default function InstallationProjectDetailPage() {
 
       <div style={twoCols}>
         <div style={{ minWidth: 0 }}>
-          {isMobile ? (
-            <MobileSummary />
-          ) : (
-            <Card title={<Space><UnorderedListOutlined /> Resumo</Space>}>
-              <Descriptions bordered size="small" column={1}>
-                <Descriptions.Item label="Técnico / Prestador">{technicianLabel}</Descriptions.Item>
-                <Descriptions.Item label="Supervisor">{supervisorLabel}</Descriptions.Item>
-                <Descriptions.Item label="Coordenador">{coordinatorLabel}</Descriptions.Item>
-                <Descriptions.Item label="AF">{p.af || '-'}</Descriptions.Item>
-
-                <Descriptions.Item label="Cliente">
-                  <Space wrap>
-                    <span style={wrapAny as any}>{p.client?.name || (p.clientId ? `#${p.clientId}` : '-')}</span>
-                    <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p.clientId}>
-                      Abrir cliente
-                    </Button>
-                  </Space>
-                </Descriptions.Item>
-
-                <Descriptions.Item label="Prev. início">
-                  {p.startPlannedAt ? dayjs(p.startPlannedAt).format('DD/MM/YYYY') : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Prev. fim">
-                  {p.endPlannedAt ? dayjs(p.endPlannedAt).format('DD/MM/YYYY') : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Início">
-                  {p.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Fim">
-                  {p.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}
-                </Descriptions.Item>
-
-                <Descriptions.Item label="Caminhões (feito / total)">{`${p.trucksDone}/${p.trucksTotal}`}</Descriptions.Item>
-                <Descriptions.Item label="Equipamentos (total)">{p.equipmentsTotal ?? 0}</Descriptions.Item>
-                <Descriptions.Item label="Equip./dia">{p.equipmentsPerDay ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="Dias estimados">{p.daysEstimated ?? '-'}</Descriptions.Item>
-
-                <Descriptions.Item label="Contato">{p.contactName || '-'}</Descriptions.Item>
-                <Descriptions.Item label="E-mails">{contactEmailsLabel}</Descriptions.Item>
-                <Descriptions.Item label="Telefone">{p.contactPhone || '-'}</Descriptions.Item>
-                <Descriptions.Item label="Observações">
-                  <span style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{p.notes || '-'}</span>
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          )}
+          <SummaryContent />
         </div>
 
         <div style={{ display: 'grid', gap: isMobile ? 12 : 16, minWidth: 0 }}>
@@ -925,6 +1073,7 @@ export default function InstallationProjectDetailPage() {
               </Button>
             }
             styles={{ body: { padding: isMobile ? 12 : 24 } }}
+            style={{ borderRadius: 16 }}
           >
             <List
               dataSource={itemsSorted}
@@ -964,6 +1113,7 @@ export default function InstallationProjectDetailPage() {
               </Space>
             }
             styles={{ body: { padding: isMobile ? 12 : 24 } }}
+            style={{ borderRadius: 16 }}
           >
             <List
               dataSource={progressSorted}
@@ -1129,6 +1279,7 @@ export default function InstallationProjectDetailPage() {
               trucksTotal: v.trucksTotal ?? 0,
               equipmentsPerDay: v.equipmentsPerDay ?? null,
               startPlannedAt: v.startPlannedAt ? (v.startPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
+              endPlannedAt: v.endPlannedAt ? (v.endPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
               contactName: v.contactName ?? null,
               contactEmails,
               contactEmail: contactEmails[0] ?? null,
@@ -1162,7 +1313,8 @@ export default function InstallationProjectDetailPage() {
               coordinatorId: p.coordinatorId ?? null,
               trucksTotal: p.trucksTotal ?? 0,
               equipmentsPerDay: p.equipmentsPerDay ?? null,
-              startPlannedAt: p.startPlannedAt ? dayjs(p.startPlannedAt) : null,
+              startPlannedAt: parseDateOnly(p.startPlannedAt),
+              endPlannedAt: parseDateOnly(p.endPlannedAt),
               contactName: p.contactName ?? null,
               contactEmails: initialEmails,
               contactPhone: p.contactPhone ?? null,
@@ -1296,9 +1448,15 @@ export default function InstallationProjectDetailPage() {
             </Form.Item>
           </div>
 
-          <Form.Item name="startPlannedAt" label="Data prevista de início">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
-          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <Form.Item name="startPlannedAt" label="Data prevista de início">
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+            </Form.Item>
+
+            <Form.Item name="endPlannedAt" label="Data prevista de término">
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+            </Form.Item>
+          </div>
 
           <Form.Item name="contactName" label="Contato">
             <Input />
