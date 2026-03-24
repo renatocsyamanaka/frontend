@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Layout, Menu, Grid, Drawer, Button, Avatar, Typography, Space } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Layout, Menu, Grid, Drawer, Button, Avatar, Typography, Space } from 'antd';
 import {
   HomeOutlined,
   ToolOutlined,
@@ -8,7 +8,6 @@ import {
   NotificationOutlined,
   ProfileOutlined,
   ScheduleOutlined,
-  CalendarOutlined,
   DatabaseOutlined,
   LogoutOutlined,
   ProjectOutlined,
@@ -34,7 +33,7 @@ const HOVER_BG = 'rgba(31, 113, 184, 0.18)';
 const TEXT_PRIMARY = '#EAF4FF';
 const TEXT_SECONDARY = '#A9C3DA';
 
-const SECTOR_LABELS = {
+const SECTOR_LABELS: Record<string, string> = {
   OPERACOES: 'Operações',
   LOGISTICA: 'Logística',
   SISTEMAS: 'Sistemas',
@@ -42,7 +41,7 @@ const SECTOR_LABELS = {
   GESTAO: 'Gestão',
 };
 
-const abs = (url) => {
+const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
 
@@ -50,18 +49,18 @@ const abs = (url) => {
   return base ? `${base}/${String(url).replace(/^\/+/, '')}` : url;
 };
 
-function getSectorLabel(sector) {
+function getSectorLabel(sector?: string) {
   if (!sector) return '';
   return SECTOR_LABELS[sector] || sector;
 }
 
-function getUserSectors(user) {
+function getUserSectors(user: any) {
   if (!Array.isArray(user?.sectors) || user.sectors.length === 0) {
     return ['GESTAO'];
   }
 
   const arr = user.sectors
-    .map((s) => String(s || '').trim().toUpperCase())
+    .map((s: string) => String(s || '').trim().toUpperCase())
     .filter(Boolean);
 
   return arr.length ? arr : ['GESTAO'];
@@ -75,6 +74,9 @@ export function AppLayout() {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const bellWrapRef = useRef<HTMLButtonElement | null>(null);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -83,6 +85,23 @@ export function AppLayout() {
   const sectors = getUserSectors(user);
   const sectorsLabel =
     sectors.length > 0 ? sectors.map(getSectorLabel).join(' • ') : 'Gestão';
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    const pageBody = document.querySelector('.app-layout-content-scroll');
+    if (pageBody instanceof HTMLElement) {
+      pageBody.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    if (isMobile) {
+      setDrawerOpen(false);
+    }
+  }, [location.pathname, isMobile]);
 
   const menuConfig = [
     { key: '/', label: 'Dashboard', icon: <HomeOutlined />, permission: 'DASHBOARD_VIEW' },
@@ -97,6 +116,18 @@ export function AppLayout() {
       label: 'Pedido de Peças',
       icon: <DatabaseOutlined />,
       permission: 'PART_REQUESTS_VIEW',
+    },
+    {
+      key: '/demands',
+      label: 'Planejamento CIA',
+      icon: <ProfileOutlined />,
+      permission: 'DASHBOARD_ACTIVITY_VIEW',
+    },
+    {
+      key: '/delivery-reports',
+      label: 'CTEs',
+      icon: <DatabaseOutlined />,
+      permission: 'DELIVERY_REPORTS_VIEW',
     },
     {
       key: '/my-part-requests',
@@ -208,6 +239,19 @@ export function AppLayout() {
     logout();
     setDrawerOpen(false);
     navigate('/login');
+  };
+
+  const handleActivityClick = () => {
+    if (!bellWrapRef.current) return;
+
+    const internalButton =
+      bellWrapRef.current.querySelector('button') ||
+      bellWrapRef.current.querySelector('[role="button"]') ||
+      bellWrapRef.current.querySelector('.ant-btn');
+
+    if (internalButton instanceof HTMLElement) {
+      internalButton.click();
+    }
   };
 
   const sidebarStyles = `
@@ -333,18 +377,94 @@ export function AppLayout() {
       color: inherit !important;
     }
 
+    .header-profile-btn,
+    .header-logout-btn {
+      height: 44px !important;
+      border-radius: 14px !important;
+      padding: 0 16px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 8px !important;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+      line-height: 1 !important;
+    }
+
     .header-profile-btn {
       border: 1px solid #E6EEF7 !important;
       background: #fff !important;
-      border-radius: 14px !important;
-      height: 44px !important;
-      padding: 0 10px !important;
-      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
     }
 
     .header-profile-btn:hover {
       border-color: ${BRAND} !important;
       color: ${BRAND} !important;
+    }
+
+    .header-logout-btn.ant-btn {
+      height: 44px !important;
+      border-radius: 14px !important;
+      padding: 0 16px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+    }
+
+    .header-logout-btn .anticon,
+    .header-profile-btn .anticon {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1 !important;
+    }
+
+    .header-bell-wrap {
+      height: 44px;
+      min-width: 44px;
+      padding: 0 14px;
+      border: 1px solid #E6EEF7;
+      background: #fff;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .header-bell-wrap:hover {
+      border-color: ${BRAND};
+    }
+
+    .header-bell-wrap .header-bell-text {
+      color: #16324F;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .header-bell-wrap .ant-btn,
+    .header-bell-wrap button {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      background: transparent !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      height: auto !important;
+    }
+
+    .header-bell-wrap * {
+      pointer-events: none;
+    }
+
+    .header-bell-wrap .ant-badge,
+    .header-bell-wrap .anticon {
+      pointer-events: none;
     }
   `;
 
@@ -509,34 +629,70 @@ export function AppLayout() {
             )}
           </div>
 
-          <Space size={8}>
-            <HeaderTasksBell />
-
+          <Space size={8} align="center">
+            <div
+              ref={bellWrapRef as any}
+              className="header-bell-wrap"
+              onClick={handleActivityClick}
+              aria-label="Abrir atividades"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleActivityClick();
+                }
+              }}
+            >
+              <HeaderTasksBell />
+              {!isMobile && <span className="header-bell-text">Atividade</span>}
+            </div>
             <Button
               className="header-profile-btn"
               onClick={() => setProfileOpen(true)}
             >
-              <Space size={8}>
+              <Space size={8} align="center">
                 <Avatar
                   size={30}
                   src={abs(user?.avatarUrl)}
                   icon={<UserOutlined />}
-                  style={{ background: BRAND }}
+                  style={{ background: BRAND, flexShrink: 0 }}
                 />
                 {!isMobile && (
-                  <Text strong style={{ color: '#16324F' }}>
+                  <Text strong style={{ color: '#16324F', lineHeight: 1 }}>
                     Meu Perfil
                   </Text>
                 )}
               </Space>
             </Button>
+
+            <Button
+              danger
+              className="header-logout-btn"
+              icon={<LogoutOutlined />}
+              onClick={() => {
+                Modal.confirm({
+                  title: 'Sair do sistema',
+                  content: 'Deseja realmente sair?',
+                  okText: 'Sair',
+                  okButtonProps: { danger: true },
+                  cancelText: 'Cancelar',
+                  onOk: handleLogout,
+                });
+              }}
+            >
+              {!isMobile && 'Sair'}
+            </Button>
           </Space>
         </Header>
 
         <Content
+          ref={contentRef}
+          className="app-layout-content-scroll"
           style={{
             margin: isMobile ? 12 : 20,
             background: 'transparent',
+            overflowY: 'auto',
           }}
         >
           <Outlet />

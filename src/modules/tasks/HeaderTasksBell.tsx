@@ -1,93 +1,114 @@
-import { useEffect, useRef } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
-import { Badge, Button, List, Popover, Tooltip, message } from 'antd';
-import { BellOutlined, CheckOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Badge, Button, Dropdown, List, Space, Typography, Empty } from 'antd';
+import { BellOutlined } from '@ant-design/icons';
 
-type Task = {
-  id: number;
+const { Text } = Typography;
+
+type ActivityItem = {
+  id: string | number;
   title: string;
-  dueDate?: string | null;
-  creator?: { id: number; name: string };
-  location?: { id: number; name: string } | null;
+  description?: string;
+  createdAt?: string;
+  read?: boolean;
 };
 
-export default function HeaderTasksBell() {
-  const qc = useQueryClient();
-  const prevCount = useRef(0);
+type Props = {
+  items?: ActivityItem[];
+  loading?: boolean;
+  unreadCount?: number;
+  onOpenAll?: () => void;
+  onItemClick?: (item: ActivityItem) => void;
+};
 
-  const { data: tasks = [] } = useQuery<Task[]>({
-    queryKey: ['tasks', 'mine-new'],
-    queryFn: async () =>
-      (await api.get('/tasks', { params: { mine: true, status: 'NEW' } })).data,
-    refetchInterval: 20000, // 20s
-    refetchIntervalInBackground: true,
-    staleTime: 5000,
-  });
+export default function HeaderTasksBell({
+  items = [],
+  loading = false,
+  unreadCount = 0,
+  onOpenAll,
+  onItemClick,
+}: Props) {
+  const [open, setOpen] = useState(false);
 
-  // avisa quando aparecerem novas
-  useEffect(() => {
-    if (tasks.length > prevCount.current) {
-      const diff = tasks.length - prevCount.current;
-      message.info(`Você tem ${diff} nova(s) demanda(s).`);
+  const menuContent = useMemo(() => {
+    if (!items.length && !loading) {
+      return (
+        <div style={{ width: 320, padding: 16 }}>
+          <Empty description="Nenhuma atividade" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </div>
+      );
     }
-    prevCount.current = tasks.length;
-  }, [tasks.length]);
 
-  const ack = useMutation({
-    mutationFn: async (id: number) => (await api.patch(`/tasks/${id}/ack`)).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks', 'mine-new'] });
-      qc.invalidateQueries({ queryKey: ['tasks'] }); // planner
-      message.success('Recebimento confirmado');
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao confirmar'),
-  });
+    return (
+      <div style={{ width: 360, maxHeight: 420, overflowY: 'auto' }}>
+        <div
+          style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #f0f0f0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Text strong>Atividades</Text>
 
-  const content = (
-    <div style={{ width: 360 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <strong>Minhas novas demandas</strong>
-        <Link to="/tasks">Abrir Planner</Link>
+          {onOpenAll ? (
+            <Button type="link" size="small" onClick={onOpenAll}>
+              Ver todas
+            </Button>
+          ) : null}
+        </div>
+
+        <List
+          loading={loading}
+          dataSource={items}
+          renderItem={(item) => (
+            <List.Item
+              key={item.id}
+              onClick={() => onItemClick?.(item)}
+              style={{
+                cursor: onItemClick ? 'pointer' : 'default',
+                padding: '12px 16px',
+                background: item.read ? '#fff' : '#f6ffed',
+              }}
+            >
+              <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                <Text strong={!item.read}>{item.title}</Text>
+
+                {item.description ? (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {item.description}
+                  </Text>
+                ) : null}
+
+                {item.createdAt ? (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {item.createdAt}
+                  </Text>
+                ) : null}
+              </Space>
+            </List.Item>
+          )}
+        />
       </div>
-      <List
-        dataSource={tasks}
-        locale={{ emptyText: 'Sem novas demandas' }}
-        renderItem={(t) => (
-          <List.Item
-            actions={[
-              <Tooltip title="Confirmar recebimento" key="ack">
-                <Button
-                  size="small"
-                  icon={<CheckOutlined />}
-                  loading={ack.isPending}
-                  onClick={() => ack.mutate(t.id)}
-                />
-              </Tooltip>,
-            ]}
-          >
-            <List.Item.Meta
-              title={t.title}
-              description={[
-                t.location?.name ? `Local: ${t.location.name}` : null,
-                t.creator?.name ? `Criada por: ${t.creator.name}` : null,
-                t.dueDate ? `Prazo: ${new Date(t.dueDate).toLocaleDateString('pt-BR')}` : null,
-              ]
-                .filter(Boolean)
-                .join(' • ')}
-            />
-          </List.Item>
-        )}
-      />
-    </div>
-  );
+    );
+  }, [items, loading, onItemClick, onOpenAll]);
 
   return (
-    <Popover content={content} trigger="click" placement="bottomRight">
-      <Badge count={tasks.length} size="small" overflowCount={99}>
-        <Button type="text" icon={<BellOutlined />} />
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      trigger={['click']}
+      popupRender={() => menuContent}
+      placement="bottomRight"
+    >
+      <Badge count={unreadCount} size="small" overflowCount={99}>
+        <Button
+          type="text"
+          className="header-bell-wrap"
+          icon={<BellOutlined />}
+          aria-label="Abrir atividades"
+        />
       </Badge>
-    </Popover>
+    </Dropdown>
   );
 }

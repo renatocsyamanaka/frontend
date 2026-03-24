@@ -5,7 +5,7 @@ import { AppLayout } from './modules/layout/AppLayout';
 
 import { LoginPage } from './modules/auth/LoginPage';
 import Dashboard from './modules/dashboard/Dashboard';
-
+import DemandsPage from './modules/demands/DemandsPage';
 import InstallationProjectsPage from './modules/installationProjects/InstallationProjectsPage';
 import InstallationProjectDetailPage from './modules/installationProjects/InstallationProjectDetailPage';
 
@@ -28,6 +28,7 @@ import NewsAdminPage from './modules/news/NewsAdminPage';
 import PartRequestsPage from './modules/PartRequests/PartRequests';
 import MyPartRequestsPage from './modules/PartRequests/MyPartRequestsPage';
 import PublicPartRequestPage from './modules/PartRequests/PublicPartRequestPage';
+import DeliveryReportsPage from './modules/deliveryReports/DeliveryReportsPage';
 
 export default function App() {
   return (
@@ -50,7 +51,7 @@ export default function App() {
         <Route
           path="techs-pso"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="TECHS_MAP_VIEW">
               <TechsPsoMapPage />
             </RequireAccess>
           }
@@ -59,7 +60,7 @@ export default function App() {
         <Route
           path="installation-projects"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectsPage />
             </RequireAccess>
           }
@@ -68,8 +69,17 @@ export default function App() {
         <Route
           path="installation-projects/:id"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectDetailPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="delivery-reports"
+          element={
+            <RequireAccess permission="DELIVERY_REPORTS_VIEW">
+              <DeliveryReportsPage />
             </RequireAccess>
           }
         />
@@ -77,8 +87,17 @@ export default function App() {
         <Route
           path="part-requests"
           element={
-            <RequireAccess minLevel={2} sectors={['LOGISTICA', 'OPERACOES']}>
+            <RequireAccess permission="PART_REQUESTS_VIEW">
               <PartRequestsPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="demands"
+          element={
+            <RequireAccess permission="DASHBOARD_ACTIVITY_VIEW">
+              <DemandsPage />
             </RequireAccess>
           }
         />
@@ -86,7 +105,7 @@ export default function App() {
         <Route
           path="my-part-requests"
           element={
-            <RequireAccess minLevel={2}>
+            <RequireAccess permission="MY_PART_REQUESTS_VIEW">
               <MyPartRequestsPage />
             </RequireAccess>
           }
@@ -95,7 +114,7 @@ export default function App() {
         <Route
           path="users"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES', 'SISTEMAS']}>
+            <RequireAccess permission="USERS_VIEW">
               <UsersPage />
             </RequireAccess>
           }
@@ -104,7 +123,7 @@ export default function App() {
         <Route
           path="org"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="ORG_VIEW">
               <OrgPage />
             </RequireAccess>
           }
@@ -113,7 +132,7 @@ export default function App() {
         <Route
           path="locations"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="LOCATIONS_VIEW">
               <LocationsPage />
             </RequireAccess>
           }
@@ -122,7 +141,7 @@ export default function App() {
         <Route
           path="clients"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES', 'ATENDIMENTO']}>
+            <RequireAccess permission="CLIENTS_VIEW">
               <ClientsPage />
             </RequireAccess>
           }
@@ -131,7 +150,7 @@ export default function App() {
         <Route
           path="tasks"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES', 'SISTEMAS']}>
+            <RequireAccess permission="TASKS_VIEW">
               <TasksPage />
             </RequireAccess>
           }
@@ -140,7 +159,7 @@ export default function App() {
         <Route
           path="tech-types"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES', 'SISTEMAS']}>
+            <RequireAccess permission="TECH_TYPES_VIEW">
               <TechTypesPage />
             </RequireAccess>
           }
@@ -149,7 +168,7 @@ export default function App() {
         <Route
           path="needs"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="NEEDS_VIEW">
               <NeedsPage />
             </RequireAccess>
           }
@@ -158,7 +177,7 @@ export default function App() {
         <Route
           path="needs/map"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES']}>
+            <RequireAccess permission="NEEDS_MAP_VIEW">
               <NeedsMapPage />
             </RequireAccess>
           }
@@ -167,7 +186,7 @@ export default function App() {
         <Route
           path="assignments"
           element={
-            <RequireAccess minLevel={2}>
+            <RequireAccess permission="ASSIGNMENTS_VIEW">
               <AssignmentsMonthPage />
             </RequireAccess>
           }
@@ -176,7 +195,7 @@ export default function App() {
         <Route
           path="overtime"
           element={
-            <RequireAccess minLevel={3} sectors={['OPERACOES']}>
+            <RequireAccess permission="OVERTIME_VIEW">
               <OvertimePage />
             </RequireAccess>
           }
@@ -185,7 +204,7 @@ export default function App() {
         <Route
           path="timeoff"
           element={
-            <RequireAccess minLevel={2} sectors={['OPERACOES', 'ATENDIMENTO']}>
+            <RequireAccess permission="TIMEOFF_VIEW">
               <TimeOffPage />
             </RequireAccess>
           }
@@ -194,7 +213,7 @@ export default function App() {
         <Route
           path="news"
           element={
-            <RequireAccess minLevel={4}>
+            <RequireAccess permission="NEWS_VIEW">
               <NewsCenterPage />
             </RequireAccess>
           }
@@ -203,7 +222,7 @@ export default function App() {
         <Route
           path="news-admin"
           element={
-            <RequireAccess minLevel={6}>
+            <RequireAccess permission="NEWS_ADMIN_VIEW">
               <NewsAdminPage />
             </RequireAccess>
           }

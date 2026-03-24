@@ -92,6 +92,12 @@ function Requirement({ ok, text }) {
   );
 }
 
+function getDisplayRoleLabel(profile) {
+  if (!profile) return '-';
+  if (profile?.ocultarCargo) return 'Oculto';
+  return profile?.cargoDescritivo?.trim() || profile?.role?.name || '-';
+}
+
 export default function ProfileModal({ open, onClose, currentUser, onUpdated }) {
   const [profileForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
@@ -133,6 +139,7 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
   }, [open, profileForm, passwordForm]);
 
   const avatarSrc = useMemo(() => normalizeAvatar(profile?.avatarUrl), [profile]);
+  const displayCargo = useMemo(() => getDisplayRoleLabel(profile), [profile]);
 
   const handleSaveProfile = async () => {
     try {
@@ -244,7 +251,7 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
               {profile?.phone ? formatPhone(profile.phone) : 'Sem telefone'}
             </Text>
 
-            <Text type="secondary">Cargo: {profile?.role?.name || '-'}</Text>
+            <Text type="secondary">Cargo: {displayCargo}</Text>
           </Space>
         </div>
 
@@ -277,6 +284,10 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
 
                   <Form.Item label="E-mail">
                     <Input value={profile?.email || ''} disabled />
+                  </Form.Item>
+
+                  <Form.Item label="Cargo">
+                    <Input value={displayCargo} disabled />
                   </Form.Item>
 
                   <Form.Item

@@ -26,7 +26,6 @@ import {
   ArrowLeftOutlined,
   EditOutlined,
   WhatsAppOutlined,
-  MailOutlined,
   PlayCircleOutlined,
   StopOutlined,
   PlusOutlined,
@@ -34,6 +33,7 @@ import {
   UnorderedListOutlined,
   CalendarOutlined,
   UploadOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -237,11 +237,13 @@ function normalizeEmailList(input: unknown): string[] {
     arr = [input];
   }
 
-  return [...new Set(
-    arr
-      .map((item) => String(item || '').trim().toLowerCase())
-      .filter(Boolean)
-  )];
+  return [
+    ...new Set(
+      arr
+        .map((item) => String(item || '').trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function isValidEmail(email?: string | null) {
@@ -251,6 +253,28 @@ function isValidEmail(email?: string | null) {
 function parseDateOnly(value?: string | null) {
   if (!value) return null;
   return dayjs(String(value).slice(0, 10), 'YYYY-MM-DD');
+}
+
+function normalizePlate(raw: string) {
+  const v = String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+  if (v.length >= 7 && /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v.slice(0, 7))) {
+    return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
+  }
+  if (v.length >= 7 && /^[A-Z]{3}[0-9]{4}$/.test(v.slice(0, 7))) {
+    return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
+  }
+  if (v.length > 3) return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
+  return v.slice(0, 3);
+}
+
+function isValidPlate(value?: string) {
+  const v = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  return /^[A-Z]{3}[0-9]{4}$/.test(v) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v);
 }
 
 export default function InstallationProjectDetailPage() {
@@ -390,12 +414,6 @@ export default function InstallationProjectDetailPage() {
     },
   });
 
-  const sendStartEmail = useMutation({
-    mutationFn: async () => (await api.post(`/installation-projects/${projectId}/emails/start`)).data,
-    onSuccess: () => message.success('E-mail de início enviado!'),
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao enviar e-mail de início'),
-  });
-
   const sendDailyEmail = useMutation({
     mutationFn: async (payload?: { date?: string }) =>
       (await api.post(`/installation-projects/${projectId}/emails/daily`, payload || {})).data,
@@ -414,12 +432,6 @@ export default function InstallationProjectDetailPage() {
   const handleSendDaily = () => {
     sendDailyEmail.mutate({ date: dayjs().format('YYYY-MM-DD') });
   };
-
-  const sendFinalEmail = useMutation({
-    mutationFn: async () => (await api.post(`/installation-projects/${projectId}/emails/final`)).data,
-    onSuccess: () => message.success('E-mail final (compilado) enviado!'),
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao enviar e-mail final'),
-  });
 
   const updateProject = useMutation({
     mutationFn: async (payload: Partial<InstallationProject>) => {
@@ -454,7 +466,7 @@ export default function InstallationProjectDetailPage() {
       return unwrap<InstallationProject>(res.data);
     },
     onSuccess: async () => {
-      message.success('Projeto iniciado!');
+      message.success('Projeto iniciado! O cliente foi notificado automaticamente.');
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
       await qc.invalidateQueries({ queryKey: ['installation-projects'] });
     },
@@ -467,7 +479,7 @@ export default function InstallationProjectDetailPage() {
       return unwrap<InstallationProject>(res.data);
     },
     onSuccess: async () => {
-      message.success('Projeto finalizado!');
+      message.success('Projeto finalizado! O compilado final foi enviado automaticamente.');
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
       await qc.invalidateQueries({ queryKey: ['installation-projects'] });
     },
@@ -487,26 +499,6 @@ export default function InstallationProjectDetailPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao adicionar item'),
   });
-
-  function normalizePlate(raw: string) {
-    const v = String(raw || '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
-
-    if (v.length >= 7 && /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v.slice(0, 7))) {
-      return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
-    }
-    if (v.length >= 7 && /^[A-Z]{3}[0-9]{4}$/.test(v.slice(0, 7))) {
-      return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
-    }
-    if (v.length > 3) return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
-    return v.slice(0, 3);
-  }
-
-  function isValidPlate(value?: string) {
-    const v = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    return /^[A-Z]{3}[0-9]{4}$/.test(v) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v);
-  }
 
   async function extractVehiclesFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
@@ -631,7 +623,7 @@ export default function InstallationProjectDetailPage() {
         });
 
         message.warning(
-          'Nenhum veículo válido encontrado. Verifique se o Excel possui as colunas "PLACA" e "SERIE/ SERIAL".'
+          'Nenhum veículo válido encontrado. Verifique se o Excel possui as colunas "PLACA" e "SERIE/ SERIAL".',
         );
         return;
       }
@@ -651,7 +643,7 @@ export default function InstallationProjectDetailPage() {
 
       if (alreadyPublished.length > 0) {
         message.warning(
-          `Importação concluída. ${vehicles.length} veículo(s) carregado(s), mas ${alreadyPublished.length} placa(s) já estavam lançadas anteriormente.`
+          `Importação concluída. ${vehicles.length} veículo(s) carregado(s), mas ${alreadyPublished.length} placa(s) já estavam lançadas anteriormente.`,
         );
       } else {
         message.success(`${vehicles.length} veículo(s) importado(s) do Excel.`);
@@ -746,6 +738,54 @@ export default function InstallationProjectDetailPage() {
     maxWidth: '100%',
   };
 
+  const handleConfirmStart = () => {
+    Modal.confirm({
+      title: 'Confirmar início do projeto?',
+      icon: <ExclamationCircleOutlined style={{ color: '#faad14' }} />,
+      centered: true,
+      okText: 'Sim, iniciar',
+      cancelText: 'Cancelar',
+      okButtonProps: { type: 'primary' },
+      content: (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Typography.Text>
+            Ao iniciar, o projeto mudará de status e o cliente receberá automaticamente as informações de início.
+          </Typography.Text>
+          <Typography.Text strong type="danger">
+            Essa ação não poderá ser desfeita.
+          </Typography.Text>
+        </div>
+      ),
+      onOk: async () => {
+        await startProject.mutateAsync();
+      },
+    });
+  };
+
+  const handleConfirmFinish = () => {
+    Modal.confirm({
+      title: 'Confirmar finalização do projeto?',
+      icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+      centered: true,
+      okText: 'Sim, finalizar',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      content: (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Typography.Text>
+            Ao finalizar, o projeto será encerrado e o compilado final será enviado automaticamente ao cliente.
+          </Typography.Text>
+          <Typography.Text strong type="danger">
+            Essa ação não poderá ser desfeita.
+          </Typography.Text>
+        </div>
+      ),
+      onOk: async () => {
+        await finishProject.mutateAsync();
+      },
+    });
+  };
+
   const InfoRow = ({
     label,
     value,
@@ -800,9 +840,7 @@ export default function InstallationProjectDetailPage() {
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {label}
       </Typography.Text>
-      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </Card>
   );
 
@@ -1006,16 +1044,6 @@ export default function InstallationProjectDetailPage() {
         </Button>
 
         <Button
-          icon={<MailOutlined />}
-          onClick={() => sendStartEmail.mutate()}
-          loading={sendStartEmail.isPending}
-          disabled={!hasProjectEmails || p.status !== 'A_INICIAR'}
-          block={isMobile}
-        >
-          Enviar e-mail de início
-        </Button>
-
-        <Button
           icon={<SendOutlined />}
           loading={sendDailyEmail.isPending}
           onClick={handleSendDaily}
@@ -1026,22 +1054,11 @@ export default function InstallationProjectDetailPage() {
         </Button>
 
         <Button
-          icon={<MailOutlined />}
-          onClick={() => sendFinalEmail.mutate()}
-          loading={sendFinalEmail.isPending}
-          disabled={!hasProjectEmails || p.status !== 'FINALIZADO'}
-          danger
-          block={isMobile}
-        >
-          Enviar compilado final
-        </Button>
-
-        <Button
           icon={<PlayCircleOutlined />}
           type="primary"
           disabled={p.status !== 'A_INICIAR'}
           loading={startProject.isPending}
-          onClick={() => startProject.mutate()}
+          onClick={handleConfirmStart}
           block={isMobile}
         >
           Iniciar
@@ -1052,7 +1069,7 @@ export default function InstallationProjectDetailPage() {
           danger
           disabled={p.status !== 'INICIADO'}
           loading={finishProject.isPending}
-          onClick={() => finishProject.mutate()}
+          onClick={handleConfirmFinish}
           block={isMobile}
         >
           Finalizar
@@ -1101,7 +1118,11 @@ export default function InstallationProjectDetailPage() {
           </Card>
 
           <Card
-            title={<Space><CalendarOutlined /> Diário</Space>}
+            title={
+              <Space>
+                <CalendarOutlined /> Diário
+              </Space>
+            }
             extra={
               <Space>
                 <Button icon={<UnorderedListOutlined />} onClick={() => setProgressListOpen(true)}>
@@ -1124,7 +1145,9 @@ export default function InstallationProjectDetailPage() {
                     <Space wrap>
                       <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
                       <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
-                      {pr.author?.name ? <Typography.Text type="secondary">por {pr.author.name}</Typography.Text> : null}
+                      {pr.author?.name ? (
+                        <Typography.Text type="secondary">por {pr.author.name}</Typography.Text>
+                      ) : null}
                     </Space>
 
                     {pr.vehicles?.length ? (
@@ -1148,7 +1171,11 @@ export default function InstallationProjectDetailPage() {
                       </div>
                     ) : null}
 
-                    {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{pr.notes}</Typography.Text> : null}
+                    {pr.notes ? (
+                      <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>
+                        {pr.notes}
+                      </Typography.Text>
+                    ) : null}
                   </div>
                 </List.Item>
               )}
@@ -1247,7 +1274,11 @@ export default function InstallationProjectDetailPage() {
                   </div>
                 ) : null}
 
-                {pr.notes ? <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>{pr.notes}</Typography.Text> : null}
+                {pr.notes ? (
+                  <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>
+                    {pr.notes}
+                  </Typography.Text>
+                ) : null}
               </div>
             </List.Item>
           )}
@@ -1294,15 +1325,11 @@ export default function InstallationProjectDetailPage() {
             setSupervisorSearch('');
 
             const initialEmails = normalizeEmailList(
-              p.contactEmails?.length ? p.contactEmails : p.contactEmail
+              p.contactEmails?.length ? p.contactEmails : p.contactEmail,
             );
 
             const initialTechnicianIds =
-              p.technicianIds?.length
-                ? p.technicianIds
-                : p.technicianId
-                  ? [p.technicianId]
-                  : [];
+              p.technicianIds?.length ? p.technicianIds : p.technicianId ? [p.technicianId] : [];
 
             editForm.setFieldsValue({
               title: p.title,
@@ -1482,11 +1509,7 @@ export default function InstallationProjectDetailPage() {
                 },
               ]}
             >
-              <Select
-                mode="tags"
-                tokenSeparators={[',', ';', ' ']}
-                placeholder="Digite um ou mais e-mails"
-              />
+              <Select mode="tags" tokenSeparators={[',', ';', ' ']} placeholder="Digite um ou mais e-mails" />
             </Form.Item>
 
             <Form.Item name="contactPhone" label="Telefone (opcional)">
@@ -1682,7 +1705,8 @@ export default function InstallationProjectDetailPage() {
               <Space direction="vertical" style={{ width: '100%' }} size={8}>
                 <Progress percent={importSummary.percent} status={importSummary.loading ? 'active' : 'normal'} />
                 <Typography.Text type="secondary">
-                  Linhas lidas: {importSummary.totalRows} • Válidas: {importSummary.importedCount} • Inválidas: {importSummary.invalidRows}
+                  Linhas lidas: {importSummary.totalRows} • Válidas: {importSummary.importedCount} • Inválidas:{' '}
+                  {importSummary.invalidRows}
                 </Typography.Text>
 
                 {!importSummary.loading && importSummary.alreadyPublished.length > 0 && (
@@ -1779,12 +1803,7 @@ export default function InstallationProjectDetailPage() {
                       </Form.Item>
 
                       <div style={{ paddingTop: isMobile ? 0 : idx === 0 ? 30 : 0 }}>
-                        <Button
-                          danger
-                          onClick={() => remove(field.name)}
-                          disabled={fields.length === 1}
-                          block={isMobile}
-                        >
+                        <Button danger onClick={() => remove(field.name)} disabled={fields.length === 1} block={isMobile}>
                           Remover
                         </Button>
                       </div>

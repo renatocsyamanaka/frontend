@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -102,13 +102,16 @@ type CreateDTO = {
 };
 
 type ResizableTitleProps = React.HTMLAttributes<HTMLTableCellElement> & {
-  onResize?: (e: React.SyntheticEvent<Element>, data: { size: { width: number; height: number } }) => void;
+  onResize?: (
+    e: React.SyntheticEvent<Element>,
+    data: { size: { width: number; height: number } }
+  ) => void;
   width?: number;
 };
 
 type ColumnResizeItem = {
   key: string;
-  width: number;
+  widthPct: number;
 };
 
 function unwrap<T>(resData: any): T {
@@ -128,6 +131,7 @@ function getRoleId(u: UserLite) {
 const ROLE_ID_TECNICO = 1;
 const ROLE_ID_SUPERVISOR = 3;
 const ROLE_ID_PSO = 8;
+const MIN_COL_PCT = 6;
 
 function isSupervisor(u: UserLite) {
   const level = getRoleLevel(u);
@@ -187,7 +191,12 @@ const ResizableTitle = (props: ResizableTitleProps) => {
     <Resizable
       width={width}
       height={0}
-      handle={<span className="react-resizable-handle" onClick={(e) => e.stopPropagation()} />}
+      handle={
+        <span
+          className="react-resizable-handle"
+          onClick={(e) => e.stopPropagation()}
+        />
+      }
       onResize={onResize}
       draggableOpts={{ enableUserSelectHack: false }}
     >
@@ -214,17 +223,42 @@ export default function InstallationProjectsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+  const [tableWidth, setTableWidth] = useState(1200);
+
   const [columnSizes, setColumnSizes] = useState<ColumnResizeItem[]>([
-    { key: 'title', width: 190 },
-    { key: 'af', width: 120 },
-    { key: 'client', width: 220 },
-    { key: 'technician', width: 220 },
-    { key: 'coordinator', width: 170 },
-    { key: 'trucks', width: 110 },
-    { key: 'start', width: 110 },
-    { key: 'end', width: 110 },
-    { key: 'status', width: 110 },
+    { key: 'title', widthPct: 16 },
+    { key: 'af', widthPct: 10 },
+    { key: 'client', widthPct: 18 },
+    { key: 'technician', widthPct: 18 },
+    { key: 'coordinator', widthPct: 14 },
+    { key: 'trucks', widthPct: 8 },
+    { key: 'start', widthPct: 6 },
+    { key: 'end', widthPct: 6 },
+    { key: 'status', widthPct: 4 },
   ]);
+
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      const nextWidth = el.offsetWidth || 1200;
+      setTableWidth(nextWidth);
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(el);
+
+    window.addEventListener('resize', updateWidth);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, []);
 
   const onChangeStatus = (v: any) => {
     setStatus(v);
@@ -236,15 +270,57 @@ export default function InstallationProjectsPage() {
     setPage(1);
   };
 
-  const getColumnWidth = (key: string, fallback: number) =>
-    columnSizes.find((c) => c.key === key)?.width ?? fallback;
+  const getColumnWidthPct = (key: string, fallbackPct: number) =>
+    columnSizes.find((c) => c.key === key)?.widthPct ?? fallbackPct;
+
+  const getColumnWidthPx = (key: string, fallbackPct: number) => {
+    const pct = getColumnWidthPct(key, fallbackPct);
+    return Math.max(80, Math.round((tableWidth * pct) / 100));
+  };
 
   const handleResize =
     (key: string) =>
     (_: React.SyntheticEvent<Element>, { size }: { size: { width: number; height: number } }) => {
-      setColumnSizes((prev) =>
-        prev.map((col) => (col.key === key ? { ...col, width: Math.max(size.width, 80) } : col))
-      );
+      setColumnSizes((prev) => {
+        const currentIndex = prev.findIndex((c) => c.key === key);
+        if (currentIndex === -1) return prev;
+
+        const nextIndex = currentIndex + 1;
+        if (nextIndex >= prev.length) return prev;
+
+        const current = prev[currentIndex];
+        const next = prev[nextIndex];
+
+        const newPct = (size.width / Math.max(tableWidth, 1)) * 100;
+        const delta = newPct - current.widthPct;
+
+        if (Math.abs(delta) < 0.2) return prev;
+
+        let currentWidthPct = current.widthPct + delta;
+        let nextWidthPct = next.widthPct - delta;
+
+        if (currentWidthPct < MIN_COL_PCT) {
+          const diff = MIN_COL_PCT - currentWidthPct;
+          currentWidthPct = MIN_COL_PCT;
+          nextWidthPct -= diff;
+        }
+
+        if (nextWidthPct < MIN_COL_PCT) {
+          const diff = MIN_COL_PCT - nextWidthPct;
+          nextWidthPct = MIN_COL_PCT;
+          currentWidthPct -= diff;
+        }
+
+        if (currentWidthPct < MIN_COL_PCT || nextWidthPct < MIN_COL_PCT) {
+          return prev;
+        }
+
+        const updated = [...prev];
+        updated[currentIndex] = { ...current, widthPct: Number(currentWidthPct.toFixed(2)) };
+        updated[nextIndex] = { ...next, widthPct: Number(nextWidthPct.toFixed(2)) };
+
+        return updated;
+      });
     };
 
   const clientsQuery = useQuery<Client[]>({
@@ -328,6 +404,7 @@ export default function InstallationProjectsPage() {
         r.af,
         r.client?.name,
         technicianText,
+        r.coordinator?.name,
       ]
         .filter(Boolean)
         .join(' ')
@@ -370,7 +447,7 @@ export default function InstallationProjectsPage() {
       title: 'Projeto',
       dataIndex: 'title',
       key: 'title',
-      width: getColumnWidth('title', 190),
+      width: getColumnWidthPx('title', 16),
       ellipsis: true,
       render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
     },
@@ -378,21 +455,21 @@ export default function InstallationProjectsPage() {
       title: 'AF',
       dataIndex: 'af',
       key: 'af',
-      width: getColumnWidth('af', 120),
+      width: getColumnWidthPx('af', 10),
       ellipsis: true,
       render: (v) => v || '-',
     },
     {
       title: 'Cliente',
       key: 'client',
-      width: getColumnWidth('client', 220),
+      width: getColumnWidthPx('client', 18),
       ellipsis: true,
       render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'),
     },
     {
       title: 'Técnico / Prestador',
       key: 'technician',
-      width: getColumnWidth('technician', 220),
+      width: getColumnWidthPx('technician', 18),
       ellipsis: true,
       render: (_, r) => {
         if (r.technicianNames?.length) return r.technicianNames.join(', ');
@@ -403,28 +480,21 @@ export default function InstallationProjectsPage() {
     {
       title: 'Coordenador',
       key: 'coordinator',
-      width: getColumnWidth('coordinator', 170),
+      width: getColumnWidthPx('coordinator', 14),
       ellipsis: true,
       render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'),
     },
     {
-      title: 'Caminhões',
-      key: 'trucks',
-      width: getColumnWidth('trucks', 110),
-      align: 'center',
-      render: (_, r) => `${r.trucksDone}/${r.trucksTotal}`,
-    },
-    {
       title: 'Início',
       key: 'start',
-      width: getColumnWidth('start', 110),
+      width: getColumnWidthPx('start', 6),
       align: 'center',
       render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
     },
     {
       title: 'Fim',
       key: 'end',
-      width: getColumnWidth('end', 110),
+      width: getColumnWidthPx('end', 6),
       align: 'center',
       render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
     },
@@ -432,7 +502,7 @@ export default function InstallationProjectsPage() {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: getColumnWidth('status', 110),
+      width: getColumnWidthPx('status', 4),
       align: 'center',
       render: (s: Status) => statusTag(s),
     },
@@ -608,21 +678,22 @@ export default function InstallationProjectsPage() {
             )}
           </div>
         ) : (
-          <Table
-            rowKey="id"
-            loading={projectsQuery.isLoading}
-            dataSource={filteredRows}
-            pagination={{ pageSize: 10 }}
-            size="middle"
-            tableLayout="fixed"
-            scroll={{ x: mergedColumns.reduce((acc, col) => acc + Number(col.width || 0), 0) }}
-            components={{
-              header: {
-                cell: ResizableTitle,
-              },
-            }}
-            columns={mergedColumns as any}
-          />
+          <div ref={tableWrapRef} style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+            <Table
+              rowKey="id"
+              loading={projectsQuery.isLoading}
+              dataSource={filteredRows}
+              pagination={{ pageSize: 10 }}
+              size="middle"
+              tableLayout="fixed"
+              components={{
+                header: {
+                  cell: ResizableTitle,
+                },
+              }}
+              columns={mergedColumns as any}
+            />
+          </div>
         )}
       </Card>
 

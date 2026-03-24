@@ -83,6 +83,8 @@ const normalizeRoleName = (s?: string | null) =>
     .trim()
     .toLowerCase();
 
+const WORKER_ROLE_NAMES = ['tecnico', 'pso', 'ata', 'prp', 'spot'];
+
 const TIPO_ATENDIMENTO_OPTIONS = [
   { value: 'FX', label: 'Fixo' },
   { value: 'VL', label: 'Volante' },
@@ -125,6 +127,8 @@ const PERMISSION_OPTIONS = [
   { value: 'TIMEOFF_VIEW', label: 'Folgas / Time Off' },
   { value: 'NEWS_VIEW', label: 'Notícias' },
   { value: 'NEWS_ADMIN_VIEW', label: 'Notícias Admin' },
+  { value: 'DASHBOARD_ACTIVITY_VIEW', label: 'Planejamento CIA' },
+  { value: 'DELIVERY_REPORTS_VIEW', label: 'CTEs' },
 ];
 
 const DEFAULT_PERMISSIONS = ['DASHBOARD_VIEW', 'ASSIGNMENTS_VIEW'];
@@ -164,6 +168,9 @@ type User = {
   manager?: SimpleUser | null;
   location?: Location | null;
   estoqueAvancado?: boolean | null;
+
+  cargoDescritivo?: string | null;
+  ocultarCargo?: boolean | null;
 
   addressStreet?: string | null;
   addressNumber?: string | null;
@@ -207,6 +214,8 @@ type RegistrationRequest = {
   managerId?: number | null;
   permissions?: string[] | null;
   sectors?: string[] | null;
+  cargoDescritivo?: string | null;
+  ocultarCargo?: boolean | null;
 };
 
 const BASE_ROLE_OPTIONS = [
@@ -221,6 +230,20 @@ const BASE_ROLE_OPTIONS = [
   { value: 9, label: 'SPOT' },
   { value: 10, label: 'PRP' },
 ];
+
+const getDisplayRoleLabel = (
+  roleName?: string | null,
+  cargoDescritivo?: string | null,
+  ocultarCargo?: boolean | null
+) => {
+  if (ocultarCargo) return 'Oculto';
+  return cargoDescritivo?.trim() || roleName || '—';
+};
+
+const isWorkerRoleByName = (roleName?: string | null) => {
+  const r = normalizeRoleName(roleName);
+  return WORKER_ROLE_NAMES.includes(r);
+};
 
 function OrgCard({
   title,
@@ -302,28 +325,6 @@ export function UsersPage() {
   const canEditAnyUser = myLevel >= 5;
   const canReviewRegistrationRequests = myLevel >= 3;
 
-  const isWorkerRoleName = (roleName?: string | null) => {
-    const r = normalizeRoleName(roleName);
-    return ['tecnico', 'pso', 'ata', 'prp', 'spot'].includes(r);
-  };
-
-  const isWorkerRoleId = (roleId?: number | null) => {
-    const role = roleOptions.find((r) => r.value === roleId);
-    return isWorkerRoleName(String(role?.label || ''));
-  };
-
-  const canEditTarget = (u?: User | null) => {
-    if (!u) return false;
-    if (canEditAnyUser) return true;
-    if (myLevel >= 2 && isWorkerRoleName(u.role?.name)) return true;
-    return false;
-  };
-
-  const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
-    queryKey: ['users'],
-    queryFn: async () => (await api.get('/users')).data,
-  });
-
   const [fSearch, setFSearch] = useState<string>('');
   const [fRoles, setFRoles] = useState<number[] | undefined>(undefined);
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
@@ -331,9 +332,15 @@ export function UsersPage() {
 
   const [mapOpen, setMapOpen] = useState(false);
 
+  const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
+    queryKey: ['users'],
+    queryFn: async () => (await api.get('/users')).data,
+  });
+
   const roleOptions = useMemo(() => {
     const fromData = (data || []).map((u) => u.role).filter(Boolean) as Role[];
     const uniqById = new Map<number, Role>();
+
     fromData.forEach((r) => {
       if (!uniqById.has(r.id)) uniqById.set(r.id, r);
     });
@@ -348,10 +355,22 @@ export function UsersPage() {
     return merged.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [data]);
 
+  const isWorkerRoleId = (roleId?: number | null) => {
+    const role = roleOptions.find((r) => r.value === roleId);
+    return isWorkerRoleByName(String(role?.label || ''));
+  };
+
+  const canEditTarget = (u?: User | null) => {
+    if (!u) return false;
+    if (canEditAnyUser) return true;
+    if (myLevel >= 2 && isWorkerRoleByName(u.role?.name)) return true;
+    return false;
+  };
+
   const workerRoleOptions = useMemo(() => {
     return roleOptions.filter((r) => {
       const label = normalizeRoleName(String(r.label || ''));
-      return ['tecnico', 'pso', 'ata', 'prp', 'spot'].includes(label);
+      return WORKER_ROLE_NAMES.includes(label);
     });
   }, [roleOptions]);
 
@@ -385,13 +404,16 @@ export function UsersPage() {
         const inEmail = (u.email || '').toLowerCase().includes(q);
         if (!inName && !inEmail) return false;
       }
+
       if (fRoles && fRoles.length > 0) {
         const rId = u.role?.id;
         if (!rId || !fRoles.includes(rId)) return false;
       }
+
       if (fActive === 'ACTIVE' && !u.isActive) return false;
       if (fActive === 'INACTIVE' && u.isActive) return false;
       if (fManagerId && u.manager?.id !== fManagerId) return false;
+
       return true;
     });
   }, [data, fSearch, fRoles, fActive, fManagerId]);
@@ -412,6 +434,7 @@ export function UsersPage() {
         });
         setWorkerAvatarFile(null);
       }
+
       message.success('Prestador cadastrado');
       await qc.invalidateQueries({ queryKey: ['users'] });
       setWorkerOpen(false);
@@ -552,13 +575,16 @@ export function UsersPage() {
       managerId: u.manager?.id,
       isActive: u.isActive,
       phone: u.phone || '',
-      vendorCode: u.vendorCode || '',
-      serviceAreaCode: u.serviceAreaCode || '',
-      serviceAreaName: u.serviceAreaName || '',
-      tipoAtendimento: u.tipoAtendimento || undefined,
-      estoqueAvancado: !!u.estoqueAvancado,
+      cargoDescritivo: u.cargoDescritivo || '',
+      ocultarCargo: !!u.ocultarCargo,
       permissions: Array.isArray(u.permissions) && u.permissions.length ? u.permissions : DEFAULT_PERMISSIONS,
       sectors: Array.isArray(u.sectors) && u.sectors.length ? u.sectors : DEFAULT_SECTORS,
+
+      vendorCode: isWorkerRoleByName(u.role?.name) ? u.vendorCode || '' : '',
+      serviceAreaCode: isWorkerRoleByName(u.role?.name) ? u.serviceAreaCode || '' : '',
+      serviceAreaName: isWorkerRoleByName(u.role?.name) ? u.serviceAreaName || '' : '',
+      tipoAtendimento: isWorkerRoleByName(u.role?.name) ? u.tipoAtendimento || undefined : undefined,
+      estoqueAvancado: isWorkerRoleByName(u.role?.name) ? !!u.estoqueAvancado : false,
     });
 
     setEditOpen(true);
@@ -689,6 +715,8 @@ export function UsersPage() {
       managerId: req.manager?.id || req.managerId || undefined,
       phone: req.phone || '',
       reviewNotes: req.reviewNotes || '',
+      cargoDescritivo: req.cargoDescritivo || '',
+      ocultarCargo: !!req.ocultarCargo,
       permissions:
         Array.isArray(req.permissions) && req.permissions.length
           ? req.permissions
@@ -700,6 +728,8 @@ export function UsersPage() {
     });
     setEditApproveOpen(true);
   };
+
+  const viewUserIsWorker = isWorkerRoleByName(viewUser?.role?.name);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -831,6 +861,7 @@ export function UsersPage() {
         }}
         renderItem={(u) => {
           const atendimentoLabel = getTipoAtendimentoLabel(u.tipoAtendimento, u.tipoAtendimentoDescricao);
+          const userIsWorker = isWorkerRoleByName(u.role?.name);
 
           return (
             <List.Item>
@@ -846,8 +877,9 @@ export function UsersPage() {
                   }}
                 >
                   {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
-                  {!!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
-                  {!!atendimentoLabel && <Tag color="cyan">{atendimentoLabel}</Tag>}
+                  {userIsWorker && !!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
+                  {userIsWorker && !!atendimentoLabel && <Tag color="cyan">{atendimentoLabel}</Tag>}
+                  {u.ocultarCargo && <Tag color="default">Cargo oculto</Tag>}
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -856,11 +888,16 @@ export function UsersPage() {
                   </Avatar>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <Title level={5} style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Title
+                      level={5}
+                      style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
                       {u.name}
                     </Title>
 
-                    <div style={{ color: '#64748b' }}>{u.role?.name || '-'}</div>
+                    <div style={{ color: '#64748b' }}>
+                      {getDisplayRoleLabel(u.role?.name, u.cargoDescritivo, u.ocultarCargo)}
+                    </div>
                     <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
 
                     {Array.isArray(u.sectors) && u.sectors.length > 0 && (
@@ -869,7 +906,7 @@ export function UsersPage() {
                       </div>
                     )}
 
-                    {!!atendimentoLabel && (
+                    {userIsWorker && !!atendimentoLabel && (
                       <div style={{ color: '#94a3b8' }}>Atendimento: {atendimentoLabel}</div>
                     )}
                   </div>
@@ -913,7 +950,9 @@ export function UsersPage() {
             </Avatar>
             <div>
               <div style={{ fontWeight: 600 }}>{viewUser?.name}</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{viewUser?.role?.name || '-'}</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>
+                {getDisplayRoleLabel(viewUser?.role?.name, viewUser?.cargoDescritivo, viewUser?.ocultarCargo)}
+              </div>
             </div>
           </div>
         }
@@ -976,20 +1015,23 @@ export function UsersPage() {
       >
         {viewUser && (
           <Row gutter={[12, 12]}>
-            <Col xs={24} md={8}>
+            <Col xs={24} md={viewUserIsWorker ? 8 : 12}>
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Card size="small" title="Profissional">
                   <Descriptions column={1} size="small">
-                    <Descriptions.Item label="Cargo">{viewUser.role?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Cargo descritivo">
+                      {viewUser.ocultarCargo ? 'Oculto' : viewUser.cargoDescritivo || '—'}
+                    </Descriptions.Item>
                     <Descriptions.Item label="Gestor">{viewUser.manager?.name || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Local">{viewUser.location?.name || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Status">{viewUser.isActive ? 'Ativo' : 'Inativo'}</Descriptions.Item>
                     <Descriptions.Item label="Login">
                       {viewUser.loginEnabled === false ? 'Sem login' : 'Com login'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Estoque Avançado">
-                      {viewUser.estoqueAvancado ? 'Sim' : 'Não'}
-                    </Descriptions.Item>
+                    {viewUserIsWorker && (
+                      <Descriptions.Item label="Estoque Avançado">
+                        {viewUser.estoqueAvancado ? 'Sim' : 'Não'}
+                      </Descriptions.Item>
+                    )}
                     <Descriptions.Item label="Setor">
                       {Array.isArray(viewUser.sectors) && viewUser.sectors.length > 0
                         ? viewUser.sectors.map(getSectorLabel).join(', ')
@@ -1007,34 +1049,54 @@ export function UsersPage() {
               </Space>
             </Col>
 
-            <Col xs={24} md={8}>
-              <Card size="small" title="Área de atendimento">
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Tipo de atendimento">
-                    {getTipoAtendimentoLabel(viewUser.tipoAtendimento, viewUser.tipoAtendimentoDescricao) || '—'}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Card>
+            {viewUserIsWorker && (
+              <Col xs={24} md={8}>
+                <Card size="small" title="Área de atendimento">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="Tipo de atendimento">
+                      {getTipoAtendimentoLabel(viewUser.tipoAtendimento, viewUser.tipoAtendimentoDescricao) || '—'}
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
 
-              <Card size="small" title="Permissões" style={{ marginTop: 12 }}>
-                {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {viewUser.permissions.map((permission) => (
-                      <Tag key={permission} color="blue">
-                        {getPermissionLabel(permission)}
-                      </Tag>
-                    ))}
-                  </div>
-                ) : (
-                  <Text type="secondary">Sem permissões definidas</Text>
-                )}
-              </Card>
-            </Col>
+                <Card size="small" title="Permissões" style={{ marginTop: 12 }}>
+                  {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {viewUser.permissions.map((permission) => (
+                        <Tag key={permission} color="blue">
+                          {getPermissionLabel(permission)}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">Sem permissões definidas</Text>
+                  )}
+                </Card>
+              </Col>
+            )}
 
-            <Col xs={24} md={8}>
+            {!viewUserIsWorker && (
+              <Col xs={24} md={12}>
+                <Card size="small" title="Permissões">
+                  {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {viewUser.permissions.map((permission) => (
+                        <Tag key={permission} color="blue">
+                          {getPermissionLabel(permission)}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">Sem permissões definidas</Text>
+                  )}
+                </Card>
+              </Col>
+            )}
+
+            <Col xs={24} md={viewUserIsWorker ? 8 : 12}>
               <Card size="small" title="Endereço">
                 <Descriptions column={1} size="small">
                   <Descriptions.Item label="Logradouro">
@@ -1111,8 +1173,11 @@ export function UsersPage() {
             initialValues={{
               permissions: DEFAULT_PERMISSIONS,
               sectors: DEFAULT_SECTORS,
+              ocultarCargo: false,
             }}
             onFinish={(v) => {
+              const isWorker = isWorkerRoleId(v.roleId);
+
               const payload = {
                 name: v.name,
                 email: v.email,
@@ -1122,10 +1187,13 @@ export function UsersPage() {
                 managerId: v.managerId ?? null,
                 locationId: v.locationId ?? null,
                 phone: v.phone || null,
-                vendorCode: v.vendorCode || null,
-                serviceAreaCode: v.serviceAreaCode || null,
-                serviceAreaName: v.serviceAreaName || null,
-                tipoAtendimento: v.tipoAtendimento || null,
+                cargoDescritivo: v.cargoDescritivo?.trim() || null,
+                ocultarCargo: !!v.ocultarCargo,
+                vendorCode: isWorker ? v.vendorCode || null : null,
+                serviceAreaCode: isWorker ? v.serviceAreaCode || null : null,
+                serviceAreaName: isWorker ? v.serviceAreaName || null : null,
+                tipoAtendimento: isWorker ? v.tipoAtendimento || null : null,
+                estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
                 sectors:
                   Array.isArray(v.sectors) && v.sectors.length
                     ? v.sectors
@@ -1177,6 +1245,12 @@ export function UsersPage() {
               </Col>
 
               <Col xs={24} md={12} lg={8}>
+                <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                  <Input placeholder="Ex.: Coordenador de Dados / Supervisor de Operações" maxLength={150} />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12} lg={8}>
                 <Form.Item name="managerId" label="Gestor">
                   <Select
                     allowClear
@@ -1192,37 +1266,41 @@ export function UsersPage() {
               </Col>
 
               <Col xs={24} md={12} lg={8}>
-                <Form.Item name="locationId" label="Local">
-                  <LocationSelect />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
                 <Form.Item name="phone" label="Telefone">
                   <MaskedInput mask={phoneMask(createPhone)} placeholder="(11) 99999-9999" />
                 </Form.Item>
               </Col>
 
               <Col xs={24} md={12} lg={8}>
-                <Form.Item name="vendorCode" label="Cód do fornecedor">
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={12}>
-                <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={12}>
-                <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-                  <Input />
+                <Form.Item
+                  name="ocultarCargo"
+                  label="Ocultar cargo"
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
                 </Form.Item>
               </Col>
 
               {createSelectedIsWorker && (
                 <>
+                  <Col xs={24} md={12} lg={8}>
+                    <Form.Item name="vendorCode" label="Cód do fornecedor">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12} lg={12}>
+                    <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12} lg={12}>
+                    <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
                   <Col xs={24} md={12} lg={12}>
                     <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
                       <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
@@ -1392,6 +1470,8 @@ export function UsersPage() {
           layout="vertical"
           form={editForm}
           onFinish={(v) => {
+            const isWorker = isWorkerRoleId(v.roleId);
+
             const payload: any = {
               name: v.name,
               email: v.email || null,
@@ -1400,11 +1480,8 @@ export function UsersPage() {
               managerId: v.managerId ?? null,
               isActive: v.isActive,
               phone: v.phone ?? null,
-              vendorCode: v.vendorCode ?? null,
-              serviceAreaCode: v.serviceAreaCode ?? null,
-              serviceAreaName: v.serviceAreaName ?? null,
-              tipoAtendimento: v.tipoAtendimento ?? null,
-              estoqueAvancado: !!v.estoqueAvancado,
+              cargoDescritivo: v.cargoDescritivo?.trim() || null,
+              ocultarCargo: !!v.ocultarCargo,
               sectors:
                 Array.isArray(v.sectors) && v.sectors.length
                   ? v.sectors
@@ -1413,7 +1490,14 @@ export function UsersPage() {
                 Array.isArray(v.permissions) && v.permissions.length
                   ? v.permissions
                   : DEFAULT_PERMISSIONS,
+
+              vendorCode: isWorker ? v.vendorCode ?? null : null,
+              serviceAreaCode: isWorker ? v.serviceAreaCode ?? null : null,
+              serviceAreaName: isWorker ? v.serviceAreaName ?? null : null,
+              tipoAtendimento: isWorker ? v.tipoAtendimento ?? null : null,
+              estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
             };
+
             updateUser.mutate({ id: editing!.id, payload });
           }}
         >
@@ -1431,6 +1515,22 @@ export function UsersPage() {
                   options={canEditAnyUser ? roleOptions : workerRoleOptions}
                   optionFilterProp="label"
                 />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                <Input placeholder="Ex.: Supervisor de Atendimento / Coordenador de Operações" maxLength={150} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12} lg={8}>
+              <Form.Item
+                name="ocultarCargo"
+                label="Ocultar cargo"
+                valuePropName="checked"
+              >
+                <Switch checkedChildren="Sim" unCheckedChildren="Não" />
               </Form.Item>
             </Col>
 
@@ -1482,26 +1582,26 @@ export function UsersPage() {
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="vendorCode" label="Código do fornecedor">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="serviceAreaCode" label="Código da área">
-                <Input />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="serviceAreaName" label="Nome da área">
-                <Input />
-              </Form.Item>
-            </Col>
-
             {editSelectedIsWorker && (
               <>
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="vendorCode" label="Código do fornecedor">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="serviceAreaCode" label="Código da área">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12} lg={8}>
+                  <Form.Item name="serviceAreaName" label="Nome da área">
+                    <Input />
+                  </Form.Item>
+                </Col>
+
                 <Col xs={24} md={12} lg={8}>
                   <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
                     <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
@@ -1676,7 +1776,7 @@ export function UsersPage() {
           <Form
             layout="vertical"
             form={workerForm}
-            initialValues={{ sectors: DEFAULT_SECTORS }}
+            initialValues={{ sectors: DEFAULT_SECTORS, ocultarCargo: false }}
             onFinish={(v) => {
               const payload = {
                 name: v.name,
@@ -1688,6 +1788,8 @@ export function UsersPage() {
                 serviceAreaCode: v.serviceAreaCode || null,
                 serviceAreaName: v.serviceAreaName || null,
                 tipoAtendimento: v.tipoAtendimento || null,
+                cargoDescritivo: v.cargoDescritivo?.trim() || null,
+                ocultarCargo: !!v.ocultarCargo,
                 sectors:
                   Array.isArray(v.sectors) && v.sectors.length
                     ? v.sectors
@@ -1726,6 +1828,18 @@ export function UsersPage() {
               <Col xs={24} md={8}>
                 <Form.Item name="phone" label="Telefone">
                   <MaskedInput mask={phoneMask(workerPhone)} placeholder="(11) 99999-9999" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                  <Input placeholder="Ex.: Técnico de Campo / PSO Operacional" maxLength={150} />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item name="ocultarCargo" label="Ocultar cargo" valuePropName="checked">
+                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
                 </Form.Item>
               </Col>
 
@@ -2001,9 +2115,6 @@ export function UsersPage() {
         )}
       </Modal>
 
-      {/* =========================
-          MODAL: SOLICITAÇÕES
-         ========================= */}
       <Modal
         title="Solicitações de cadastro"
         open={requestsOpen}
@@ -2077,7 +2188,9 @@ export function UsersPage() {
                             <div style={{ color: '#64748b', marginTop: 4 }}>{req.email}</div>
 
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                              <Tag>{req.role?.name || 'Sem cargo'}</Tag>
+                              <Tag>
+                                {getDisplayRoleLabel(req.role?.name, req.cargoDescritivo, req.ocultarCargo)}
+                              </Tag>
                               <Tag>{req.manager?.name ? `Gestor: ${req.manager.name}` : 'Sem gestor'}</Tag>
 
                               {Array.isArray(req.sectors) && req.sectors.length > 0 && (
@@ -2124,14 +2237,14 @@ export function UsersPage() {
                                     : '—',
                                 },
                                 {
+                                  key: 'cargoDescritivo',
+                                  label: 'Cargo descritivo',
+                                  children: req.ocultarCargo ? 'Oculto' : req.cargoDescritivo || '—',
+                                },
+                                {
                                   key: 'aprovadoPor',
                                   label: 'Aprovado por',
                                   children: req.approvedBy?.name || '—',
-                                },
-                                {
-                                  key: 'reprovadoPor',
-                                  label: 'Reprovado por',
-                                  children: req.rejectedBy?.name || '—',
                                 },
                               ]}
                             />
@@ -2219,9 +2332,6 @@ export function UsersPage() {
         </div>
       </Modal>
 
-      {/* =========================
-          MODAL: EDITAR E APROVAR
-         ========================= */}
       <Modal
         title={`Editar e aprovar${editingRequest ? ` — ${editingRequest.fullName}` : ''}`}
         open={editApproveOpen}
@@ -2241,6 +2351,7 @@ export function UsersPage() {
           initialValues={{
             permissions: DEFAULT_PERMISSIONS,
             sectors: DEFAULT_SECTORS,
+            ocultarCargo: false,
           }}
           onFinish={(v) => {
             if (!editingRequest) return;
@@ -2253,6 +2364,8 @@ export function UsersPage() {
               managerId: v.managerId ?? null,
               phone: v.phone || null,
               reviewNotes: v.reviewNotes || null,
+              cargoDescritivo: v.cargoDescritivo?.trim() || null,
+              ocultarCargo: !!v.ocultarCargo,
               sectors:
                 Array.isArray(v.sectors) && v.sectors.length
                   ? v.sectors
@@ -2323,6 +2436,18 @@ export function UsersPage() {
                     String(option?.label || '').toLowerCase().includes(input.toLowerCase())
                   }
                 />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                <Input placeholder="Ex.: Supervisor de Atendimento / Coordenador de Dados" maxLength={150} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item name="ocultarCargo" label="Ocultar cargo" valuePropName="checked">
+                <Switch checkedChildren="Sim" unCheckedChildren="Não" />
               </Form.Item>
             </Col>
 
