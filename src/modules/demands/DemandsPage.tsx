@@ -1206,7 +1206,7 @@ export default function DemandsPage() {
         okText={editing ? 'Salvar' : 'Criar'}
         confirmLoading={createMutation.isPending || updateMutation.isPending}
         width={920}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Row gutter={12}>
@@ -1327,7 +1327,7 @@ export default function DemandsPage() {
         okText={editingActivity ? 'Salvar' : 'Criar'}
         confirmLoading={createActivityMutation.isPending || updateActivityMutation.isPending}
         width={840}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={activityForm} layout="vertical">
           <Row gutter={12}>

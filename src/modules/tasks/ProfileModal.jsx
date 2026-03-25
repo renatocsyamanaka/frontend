@@ -217,7 +217,7 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
       footer={null}
       width={760}
       title="Meu Perfil"
-      destroyOnClose
+      destroyOnHidden
     >
       <div
         style={{

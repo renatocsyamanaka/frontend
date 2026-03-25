@@ -865,7 +865,7 @@ export function UsersPage() {
 
           return (
             <List.Item>
-              <Card hoverable bodyStyle={{ padding: 16 }}>
+              <Card hoverable styles={{ body: { padding: 16 } }}>
                 <div
                   style={{
                     display: 'flex',
@@ -1009,7 +1009,7 @@ export function UsersPage() {
             </Button>
           </Space>
         }
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 980}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
@@ -1163,7 +1163,7 @@ export function UsersPage() {
             createForm.resetFields();
           }}
           onOk={() => createForm.submit()}
-          destroyOnClose
+          destroyOnHidden
           width={isMobile ? '100%' : 980}
           style={isMobile ? { top: 0, padding: 0 } : undefined}
         >
@@ -1462,7 +1462,7 @@ export function UsersPage() {
           setEditAvatarFile(null);
         }}
         onOk={() => editForm.submit()}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 980}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
@@ -1719,7 +1719,7 @@ export function UsersPage() {
         open={geoOpen}
         onCancel={() => setGeoOpen(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 900}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
@@ -1769,7 +1769,7 @@ export function UsersPage() {
             setWorkerAvatarFile(null);
           }}
           onOk={() => workerForm.submit()}
-          destroyOnClose
+          destroyOnHidden
           width={isMobile ? '100%' : 980}
           style={isMobile ? { top: 0, padding: 0 } : undefined}
         >
@@ -2044,8 +2044,8 @@ export function UsersPage() {
         footer={null}
         width={isMobile ? '100%' : 980}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
-        bodyStyle={{ background: '#fafafa' }}
-        destroyOnClose
+        styles={{ body: { background: '#fafafa'} }}
+        destroyOnHidden
       >
         {loadingStructure ? (
           <div style={{ textAlign: 'center', padding: 24 }}>
@@ -2120,7 +2120,7 @@ export function UsersPage() {
         open={requestsOpen}
         onCancel={() => setRequestsOpen(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 1100}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
@@ -2270,7 +2270,7 @@ export function UsersPage() {
                             gap: 12,
                           }}
                         >
-                          <Card size="small" title="Ações" bodyStyle={{ padding: 12 }}>
+                          <Card size="small" title="Ações" styles={{ body: { padding: 12 } }}>
                             {req.status !== 'PENDING' ? (
                               <Text type="secondary">Solicitação já analisada.</Text>
                             ) : (
@@ -2341,7 +2341,7 @@ export function UsersPage() {
           editApproveForm.resetFields();
         }}
         onOk={() => editApproveForm.submit()}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 920}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >

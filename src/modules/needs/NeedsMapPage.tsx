@@ -297,7 +297,9 @@ export default function NeedsMapPage() {
         </Space>
       </Card>
 
-      <Card loading={isLoading} bodyStyle={{ padding: 0 }}>
+      <Card loading={isLoading} styles={{ body: {  padding: 0 } }}>
+
+        
         <MapContainer
           center={focusCoords ? focusCoords : defaultCenter}
           zoom={11}

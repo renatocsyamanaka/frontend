@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Dropdown, List, Space, Typography, Empty } from 'antd';
+import { Badge, Button, Dropdown, List, Space, Typography, Empty, Spin } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -30,7 +30,15 @@ export default function HeaderTasksBell({
   const [open, setOpen] = useState(false);
 
   const menuContent = useMemo(() => {
-    if (!items.length && !loading) {
+    if (loading) {
+      return (
+        <div style={{ width: 360, padding: 24, display: 'flex', justifyContent: 'center' }}>
+          <Spin />
+        </div>
+      );
+    }
+
+    if (!items.length) {
       return (
         <div style={{ width: 320, padding: 16 }}>
           <Empty description="Nenhuma atividade" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -47,28 +55,44 @@ export default function HeaderTasksBell({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            background: '#fff',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
           }}
         >
           <Text strong>Atividades</Text>
 
           {onOpenAll ? (
-            <Button type="link" size="small" onClick={onOpenAll}>
+            <Button
+              type="link"
+              size="small"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpenAll();
+                setOpen(false);
+              }}
+            >
               Ver todas
             </Button>
           ) : null}
         </div>
 
         <List
-          loading={loading}
           dataSource={items}
           renderItem={(item) => (
             <List.Item
               key={item.id}
-              onClick={() => onItemClick?.(item)}
+              onClick={() => {
+                onItemClick?.(item);
+                setOpen(false);
+              }}
               style={{
                 cursor: onItemClick ? 'pointer' : 'default',
                 padding: '12px 16px',
                 background: item.read ? '#fff' : '#f6ffed',
+                alignItems: 'flex-start',
               }}
             >
               <Space direction="vertical" size={2} style={{ width: '100%' }}>
@@ -98,7 +122,7 @@ export default function HeaderTasksBell({
       open={open}
       onOpenChange={setOpen}
       trigger={['click']}
-      popupRender={() => menuContent}
+      dropdownRender={() => menuContent}
       placement="bottomRight"
     >
       <Badge count={unreadCount} size="small" overflowCount={99}>

@@ -47,8 +47,6 @@ import {
   DollarCircleOutlined,
   PercentageOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
-  CalendarOutlined,
   BarChartOutlined,
   PieChartOutlined,
   GlobalOutlined,
@@ -247,6 +245,8 @@ const STATUS_ENTREGA_OPTIONS = [
   'PENDENTE',
   'EM TRANSITO',
   'EM ROTA',
+  'NO PRAZO',
+  'FORA DO PRAZO',
   'ENTREGUE',
   'ATRASADA',
   'DEVOLVIDA',
@@ -263,6 +263,178 @@ const OPERACAO_OPTIONS = [
 
 const REGIAO_OPTIONS = ['NORTE', 'NORDESTE', 'CENTRO-OESTE', 'SUDESTE', 'SUL'];
 const MODAL_OPTIONS = ['RODOVIARIO', 'AEREO', 'MARITIMO', 'FERROVIARIO'];
+function SummarySplitCard({
+  title,
+  leftLabel,
+  leftValue,
+  rightLabel,
+  rightValue,
+  subtitle,
+  icon,
+  accent,
+  leftColor = '#0f172a',
+  rightColor = '#0f172a',
+}: {
+  title: string;
+  leftLabel: string;
+  leftValue: number | string;
+  rightLabel: string;
+  rightValue: number | string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  accent: string;
+  leftColor?: string;
+  rightColor?: string;
+}) {
+  return (
+    <Card
+      variant={false}
+      style={{
+        borderRadius: 18,
+        overflow: 'hidden',
+        background:
+          'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)',
+        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+        border: '1px solid #eef2f7',
+        height: '100%',
+      }}
+      styles={{ body: { padding: 18 } }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              color: '#64748b',
+              fontSize: 13,
+              fontWeight: 500,
+              display: 'block',
+              marginBottom: 14,
+            }}
+          >
+            {title}
+          </Text>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 16,
+              alignItems: 'start',
+              minHeight: 58,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <Text
+                style={{
+                  color: '#64748b',
+                  fontSize: 12,
+                  display: 'block',
+                  marginBottom: 6,
+                }}
+              >
+                {leftLabel}
+              </Text>
+
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: leftColor,
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {leftValue}
+              </div>
+            </div>
+
+            <div style={{ minWidth: 0, textAlign: 'right' }}>
+              <Text
+                style={{
+                  color: '#64748b',
+                  fontSize: 12,
+                  display: 'block',
+                  marginBottom: 6,
+                }}
+              >
+                {rightLabel}
+              </Text>
+
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: rightColor,
+                  lineHeight: 1.2,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {rightValue}
+              </div>
+            </div>
+          </div>
+
+          <Text
+            style={{
+              marginTop: 12,
+              display: 'block',
+              color: '#94a3b8',
+              fontSize: 12,
+              minHeight: 18,
+            }}
+          >
+            {subtitle || ' '}
+          </Text>
+        </div>
+
+        <div
+          style={{
+            minWidth: 48,
+            width: 48,
+            height: 48,
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: `${accent}18`,
+            color: accent,
+            fontSize: 22,
+            border: `1px solid ${accent}33`,
+            boxShadow: `inset 0 1px 0 ${accent}22`,
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 14,
+          height: 5,
+          borderRadius: 999,
+          background: '#e2e8f0',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: 999,
+            background: `linear-gradient(90deg, ${accent}, ${accent}aa)`,
+          }}
+        />
+      </div>
+    </Card>
+  );
+}
 
 function formatDate(value?: string | null) {
   if (!value) return '-';
@@ -369,10 +541,26 @@ function normalizeModal(value?: string | null) {
   return value || 'NÃO INFORMADO';
 }
 
-function normalizeStatusBucket(value?: string | null) {
+function normalizeOperationLabel(value?: string | null) {
   const v = String(value || '').trim().toUpperCase();
+
+  if (!v) return 'OUTROS';
+  if (v.includes('VENDA')) return 'VENDA';
+  if (v.includes('REVERSA PRESTADOR')) return 'REVERSA PRESTADOR';
+  if (v.includes('REVERSA')) return 'REVERSA';
+  if (v.includes('COMODATO')) return 'COMODATO';
+  if (v.includes('ARMAZ')) return 'AVANÇO DE ESTOQUE ARMAZÉM';
+  if (v.includes('TECN')) return 'AVANÇO DE ESTOQUE TÉCNICO';
+  if (v.includes('AVAN')) return 'AVANÇO DE ESTOQUE';
+  return v;
+}
+
+function normalizeStatusBucket(value?: string | null, record?: DeliveryReport) {
+  const v = record ? resolveStatusEntrega(record) : String(value || '').trim().toUpperCase();
+
+  if (v.includes('NO PRAZO')) return 'No Prazo';
+  if (v.includes('FORA DO PRAZO') || v.includes('ATRAS')) return 'Fora do Prazo';
   if (v.includes('ENTREG')) return 'Entregue';
-  if (v.includes('ATRAS')) return 'Atrasado';
   if (v.includes('ROTA')) return 'Em rota';
   if (v.includes('TRANS')) return 'Em andamento';
   if (v.includes('PEND')) return 'Pendente';
@@ -421,7 +609,7 @@ function mapFormToPayload(values: FormValues) {
     previsaoEntrega: values.previsaoEntrega ? values.previsaoEntrega.toISOString() : undefined,
     dataEntrega: values.dataEntrega ? values.dataEntrega.toISOString() : undefined,
     modal: values.modal?.trim(),
-    statusEntrega: values.statusEntrega?.trim(),
+    statusEntrega: values.statusEntrega?.trim().toUpperCase(),
     operacao: values.operacao?.trim(),
     operacaoResumo: values.operacaoResumo?.trim(),
     cteNovo: values.cteNovo?.trim(),
@@ -460,7 +648,7 @@ function mapRecordToFormValues(record: DeliveryReport): FormValues {
     previsaoEntrega: toFormDate(record.previsaoEntrega),
     dataEntrega: toFormDate(record.dataEntrega),
     modal: record.modal || undefined,
-    statusEntrega: record.statusEntrega || undefined,
+    statusEntrega: resolveStatusEntrega(record),
     operacao: record.operacao || undefined,
     operacaoResumo: record.operacaoResumo || undefined,
     cteNovo: record.cteNovo || undefined,
@@ -474,16 +662,49 @@ function mapRecordToFormValues(record: DeliveryReport): FormValues {
     comments: undefined,
   };
 }
+function resolveStatusEntrega(record: DeliveryReport) {
+  const statusManual = String(record.statusEntrega || '').trim().toUpperCase();
+  const previsao = record.previsaoEntrega ? dayjs(record.previsaoEntrega).startOf('day') : null;
+  const entrega = record.dataEntrega ? dayjs(record.dataEntrega).startOf('day') : null;
+  const hoje = dayjs().startOf('day');
 
-function statusEntregaTag(status?: string | null) {
-  const s = String(status || '').toUpperCase();
-  if (!s) return <Tag>-</Tag>;
-  if (s.includes('CANCEL')) return <Tag color="red">{status}</Tag>;
-  if (s.includes('ENTREG')) return <Tag color="green">{status}</Tag>;
-  if (s.includes('ATRAS')) return <Tag color="orange">{status}</Tag>;
-  if (s.includes('TRANS') || s.includes('ROTA')) return <Tag color="blue">{status}</Tag>;
-  if (s.includes('DEVOL')) return <Tag color="gold">{status}</Tag>;
-  return <Tag>{status}</Tag>;
+  if (statusManual.includes('CANCEL')) return 'CANCELADA';
+  if (statusManual.includes('DEVOL')) return 'DEVOLVIDA';
+  if (statusManual.includes('TRANS')) return 'EM TRANSITO';
+  if (statusManual.includes('ROTA')) return 'EM ROTA';
+  if (statusManual.includes('PEND')) return 'PENDENTE';
+
+  if (previsao && entrega) {
+    return entrega.isAfter(previsao) ? 'FORA DO PRAZO' : 'NO PRAZO';
+  }
+
+  if (previsao && !entrega) {
+    return hoje.isAfter(previsao) ? 'FORA DO PRAZO' : 'NO PRAZO';
+  }
+
+  if (statusManual.includes('NO PRAZO')) return 'NO PRAZO';
+  if (statusManual.includes('FORA DO PRAZO')) return 'FORA DO PRAZO';
+  if (statusManual.includes('ATRAS')) return 'FORA DO PRAZO';
+  if (statusManual.includes('ENTREG')) return 'ENTREGUE';
+
+  return statusManual || 'PENDENTE';
+}
+function statusEntregaTag(status?: string | null, record?: DeliveryReport) {
+  const resolved = record ? resolveStatusEntrega(record) : String(status || '').trim().toUpperCase();
+
+  if (!resolved) return <Tag>-</Tag>;
+  if (resolved.includes('CANCEL')) return <Tag color="red">Cancelada</Tag>;
+  if (resolved.includes('DEVOL')) return <Tag color="gold">Devolvida</Tag>;
+  if (resolved.includes('FORA DO PRAZO') || resolved.includes('ATRAS')) {
+    return <Tag color="red">Fora do Prazo</Tag>;
+  }
+  if (resolved.includes('NO PRAZO')) return <Tag color="green">No Prazo</Tag>;
+  if (resolved.includes('TRANS')) return <Tag color="blue">Em Trânsito</Tag>;
+  if (resolved.includes('ROTA')) return <Tag color="cyan">Em Rota</Tag>;
+  if (resolved.includes('PEND')) return <Tag>Pendente</Tag>;
+  if (resolved.includes('ENTREG')) return <Tag color="green">Entregue</Tag>;
+
+  return <Tag>{resolved}</Tag>;
 }
 
 function actionTag(actionType?: string | null) {
@@ -504,7 +725,7 @@ function IdentifierCard({
   value?: string | number | null;
 }) {
   return (
-    <Card bordered={false} size="small">
+    <Card variant={false} size="small">
       <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
         {title}
       </Text>
@@ -546,7 +767,7 @@ function SummaryCard({
 
   return (
     <Card
-      bordered={false}
+      variant={false}
       style={{
         borderRadius: 18,
         overflow: 'hidden',
@@ -734,6 +955,22 @@ export default function DeliveryReportsPage() {
 
   const currentYear = dayjs().year();
   const defaultYearValue = String(currentYear);
+  const watchedPrevisaoEntrega = Form.useWatch('previsaoEntrega', drawerForm);
+  const watchedDataEntrega = Form.useWatch('dataEntrega', drawerForm);
+
+  useEffect(() => {
+    if (!openForm) return;
+
+    const computed = resolveStatusEntrega({
+      ...(editingRecord || ({} as DeliveryReport)),
+      previsaoEntrega: watchedPrevisaoEntrega ? watchedPrevisaoEntrega.toISOString() : null,
+      dataEntrega: watchedDataEntrega ? watchedDataEntrega.toISOString() : null,
+    } as DeliveryReport);
+
+    if (drawerForm.getFieldValue('statusEntrega') !== computed) {
+      drawerForm.setFieldValue('statusEntrega', computed);
+    }
+  }, [openForm, editingRecord, watchedPrevisaoEntrega, watchedDataEntrega, drawerForm]);
 
   const yearOptions = useMemo(
     () =>
@@ -795,8 +1032,8 @@ export default function DeliveryReportsPage() {
 
   const effectiveStatusEntrega = useMemo<string | undefined>(() => {
     if (quickView === 'cancelled') return 'CANCELADA';
-    if (quickView === 'delivered') return 'ENTREGUE';
-    if (quickView === 'delayed') return 'ATRASADA';
+    if (quickView === 'delivered') return 'NO PRAZO';
+    if (quickView === 'delayed') return 'FORA DO PRAZO';
     if (quickView === 'deleted') return undefined;
     return filters.statusEntrega;
   }, [quickView, filters.statusEntrega]);
@@ -1148,13 +1385,9 @@ export default function DeliveryReportsPage() {
     const percentualTotalSobreNF = totalValorNF > 0 ? (totalGastos / totalValorNF) * 100 : 0;
     const percentualArmazemSobreNF = totalValorNF > 0 ? (totalArmazenagem / totalValorNF) * 100 : 0;
 
-    const delivered = activeRows.filter((r) =>
-      String(r.statusEntrega || '').toUpperCase().includes('ENTREG')
-    ).length;
+    const delivered = activeRows.filter((r) => resolveStatusEntrega(r) === 'NO PRAZO').length;
 
-    const delayed = activeRows.filter((r) =>
-      String(r.statusEntrega || '').toUpperCase().includes('ATRAS')
-    ).length;
+    const delayed = activeRows.filter((r) => resolveStatusEntrega(r) === 'FORA DO PRAZO').length;
 
     const deleted = summaryRows.filter((r) => !!r.deletedAt).length;
 
@@ -1189,8 +1422,17 @@ export default function DeliveryReportsPage() {
         regiao: string;
         nf: number;
         frete: number;
-        armazenagem: number;
-        gastos: number;
+        quantidade: number;
+      }
+    >();
+
+    const byRegionOperationMap = new Map<
+      string,
+      {
+        regiao: string;
+        operacao: string;
+        nf: number;
+        frete: number;
         quantidade: number;
       }
     >();
@@ -1224,29 +1466,40 @@ export default function DeliveryReportsPage() {
         regiao,
         nf: 0,
         frete: 0,
-        armazenagem: 0,
-        gastos: 0,
         quantidade: 0,
       };
 
       regionCurrent.nf += nf;
       regionCurrent.frete += frete;
-      regionCurrent.armazenagem += armazenagem;
-      regionCurrent.gastos += gastos;
       regionCurrent.quantidade += 1;
       byRegionMap.set(regiao, regionCurrent);
 
-      const operacao = (item.operacao || item.operacaoResumo || 'OUTROS').toUpperCase();
-      const operationCurrent = byOperationMap.get(operacao) || {
-        operacao,
+      const operacaoNormalizada = normalizeOperationLabel(item.operacao || item.operacaoResumo || 'OUTROS');
+
+      const regionOperationKey = `${regiao}__${operacaoNormalizada}`;
+      const regionOperationCurrent = byRegionOperationMap.get(regionOperationKey) || {
+        regiao,
+        operacao: operacaoNormalizada,
+        nf: 0,
+        frete: 0,
+        quantidade: 0,
+      };
+
+      regionOperationCurrent.nf += nf;
+      regionOperationCurrent.frete += frete;
+      regionOperationCurrent.quantidade += 1;
+      byRegionOperationMap.set(regionOperationKey, regionOperationCurrent);
+
+      const operationCurrent = byOperationMap.get(operacaoNormalizada) || {
+        operacao: operacaoNormalizada,
         valor: 0,
         quantidade: 0,
       };
       operationCurrent.valor += nf;
       operationCurrent.quantidade += 1;
-      byOperationMap.set(operacao, operationCurrent);
+      byOperationMap.set(operacaoNormalizada, operationCurrent);
 
-      const status = normalizeStatusBucket(item.statusEntrega);
+      const status = normalizeStatusBucket(item.statusEntrega, item);
       const statusCurrent = byStatusMap.get(status) || {
         status,
         quantidade: 0,
@@ -1289,13 +1542,72 @@ export default function DeliveryReportsPage() {
       }
     });
 
+    const regionOrder = ['NORTE', 'NORDESTE', 'CENTRO-OESTE', 'SUDESTE', 'SUL', 'NÃO INFORMADO'];
+
     const regions = Array.from(byRegionMap.values())
       .map((item) => ({
         ...item,
         percentualFrete: item.nf > 0 ? (item.frete / item.nf) * 100 : 0,
-        percentualTotal: item.nf > 0 ? (item.gastos / item.nf) * 100 : 0,
       }))
-      .sort((a, b) => b.nf - a.nf);
+      .sort((a, b) => {
+        const ia = regionOrder.indexOf(a.regiao);
+        const ib = regionOrder.indexOf(b.regiao);
+        if (ia === -1 && ib === -1) return a.regiao.localeCompare(b.regiao);
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      });
+
+    const operationOrder = [
+      'VENDA',
+      'AVANÇO DE ESTOQUE TÉCNICO',
+      'REVERSA',
+      'REVERSA PRESTADOR',
+      'COMODATO',
+      'AVANÇO DE ESTOQUE ARMAZÉM',
+      'OUTROS',
+    ];
+
+    const regionOperationRows: any[] = regions.flatMap((region) => {
+      const children = Array.from(byRegionOperationMap.values())
+        .filter((item) => item.regiao === region.regiao)
+        .map((item) => ({
+          ...item,
+          percentualFrete: item.nf > 0 ? (item.frete / item.nf) * 100 : 0,
+          isChild: true,
+          key: `${item.regiao}-${item.operacao}`,
+        }))
+        .sort((a, b) => {
+          const ia = operationOrder.indexOf(a.operacao);
+          const ib = operationOrder.indexOf(b.operacao);
+          if (ia === -1 && ib === -1) return a.operacao.localeCompare(b.operacao);
+          if (ia === -1) return 1;
+          if (ib === -1) return -1;
+          return ia - ib;
+        });
+
+      const regionRow = {
+        key: `region-${region.regiao}`,
+        regiao: region.regiao,
+        operacao: '',
+        nf: region.nf,
+        frete: region.frete,
+        percentualFrete: region.percentualFrete,
+        isGroup: true,
+      };
+
+      return [regionRow, ...children];
+    });
+
+    regionOperationRows.push({
+      key: 'total-geral',
+      regiao: 'TOTAL',
+      operacao: '',
+      nf: totalNF,
+      frete: totalFrete,
+      percentualFrete: totalNF > 0 ? (totalFrete / totalNF) * 100 : 0,
+      isTotal: true,
+    });
 
     const operations = Array.from(byOperationMap.values()).sort((a, b) => b.valor - a.valor);
 
@@ -1326,6 +1638,7 @@ export default function DeliveryReportsPage() {
       percentualArmazem: totalNF > 0 ? (totalArmazenagem / totalNF) * 100 : 0,
       percentualTotal: totalNF > 0 ? (totalGastos / totalNF) * 100 : 0,
       regions,
+      regionOperationRows,
       operations,
       statuses,
       modais,
@@ -1473,7 +1786,45 @@ export default function DeliveryReportsPage() {
       limit: 5000,
     });
   }, [openExport, exportForm, filters, effectiveStatusEntrega, effectiveDeletedFilter]);
+  
+    const handleExportResumoRegional = () => {
+      try {
+        const data = dashboardData.regionOperationRows.map((item: any) => ({
+          Regional: item.regiao || '',
+          Operacao: item.operacao || '',
+          ValorNF: normalizeCurrency(item.nf),
+          ValorFrete: normalizeCurrency(item.frete),
+          PercentualFrete: Number(item.percentualFrete || 0),
+          TipoLinha: item.isTotal ? 'TOTAL' : item.isGroup ? 'GRUPO' : 'DETALHE',
+        }));
 
+        if (!data.length) {
+          message.warning('Nenhum dado disponível para exportar');
+          return;
+        }
+
+        const ws = XLSX.utils.json_to_sheet(data);
+
+        ws['!cols'] = [
+          { wch: 18 },
+          { wch: 28 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 18 },
+          { wch: 12 },
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Resumo Regional');
+
+        const fileName = `resumo-regional-${dayjs().format('YYYY-MM-DD_HH-mm')}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+
+        message.success(`Arquivo exportado: ${fileName}`);
+      } catch (error) {
+        message.error('Não foi possível exportar o resumo regional');
+      }
+    };
   const columns: ColumnsType<DeliveryReport> = [
     {
       title: 'CTE',
@@ -1567,7 +1918,7 @@ export default function DeliveryReportsPage() {
       dataIndex: 'statusEntrega',
       key: 'statusEntrega',
       width: 140,
-      render: (value) => statusEntregaTag(value),
+      render: (_, record) => statusEntregaTag(record.statusEntrega, record),
     },
     {
       title: 'Valor NF',
@@ -1732,59 +2083,112 @@ export default function DeliveryReportsPage() {
 
   const resumoRegionalColumns: ColumnsType<any> = [
     {
-      title: 'Região',
+      title: 'Regional',
       dataIndex: 'regiao',
       key: 'regiao',
-      width: 160,
-      render: (value) => <Text strong>{value}</Text>,
+      width: 320,
+      render: (_, record) => {
+        if (record.isGroup || record.isTotal) {
+          return (
+            <Text
+              strong
+              style={{
+                color: '#0f172a',
+                fontSize: 14,
+                letterSpacing: 0.2,
+              }}
+            >
+              {record.regiao}
+            </Text>
+          );
+        }
+
+        return (
+          <div style={{ paddingLeft: 26 }}>
+            <Text
+              style={{
+                color: '#475569',
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {record.operacao}
+            </Text>
+          </div>
+        );
+      },
     },
     {
-      title: 'NF R$',
+      title: 'Valor NF',
       dataIndex: 'nf',
       key: 'nf',
+      width: 170,
       align: 'right',
-      width: 140,
-      render: (value) => formatMoney(value),
+      render: (value, record) => (
+        <Text
+          strong={!!record.isGroup || !!record.isTotal}
+          style={{
+            color: '#0f172a',
+            fontSize: record.isTotal ? 14 : 13,
+            fontWeight: record.isTotal ? 800 : record.isGroup ? 700 : 600,
+          }}
+        >
+          {normalizeCurrency(value).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </Text>
+      ),
     },
     {
-      title: 'Frete R$',
+      title: 'Valor Frete',
       dataIndex: 'frete',
       key: 'frete',
+      width: 170,
       align: 'right',
-      width: 140,
-      render: (value) => formatMoney(value),
+      render: (value, record) => (
+        <Text
+          strong={!!record.isGroup || !!record.isTotal}
+          style={{
+            color: '#0f172a',
+            fontSize: record.isTotal ? 14 : 13,
+            fontWeight: record.isTotal ? 800 : record.isGroup ? 700 : 600,
+          }}
+        >
+          {normalizeCurrency(value).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </Text>
+      ),
     },
     {
-      title: 'Armazém R$',
-      dataIndex: 'armazenagem',
-      key: 'armazenagem',
-      align: 'right',
-      width: 140,
-      render: (value) => formatMoney(value),
-    },
-    {
-      title: 'Gastos Totais',
-      dataIndex: 'gastos',
-      key: 'gastos',
-      align: 'right',
-      width: 150,
-      render: (value) => formatMoney(value),
-    },
-    {
-      title: '%Frete',
+      title: 'Percentual Frete',
       dataIndex: 'percentualFrete',
       key: 'percentualFrete',
-      align: 'right',
-      width: 90,
-      render: (value) => formatPercent(value),
-    },
-    {
-      title: '%Total',
-      dataIndex: 'percentualTotal',
-      key: 'percentualTotal',
-      align: 'right',
-      width: 90,
-      render: (value) => formatPercent(value),
+      width: 180,
+      align: 'center',
+      render: (value, record) => {
+        const numeric = Number(value || 0);
+
+        return (
+          <Tag
+            style={{
+              borderRadius: 999,
+              paddingInline: 10,
+              fontWeight: 700,
+              fontSize: 12,
+              border: '1px solid #dbeafe',
+              background: record.isTotal
+                ? 'linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)'
+                : 'linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)',
+              color: '#1e3a8a',
+            }}
+          >
+            {formatPercent(numeric, 2)}
+          </Tag>
+        );
+      },
     },
   ];
 
@@ -1931,7 +2335,7 @@ export default function DeliveryReportsPage() {
   return (
     <div style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-        <Card bordered={false} styles={{ body: { paddingBottom: 18 } }}>
+        <Card variant={false} styles={{ body: { paddingBottom: 18 } }}>
           <Row justify="space-between" align="middle" gutter={[12, 12]}>
             <Col>
               <Space direction="vertical" size={2}>
@@ -2057,32 +2461,121 @@ export default function DeliveryReportsPage() {
             </Col>
           </Row>
         </Card>
-
         <Spin spinning={summaryQuery.isLoading || summaryQuery.isFetching}>
           <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="CTEs Ativas"
-                value={summary.totalCteAtivas}
-                subtitle={`Ano: ${yearFilterLabel}`}
-                icon={<FileTextOutlined />}
-                accent="#2563eb"
-              />
-            </Col>
 
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="CTEs Excluídas"
-                value={summary.totalExcluidos}
-                subtitle="Registros removidos"
-                icon={<DeleteOutlined />}
-                accent="#64748b"
-              />
-            </Col>
+              {/* 🔵 ENTREGA (ATIVAS + EXCLUÍDAS) */}
+              <Col xs={24} sm={12} lg={8} xl={4}>
+                <Card
+                  variant={false}
+                  style={{
+                    borderRadius: 18,
+                    height: '100%',
+                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+                    border: '1px solid #eef2f7',
+                  }}
+                  styles={{ body: { padding: 16 } }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <Text type="secondary">Entrega</Text>
 
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: '#2563eb22',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#2563eb',
+                        fontSize: 18,
+                      }}
+                    >
+                      <FileTextOutlined />
+                    </div>
+                  </div>
+
+                  <Row>
+                    <Col span={12}>
+                      <Text type="secondary">Ativas</Text>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>
+                        {summary.totalCteAtivas}
+                      </div>
+                    </Col>
+
+                    <Col span={12} style={{ textAlign: 'right' }}>
+                      <Text type="secondary">Excluídas</Text>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>
+                        {summary.totalExcluidos}
+                      </div>
+                    </Col>
+                  </Row>
+
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Ano: {yearFilterLabel}
+                  </Text>
+                </Card>
+              </Col>
+
+              {/* 🟢 SLA DE ENTREGA */}
+              <Col xs={24} sm={12} lg={8} xl={4}>
+                <Card
+                  variant={false}
+                  style={{
+                    borderRadius: 18,
+                    height: '100%',
+                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+                    border: '1px solid #eef2f7',
+                  }}
+                  styles={{ body: { padding: 16 } }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <Text type="secondary">SLA de Entrega</Text>
+
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: '#16a34a22',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#16a34a',
+                        fontSize: 18,
+                      }}
+                    >
+                      <CheckCircleOutlined />
+                    </div>
+                  </div>
+
+                  <Row>
+                    <Col span={12}>
+                      <Text type="secondary">No prazo</Text>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>
+                        {summary.delivered}
+                      </div>
+                    </Col>
+
+                    <Col span={12} style={{ textAlign: 'right' }}>
+                      <Text type="secondary">Fora do prazo</Text>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626' }}>
+                        {summary.delayed}
+                      </div>
+                    </Col>
+                  </Row>
+
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Performance de entrega
+                  </Text>
+                </Card>
+              </Col>
+
+            {/* 🔽 RESTO NORMAL */}
             <Col xs={24} sm={12} lg={8} xl={4}>
               <SummaryCard
-                title="Valor NF"
+                title="Valor Total NF"
                 value={summary.totalValorNF}
                 prefix="R$"
                 precision={2}
@@ -2094,7 +2587,7 @@ export default function DeliveryReportsPage() {
 
             <Col xs={24} sm={12} lg={8} xl={4}>
               <SummaryCard
-                title="Valor Frete"
+                title="Valor TotalFrete"
                 value={summary.totalFrete}
                 prefix="R$"
                 precision={2}
@@ -2127,10 +2620,11 @@ export default function DeliveryReportsPage() {
                 accent="#db2777"
               />
             </Col>
+
           </Row>
         </Spin>
 
-        <Card bordered={false} title="Filtros">
+        <Card variant={false} title="Filtros">
           <Form
             form={filterForm}
             layout="vertical"
@@ -2205,7 +2699,7 @@ export default function DeliveryReportsPage() {
         </Card>
 
         <Card
-          bordered={false}
+          variant={false}
           title="Lista de CTEs"
           extra={
             <Text type="secondary">
@@ -2251,15 +2745,18 @@ export default function DeliveryReportsPage() {
             .delivery-report-row-deleted td {
               background: #fafafa !important;
             }
+
             .delivery-report-row-deleted td:first-child {
               border-left: 4px solid #ff4d4f;
             }
+
             .mini-bar-row {
               display: flex;
               align-items: center;
               gap: 10px;
               width: 100%;
             }
+
             .mini-bar-label {
               width: 110px;
               min-width: 110px;
@@ -2269,6 +2766,7 @@ export default function DeliveryReportsPage() {
               overflow: hidden;
               text-overflow: ellipsis;
             }
+
             .mini-bar-track {
               flex: 1;
               height: 10px;
@@ -2276,16 +2774,110 @@ export default function DeliveryReportsPage() {
               background: #e2e8f0;
               overflow: hidden;
             }
+
             .mini-bar-fill {
               height: 100%;
               border-radius: 999px;
             }
+
             .mini-bar-value {
               min-width: 90px;
               text-align: right;
               font-size: 12px;
               color: #0f172a;
               font-weight: 600;
+            }
+
+            .resumo-regional-table {
+              border-radius: 18px;
+              overflow: hidden;
+            }
+
+            .resumo-regional-table .ant-table {
+              background: transparent !important;
+              border-radius: 18px;
+              overflow: hidden;
+            }
+
+            .resumo-regional-table .ant-table-container {
+              border: 1px solid #e2e8f0;
+              border-radius: 18px;
+              overflow: hidden;
+              background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+              box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+            }
+
+            .resumo-regional-table .ant-table-thead > tr > th {
+              background: linear-gradient(180deg, #f8fbff 0%, #f1f5f9 100%) !important;
+              color: #334155 !important;
+              text-align: center;
+              font-weight: 700;
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 0.4px;
+              border-bottom: 1px solid #e2e8f0 !important;
+              border-inline-end: none !important;
+              padding-top: 14px !important;
+              padding-bottom: 14px !important;
+            }
+
+            .resumo-regional-table .ant-table-tbody > tr > td {
+              border-bottom: 1px solid #eef2f7 !important;
+              border-inline-end: none !important;
+              padding-top: 12px !important;
+              padding-bottom: 12px !important;
+              transition: background 0.2s ease, transform 0.2s ease;
+            }
+
+            .resumo-regional-table .row-group td {
+              background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
+              color: #0f172a !important;
+              font-weight: 700;
+              border-top: 1px solid #e2e8f0 !important;
+              border-bottom: 1px solid #dbeafe !important;
+            }
+
+            .resumo-regional-table .row-child td {
+              background: #ffffff !important;
+              color: #475569 !important;
+            }
+
+            .resumo-regional-table .row-child td:first-child {
+              position: relative;
+            }
+
+            .resumo-regional-table .row-child td:first-child::before {
+              content: "";
+              position: absolute;
+              left: 10px;
+              top: 50%;
+              transform: translateY(-50%);
+              width: 6px;
+              height: 6px;
+              border-radius: 999px;
+              background: #cbd5e1;
+            }
+
+            .resumo-regional-table .row-total td {
+              background: linear-gradient(180deg, #eff6ff 0%, #e0f2fe 100%) !important;
+              color: #0f172a !important;
+              font-weight: 800;
+              border-top: 2px solid #93c5fd !important;
+              border-bottom: none !important;
+            }
+
+            .resumo-regional-table .row-group:hover td,
+            .resumo-regional-table .row-child:hover td,
+            .resumo-regional-table .row-total:hover td {
+              background-clip: padding-box !important;
+            }
+
+            .resumo-regional-table .row-child:hover td {
+              background: #f8fafc !important;
+            }
+
+            .resumo-regional-table .ant-table-cell {
+              vertical-align: middle !important;
             }
           `}
         </style>
@@ -2303,7 +2895,7 @@ export default function DeliveryReportsPage() {
           cancelText="Cancelar"
           width={1100}
           confirmLoading={createMutation.isPending || updateMutation.isPending}
-          destroyOnClose
+          destroyOnHidden
         >
           <Form form={drawerForm} layout="vertical">
             <Row gutter={[12, 0]}>
@@ -2482,7 +3074,7 @@ export default function DeliveryReportsPage() {
           onCancel={() => setOpenDetails(false)}
           footer={null}
           width={1100}
-          destroyOnClose
+          destroyOnHidden
         >
           <Spin spinning={detailsQuery.isLoading || detailsQuery.isFetching}>
             {!selectedDetails ? (
@@ -2497,21 +3089,21 @@ export default function DeliveryReportsPage() {
                     <IdentifierCard title="NF" value={selectedDetails.notaFiscal} />
                   </Col>
                   <Col xs={24} md={6}>
-                    <Card bordered={false} size="small">
+                    <Card variant={false} size="small">
                       <Text type="secondary">Valor NF</Text>
                       <div style={{ fontSize: 20, fontWeight: 700 }}>{formatMoney(selectedDetails.nfValor)}</div>
                     </Card>
                   </Col>
                   <Col xs={24} md={6}>
-                    <Card bordered={false} size="small">
+                    <Card variant={false} size="small">
                       <Text type="secondary">Frete</Text>
                       <div style={{ fontSize: 20, fontWeight: 700 }}>{formatMoney(selectedDetails.frete)}</div>
                     </Card>
                   </Col>
                 </Row>
 
-                <Card bordered={false} size="small" title="Dados principais">
-                  <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
+                <Card variant={false} size="small" title="Dados principais">
+                  <Descriptions variant size="small" column={isMobile ? 1 : 2}>
                     <Descriptions.Item label="CTE">{formatIdentifier(selectedDetails.cte)}</Descriptions.Item>
                     <Descriptions.Item label="CTE Novo">{formatIdentifier(selectedDetails.cteNovo)}</Descriptions.Item>
                     <Descriptions.Item label="Emissão">{formatDate(selectedDetails.emissaoData || selectedDetails.emissao)}</Descriptions.Item>
@@ -2522,7 +3114,7 @@ export default function DeliveryReportsPage() {
                     <Descriptions.Item label="Resumo Operação">{selectedDetails.operacaoResumo || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Região">{selectedDetails.regiao || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Status">{selectedDetails.status || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Status Entrega">{statusEntregaTag(selectedDetails.statusEntrega)}</Descriptions.Item>
+                    <Descriptions.Item label="Status Entrega">{statusEntregaTag(selectedDetails.statusEntrega, selectedDetails)}</Descriptions.Item>
                     <Descriptions.Item label="Remetente">{selectedDetails.remetente || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Destinatário">{selectedDetails.destinatario || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Origem">
@@ -2549,8 +3141,8 @@ export default function DeliveryReportsPage() {
                   </Descriptions>
                 </Card>
 
-                <Card bordered={false} size="small" title="Auditoria">
-                  <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
+                <Card variant={false} size="small" title="Auditoria">
+                  <Descriptions variant size="small" column={isMobile ? 1 : 2}>
                     <Descriptions.Item label="Criado por">{selectedDetails.createdBy?.name || '-'}</Descriptions.Item>
                     <Descriptions.Item label="Criado em">{formatDateTime(selectedDetails.createdAt)}</Descriptions.Item>
                     <Descriptions.Item label="Última edição por">{selectedDetails.updatedBy?.name || '-'}</Descriptions.Item>
@@ -2570,7 +3162,7 @@ export default function DeliveryReportsPage() {
           onCancel={() => setOpenHistory(false)}
           footer={null}
           width={1200}
-          destroyOnClose
+          destroyOnHidden
         >
           <Spin spinning={historyQuery.isLoading || historyQuery.isFetching}>
             <Table
@@ -2606,7 +3198,7 @@ export default function DeliveryReportsPage() {
           okButtonProps={{ disabled: !!importJobId || importMutation.isPending }}
           confirmLoading={importMutation.isPending}
           width={980}
-          destroyOnClose
+          destroyOnHidden
         >
           <Row gutter={[16, 16]} align="stretch">
             <Col xs={24} md={13}>
@@ -2747,7 +3339,7 @@ export default function DeliveryReportsPage() {
           cancelText="Cancelar"
           confirmLoading={exporting}
           width={900}
-          destroyOnClose
+          destroyOnHidden
         >
           <Alert
             type="info"
@@ -2848,74 +3440,82 @@ export default function DeliveryReportsPage() {
           title="Resumo Executivo"
           open={openResumoModal}
           onCancel={() => setOpenResumoModal(false)}
-          footer={null}
-          width={1200}
-          destroyOnClose
+          footer={[
+            <Button key="fechar" onClick={() => setOpenResumoModal(false)}>
+              Fechar
+            </Button>,
+            <Button
+              key="exportar"
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleExportResumoRegional}
+            >
+              Extrair dados
+            </Button>,
+          ]}
+          width={980}
+          destroyOnHidden
         >
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Row gutter={[12, 12]}>
-              <Col xs={24} sm={12} lg={6}>
+              <Col xs={24} sm={12} lg={8}>
                 <SummaryCard
-                  title="Total Valor NF (R$)"
+                  title="Total Valor NF"
                   value={dashboardData.totalNF}
+                  prefix="R$"
                   precision={2}
                   icon={<DollarCircleOutlined />}
                   accent="#0f766e"
                 />
               </Col>
-              <Col xs={24} sm={12} lg={6}>
+
+              <Col xs={24} sm={12} lg={8}>
                 <SummaryCard
-                  title="Gastos Frete (R$)"
+                  title="Total Frete"
                   value={dashboardData.totalFrete}
+                  prefix="R$"
                   precision={2}
                   icon={<CarOutlined />}
                   accent="#2563eb"
                 />
               </Col>
-              <Col xs={24} sm={12} lg={6}>
-                <SummaryCard
-                  title="Gastos Totais (R$)"
-                  value={dashboardData.totalGastos}
-                  precision={2}
-                  icon={<RiseOutlined />}
-                  accent="#7c3aed"
-                />
-              </Col>
-              <Col xs={24} sm={12} lg={6}>
+
+              <Col xs={24} sm={12} lg={8}>
                 <SummaryCard
                   title="% Frete"
                   value={dashboardData.percentualFrete}
-                  precision={2}
                   suffix="%"
+                  precision={2}
                   icon={<PercentageOutlined />}
                   accent="#db2777"
                 />
               </Col>
             </Row>
 
-            <Card
-              bordered={false}
-              title="Resumo por Regional (R$)"
-              styles={{ body: { paddingTop: 8 } }}
-            >
+              <Card
+                variant={false}
+                style={{
+                  borderRadius: 20,
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 12px 28px rgba(15, 23, 42, 0.06)',
+                  overflow: 'hidden',
+                  background: 'linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)',
+                }}
+                styles={{ body: { padding: 0 } }}
+              >
               <Table
-                rowKey="regiao"
+                className="resumo-regional-table"
+                rowKey="key"
                 columns={resumoRegionalColumns}
-                dataSource={[
-                  ...dashboardData.regions,
-                  {
-                    regiao: 'Total',
-                    nf: dashboardData.totalNF,
-                    frete: dashboardData.totalFrete,
-                    armazenagem: dashboardData.totalArmazenagem,
-                    gastos: dashboardData.totalGastos,
-                    percentualFrete: dashboardData.percentualFrete,
-                    percentualTotal: dashboardData.percentualTotal,
-                  },
-                ]}
+                dataSource={dashboardData.regionOperationRows}
                 pagination={false}
                 size="small"
-                scroll={{ x: 900 }}
+                scroll={{ x: 840 }}
+                rowClassName={(record: any) => {
+                  if (record.isTotal) return 'row-total';
+                  if (record.isGroup) return 'row-group';
+                  return 'row-child';
+                }}
               />
             </Card>
           </Space>
@@ -2928,13 +3528,13 @@ export default function DeliveryReportsPage() {
           footer={null}
           width={1400}
           style={{ top: 20 }}
-          destroyOnClose
+          destroyOnHidden
         >
           <Space direction="vertical" size={14} style={{ width: '100%' }}>
             <Row gutter={[12, 12]}>
               <Col xs={24} lg={6}>
                 <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                  <Card bordered={false} size="small" styles={{ body: { padding: 14 } }}>
+                  <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
                     <Text type="secondary">Total Valor NF (R$)</Text>
                     <div style={{ fontSize: 30, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                       {dashboardData.totalNF.toLocaleString('pt-BR', {
@@ -2946,7 +3546,7 @@ export default function DeliveryReportsPage() {
 
                   <Row gutter={[10, 10]}>
                     <Col span={18}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14 } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
                         <Text type="secondary">Gastos Frete (R$)</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {dashboardData.totalFrete.toLocaleString('pt-BR', {
@@ -2957,7 +3557,7 @@ export default function DeliveryReportsPage() {
                       </Card>
                     </Col>
                     <Col span={6}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
                         <Text type="secondary">%</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {formatPercent(dashboardData.percentualFrete)}
@@ -2968,7 +3568,7 @@ export default function DeliveryReportsPage() {
 
                   <Row gutter={[10, 10]}>
                     <Col span={18}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14 } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
                         <Text type="secondary">Gastos Totais (R$)</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {dashboardData.totalGastos.toLocaleString('pt-BR', {
@@ -2979,7 +3579,7 @@ export default function DeliveryReportsPage() {
                       </Card>
                     </Col>
                     <Col span={6}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
                         <Text type="secondary">%</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {formatPercent(dashboardData.percentualTotal)}
@@ -2990,7 +3590,7 @@ export default function DeliveryReportsPage() {
 
                   <Row gutter={[10, 10]}>
                     <Col span={18}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14 } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
                         <Text type="secondary">Gastos Armazém (R$)</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {dashboardData.totalArmazenagem.toLocaleString('pt-BR', {
@@ -3001,7 +3601,7 @@ export default function DeliveryReportsPage() {
                       </Card>
                     </Col>
                     <Col span={6}>
-                      <Card bordered={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
+                      <Card variant={false} size="small" styles={{ body: { padding: 14, textAlign: 'center' } }}>
                         <Text type="secondary">%</Text>
                         <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginTop: 6 }}>
                           {formatPercent(dashboardData.percentualArmazem)}
@@ -3013,31 +3613,25 @@ export default function DeliveryReportsPage() {
               </Col>
 
               <Col xs={24} lg={18}>
-                <Card bordered={false} title="Resumo por Regional (R$)" styles={{ body: { paddingTop: 8 } }}>
+                <Card variant={false} title="Resumo por Regional (R$)" styles={{ body: { paddingTop: 8 } }}>
                   <Table
-                    rowKey="regiao"
+                    rowKey="key"
                     columns={resumoRegionalColumns}
-                    dataSource={[
-                      ...dashboardData.regions,
-                      {
-                        regiao: 'Total',
-                        nf: dashboardData.totalNF,
-                        frete: dashboardData.totalFrete,
-                        armazenagem: dashboardData.totalArmazenagem,
-                        gastos: dashboardData.totalGastos,
-                        percentualFrete: dashboardData.percentualFrete,
-                        percentualTotal: dashboardData.percentualTotal,
-                      },
-                    ]}
+                    dataSource={dashboardData.regionOperationRows}
                     pagination={false}
                     size="small"
                     scroll={{ x: 900 }}
+                    rowClassName={(record: any) => {
+                      if (record.isTotal) return 'row-total';
+                      if (record.isGroup) return 'row-group';
+                      return 'row-child';
+                    }}
                   />
                 </Card>
               </Col>
             </Row>
 
-            <Card bordered={false} title="Valor Transportado (R$) e Gastos (%) por Meses">
+            <Card variant={false} title="Valor Transportado (R$) e Gastos (%) por Meses">
               {dashboardData.months.length === 0 ? (
                 <Empty description="Sem dados por mês" />
               ) : (
@@ -3054,7 +3648,7 @@ export default function DeliveryReportsPage() {
 
             <Row gutter={[12, 12]}>
               <Col xs={24} lg={8}>
-                <Card bordered={false} title="Modal: Gastos com Fretes" extra={<PieChartOutlined />}>
+                <Card variant={false} title="Modal: Gastos com Fretes" extra={<PieChartOutlined />}>
                   <Space direction="vertical" size={12} style={{ width: '100%' }}>
                     {dashboardData.modais.length === 0 ? (
                       <Empty description="Sem dados" />
@@ -3081,7 +3675,7 @@ export default function DeliveryReportsPage() {
               </Col>
 
               <Col xs={24} lg={8}>
-                <Card bordered={false} title="Status da Entrega: Quantidade de Fretes" extra={<CheckCircleOutlined />}>
+                <Card variant={false} title="Status da Entrega: Quantidade de Fretes" extra={<CheckCircleOutlined />}>
                   <Space direction="vertical" size={12} style={{ width: '100%' }}>
                     {dashboardData.statuses.length === 0 ? (
                       <Empty description="Sem dados" />
@@ -3089,15 +3683,16 @@ export default function DeliveryReportsPage() {
                       dashboardData.statuses.map((item, idx) => {
                         const max = dashboardData.statuses[0]?.quantidade || 1;
                         const percent = (item.quantidade / max) * 100;
-                        const palette: Record<string, string> = {
-                          Entregue: '#16a34a',
-                          Atrasado: '#ef4444',
-                          'Em andamento': '#f59e0b',
-                          'Em rota': '#3b82f6',
-                          Pendente: '#64748b',
-                          Cancelada: '#dc2626',
-                          Devolvida: '#a16207',
-                        };
+                          const palette: Record<string, string> = {
+                            'No Prazo': '#16a34a',
+                            'Fora do Prazo': '#ef4444',
+                            Entregue: '#22c55e',
+                            'Em andamento': '#f59e0b',
+                            'Em rota': '#3b82f6',
+                            Pendente: '#64748b',
+                            Cancelada: '#dc2626',
+                            Devolvida: '#a16207',
+                          };
                         const color = palette[item.status] || ['#16a34a', '#ef4444', '#64748b'][idx % 3];
 
                         return (
@@ -3121,7 +3716,7 @@ export default function DeliveryReportsPage() {
               </Col>
 
               <Col xs={24} lg={8}>
-                <Card bordered={false} title="Valor Transportado (R$) por tipo de Operação" extra={<BarChartOutlined />}>
+                <Card variant={false} title="Valor Transportado (R$) por tipo de Operação" extra={<BarChartOutlined />}>
                   <Space direction="vertical" size={12} style={{ width: '100%' }}>
                     {dashboardData.operations.length === 0 ? (
                       <Empty description="Sem dados" />

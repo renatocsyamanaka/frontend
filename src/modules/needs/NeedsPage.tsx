@@ -765,7 +765,7 @@ export default function NeedsPage() {
   return (
     <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       {/* ===== FILTROS ===== */}
-      <Card bodyStyle={{ padding: isMobile ? 16 : 12 }}>
+      <Card  styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}> 
         <Form
           form={form}
           initialValues={initial}
@@ -833,7 +833,7 @@ export default function NeedsPage() {
       </Card>
 
       {/* ===== LISTA ===== */}
-      <Card title="Requisições de técnicos" extra={headerExtra} bodyStyle={{ padding: isMobile ? 16 : 12 }}>
+      <Card title="Prospecçãoes de técnicos" extra={headerExtra} styles={{ body: { padding: isMobile ? 16 : 12} }}>
         {/* MOBILE (cards) */}
         {isMobile ? (
           <>
@@ -940,7 +940,7 @@ export default function NeedsPage() {
         }}
         onOk={() => formNew.submit()}
         confirmLoading={createNeed.isPending}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? 520 : 820}
       >
         <Form
@@ -1064,7 +1064,7 @@ export default function NeedsPage() {
           } catch {}
         }}
         width={isMobile ? 560 : 900}
-        destroyOnClose
+        destroyOnHidden
       >
         {providerNeed ? (
           <>
@@ -1244,7 +1244,7 @@ export default function NeedsPage() {
                 setPreviewUrl(null);
               }}
               width={isMobile ? 560 : 900}
-              destroyOnClose
+              destroyOnHidden
             >
               {!previewUrl ? null : previewMime.startsWith('image/') ? (
                 <img
@@ -1304,7 +1304,7 @@ export default function NeedsPage() {
           } catch {}
         }}
         width={isMobile ? 560 : 820}
-        destroyOnClose
+        destroyOnHidden
       >
         {editAddrNeed ? (
           <>

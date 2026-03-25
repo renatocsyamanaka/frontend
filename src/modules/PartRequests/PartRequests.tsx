@@ -884,7 +884,7 @@ export default function PartRequestsPage() {
           </Button>,
         ]}
         width={isMobile ? '96vw' : 760}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ display: 'grid', gap: 12 }}>
           {unreadRequests.length ? (
@@ -938,7 +938,7 @@ export default function PartRequestsPage() {
         onOk={() => newForm.submit()}
         width={isMobile ? '95vw' : 980}
         confirmLoading={createRequest.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={newForm}
@@ -1303,7 +1303,7 @@ export default function PartRequestsPage() {
         onCancel={() => setOpenCatalog(false)}
         footer={null}
         width={isMobile ? '96vw' : 960}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ display: 'grid', gap: 12 }}>
           <Space wrap>
@@ -1340,7 +1340,7 @@ export default function PartRequestsPage() {
         onCancel={() => setOpenCatalogCreate(false)}
         onOk={() => catalogForm.submit()}
         confirmLoading={createCatalogItem.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={catalogForm}
@@ -1400,7 +1400,7 @@ export default function PartRequestsPage() {
         }}
         footer={null}
         width={isMobile ? '96vw' : 980}
-        destroyOnClose
+        destroyOnHidden
         centered
         styles={{
           body: {
@@ -1607,7 +1607,7 @@ export default function PartRequestsPage() {
         onCancel={() => setOpenHistory(false)}
         footer={null}
         width={isMobile ? '96vw' : 820}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ display: 'grid', gap: 8 }}>
           {(requestDetails?.history || []).length ? (
@@ -1653,7 +1653,7 @@ export default function PartRequestsPage() {
         }}
         confirmLoading={batchApprove.isPending}
         width={isMobile ? '96vw' : 900}
-        destroyOnClose
+        destrodestroyOnHiddenyOnClose
       >
         <div style={{ display: 'grid', gap: 10 }}>
           {batchRows.map((row) => {
@@ -1783,7 +1783,7 @@ export default function PartRequestsPage() {
           } catch {}
         }}
         confirmLoading={updateRequest.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={editRequestForm} layout="vertical">
           <Form.Item name="fulfillmentType" label="Atendimento" style={{ marginBottom: 12 }}>
@@ -1829,7 +1829,7 @@ export default function PartRequestsPage() {
           } catch {}
         }}
         confirmLoading={approveItem.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={approveForm} layout="vertical">
           <Form.Item
@@ -1877,7 +1877,7 @@ export default function PartRequestsPage() {
           } catch {}
         }}
         confirmLoading={rejectItem.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={rejectForm} layout="vertical" initialValues={{ reasonCode: 'REPROVADO_GERENTE' }}>
           <Form.Item name="managerNote" label="Observação do gestor" style={{ marginBottom: 12 }}>
@@ -1941,7 +1941,7 @@ export default function PartRequestsPage() {
             </Button>
           </Space>
         }
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 900}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >

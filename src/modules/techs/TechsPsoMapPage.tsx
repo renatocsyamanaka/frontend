@@ -439,7 +439,7 @@ export default function TechsPsoMapPage() {
   };
 
   const FiltersPanel = (
-    <Card bordered={false} style={{ boxShadow: 'none' }}>
+    <Card variant={false} style={{ boxShadow: 'none' }}>
       <Space direction="vertical" style={{ width: '100%' }} size={12}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={4} style={{ margin: 0 }}>
@@ -806,7 +806,7 @@ export default function TechsPsoMapPage() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         width="92vw"
-        destroyOnClose
+        destroyOnHidden
         styles={{ body: { padding: 12 } }}
       >
         {FiltersPanel}
@@ -818,7 +818,7 @@ export default function TechsPsoMapPage() {
         footer={null}
         width={isMobile ? '96vw' : 1100}
         style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 50 }}
-        destroyOnClose={false}
+        destroyOnHidden={false}
         title={`Prestadores com localização (${withCoords.length})`}
       >
         {withCoords.length === 0 ? (
@@ -919,7 +919,7 @@ export default function TechsPsoMapPage() {
         }
         width={isMobile ? '96vw' : 1200}
         style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 140 }}
-        destroyOnClose
+        destroyOnHidden
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {avatarUrlAbs ? (
@@ -1034,7 +1034,7 @@ export default function TechsPsoMapPage() {
         onCancel={closeStreetViewModal}
         width={isMobile ? '96vw' : 1100}
         style={isMobile ? { top: 16, maxWidth: '96vw' } : { top: 80 }}
-        destroyOnClose
+        destroyOnHidden
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <EnvironmentOutlined />

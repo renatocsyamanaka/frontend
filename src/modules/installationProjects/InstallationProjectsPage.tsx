@@ -115,15 +115,19 @@ type ColumnResizeItem = {
 };
 
 function unwrap<T>(resData: any): T {
-  return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
+  return resData && typeof resData === 'object' && 'data' in resData
+    ? (resData.data as T)
+    : (resData as T);
 }
 
 function getRoleName(u: UserLite) {
   return u?.role?.name;
 }
+
 function getRoleLevel(u: UserLite) {
   return u?.role?.level ?? u?.roleLevel;
 }
+
 function getRoleId(u: UserLite) {
   return u?.role?.id ?? u?.roleId;
 }
@@ -237,6 +241,10 @@ export default function InstallationProjectsPage() {
     { key: 'end', widthPct: 6 },
     { key: 'status', widthPct: 4 },
   ]);
+
+  const watchedTrucksTotal = Form.useWatch('trucksTotal', form);
+  const watchedEquipmentsPerDay = Form.useWatch('equipmentsPerDay', form);
+  const watchedStartPlannedAt = Form.useWatch('startPlannedAt', form);
 
   useEffect(() => {
     const el = tableWrapRef.current;
@@ -374,7 +382,8 @@ export default function InstallationProjectsPage() {
   });
 
   const createProject = useMutation({
-    mutationFn: async (payload: CreateDTO) => (await api.post('/installation-projects', payload)).data,
+    mutationFn: async (payload: CreateDTO) =>
+      (await api.post('/installation-projects', payload)).data,
     onSuccess: async () => {
       message.success('Projeto criado!');
       setOpen(false);
@@ -422,14 +431,16 @@ export default function InstallationProjectsPage() {
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, isMobile, page, pageSize]);
 
-  const endPreview = (() => {
-    const trucksTotal = Number(form.getFieldValue('trucksTotal') ?? 0);
-    const perDay = Number(form.getFieldValue('equipmentsPerDay') ?? 0);
-    const start: Dayjs | undefined = form.getFieldValue('startPlannedAt');
-    if (!start || !trucksTotal || !perDay) return null;
+  const endPreview = useMemo(() => {
+    const trucksTotal = Number(watchedTrucksTotal ?? 0);
+    const perDay = Number(watchedEquipmentsPerDay ?? 0);
+    const start = watchedStartPlannedAt as Dayjs | undefined;
+
+    if (!open || !start || !trucksTotal || !perDay) return null;
+
     const daysNeeded = Math.ceil(trucksTotal / perDay);
     return `${daysNeeded} dia(s) úteis (previsão final calculada no backend)`;
-  })();
+  }, [open, watchedTrucksTotal, watchedEquipmentsPerDay, watchedStartPlannedAt]);
 
   const coordinatorPreviewText = 'Será definido automaticamente a partir do supervisor';
 
@@ -577,7 +588,7 @@ export default function InstallationProjectsPage() {
             />
           )
         }
-        bodyStyle={{ padding: isMobile ? 12 : 24, maxWidth: '100%' }}
+        styles={{ body: { padding: isMobile ? 12 : 24, maxWidth: '100%' } }}
       >
         <div style={{ marginBottom: 16 }}>
           <Input
@@ -609,7 +620,7 @@ export default function InstallationProjectsPage() {
                       key={r.id}
                       size="small"
                       style={{ borderRadius: 12, maxWidth: '100%' }}
-                      bodyStyle={{ padding: 12 }}
+                      styles={{ body: { padding: 12 } }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
                         <div style={{ minWidth: 0 }}>
@@ -706,7 +717,7 @@ export default function InstallationProjectsPage() {
         width={isMobile ? '96vw' : 820}
         style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
-        bodyStyle={{ paddingTop: 12, maxWidth: '100%' }}
+        styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}
         afterOpenChange={(o) => {
           if (o) {
             setTechSearch('');

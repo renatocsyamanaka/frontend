@@ -495,7 +495,7 @@ export default function MyPartRequestsPage() {
         </Space>
       </div>
 
-      <Card bodyStyle={{ padding: 12 }}>
+      <Card  styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}>
         <Form
           form={filterForm}
           layout="vertical"
@@ -536,7 +536,7 @@ export default function MyPartRequestsPage() {
         </Form>
       </Card>
 
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card  styles={{ body: { padding: 0} }}>
         <Table
           rowKey="id"
           columns={requestColumns}
@@ -555,7 +555,7 @@ export default function MyPartRequestsPage() {
         onOk={() => newForm.submit()}
         width={isMobile ? '95vw' : 980}
         confirmLoading={createRequest.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={newForm}
@@ -930,7 +930,7 @@ export default function MyPartRequestsPage() {
         onCancel={() => setOpenCatalog(false)}
         footer={null}
         width={isMobile ? '96vw' : 960}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ display: 'grid', gap: 12 }}>
           <Search
@@ -963,7 +963,7 @@ export default function MyPartRequestsPage() {
         }}
         footer={null}
         width={isMobile ? '96vw' : 980}
-        destroyOnClose
+        destroyOnHidden
         centered
         styles={{
           body: {

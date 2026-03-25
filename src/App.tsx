@@ -49,7 +49,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
 
         <Route
-          path="techs-pso"
+          path="mapa-tecnicos"
           element={
             <RequireAccess permission="TECHS_MAP_VIEW">
               <TechsPsoMapPage />
@@ -58,7 +58,7 @@ export default function App() {
         />
 
         <Route
-          path="installation-projects"
+          path="projetos-instalacao"
           element={
             <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectsPage />
@@ -67,7 +67,7 @@ export default function App() {
         />
 
         <Route
-          path="installation-projects/:id"
+          path="projetos-instalacao/:id"
           element={
             <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectDetailPage />
@@ -76,7 +76,7 @@ export default function App() {
         />
 
         <Route
-          path="delivery-reports"
+          path="relatorios-entrega"
           element={
             <RequireAccess permission="DELIVERY_REPORTS_VIEW">
               <DeliveryReportsPage />
@@ -85,7 +85,7 @@ export default function App() {
         />
 
         <Route
-          path="part-requests"
+          path="pedidos-pecas"
           element={
             <RequireAccess permission="PART_REQUESTS_VIEW">
               <PartRequestsPage />
@@ -94,7 +94,7 @@ export default function App() {
         />
 
         <Route
-          path="demands"
+          path="planejamento-cia"
           element={
             <RequireAccess permission="DASHBOARD_ACTIVITY_VIEW">
               <DemandsPage />
@@ -103,7 +103,7 @@ export default function App() {
         />
 
         <Route
-          path="my-part-requests"
+          path="meus-pedidos-pecas"
           element={
             <RequireAccess permission="MY_PART_REQUESTS_VIEW">
               <MyPartRequestsPage />
@@ -112,7 +112,7 @@ export default function App() {
         />
 
         <Route
-          path="users"
+          path="colaboradores"
           element={
             <RequireAccess permission="USERS_VIEW">
               <UsersPage />
@@ -121,7 +121,7 @@ export default function App() {
         />
 
         <Route
-          path="org"
+          path="organograma"
           element={
             <RequireAccess permission="ORG_VIEW">
               <OrgPage />
@@ -130,7 +130,7 @@ export default function App() {
         />
 
         <Route
-          path="locations"
+          path="localizacoes"
           element={
             <RequireAccess permission="LOCATIONS_VIEW">
               <LocationsPage />
@@ -139,7 +139,7 @@ export default function App() {
         />
 
         <Route
-          path="clients"
+          path="clientes"
           element={
             <RequireAccess permission="CLIENTS_VIEW">
               <ClientsPage />
@@ -148,7 +148,7 @@ export default function App() {
         />
 
         <Route
-          path="tasks"
+          path="demandas"
           element={
             <RequireAccess permission="TASKS_VIEW">
               <TasksPage />
@@ -157,7 +157,7 @@ export default function App() {
         />
 
         <Route
-          path="tech-types"
+          path="tipos-tecnicos"
           element={
             <RequireAccess permission="TECH_TYPES_VIEW">
               <TechTypesPage />
@@ -166,7 +166,7 @@ export default function App() {
         />
 
         <Route
-          path="needs"
+          path="requisicoes"
           element={
             <RequireAccess permission="NEEDS_VIEW">
               <NeedsPage />
@@ -175,7 +175,7 @@ export default function App() {
         />
 
         <Route
-          path="needs/map"
+          path="requisicoes/mapa"
           element={
             <RequireAccess permission="NEEDS_MAP_VIEW">
               <NeedsMapPage />
@@ -184,7 +184,7 @@ export default function App() {
         />
 
         <Route
-          path="assignments"
+          path="agenda"
           element={
             <RequireAccess permission="ASSIGNMENTS_VIEW">
               <AssignmentsMonthPage />
@@ -193,7 +193,7 @@ export default function App() {
         />
 
         <Route
-          path="overtime"
+          path="banco-de-horas"
           element={
             <RequireAccess permission="OVERTIME_VIEW">
               <OvertimePage />
@@ -202,7 +202,7 @@ export default function App() {
         />
 
         <Route
-          path="timeoff"
+          path="folgas-ausencias"
           element={
             <RequireAccess permission="TIMEOFF_VIEW">
               <TimeOffPage />
@@ -211,7 +211,7 @@ export default function App() {
         />
 
         <Route
-          path="news"
+          path="noticias"
           element={
             <RequireAccess permission="NEWS_VIEW">
               <NewsCenterPage />
@@ -220,7 +220,7 @@ export default function App() {
         />
 
         <Route
-          path="news-admin"
+          path="noticias-admin"
           element={
             <RequireAccess permission="NEWS_ADMIN_VIEW">
               <NewsAdminPage />

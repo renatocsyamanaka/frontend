@@ -103,11 +103,13 @@ export default function Dashboard() {
         </Space>
       </div>
 
-      <Card
-        title="Notícias"
-        extra={<Button icon={<ReloadOutlined />} onClick={() => newsQuery.refetch()} />}
-        bodyStyle={{ padding: isMobile ? 12 : 24 }}
-      >
+        <Card
+          title="Notícias"
+          extra={<Button icon={<ReloadOutlined />} onClick={() => newsQuery.refetch()} />}
+          styles={{
+            body: { padding: isMobile ? 12 : 24 },
+          }}
+        >
         {newsQuery.isLoading ? (
           <div>
             <Skeleton active paragraph={{ rows: 2 }} />

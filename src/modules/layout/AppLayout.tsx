@@ -60,7 +60,7 @@ function getUserSectors(user: any) {
   }
 
   const arr = user.sectors
-    .map((s: string) => String(s || '').trim().toUpperCase())
+    .map((sector: string) => String(sector || '').trim().toUpperCase())
     .filter(Boolean);
 
   return arr.length ? arr : ['GESTAO'];
@@ -75,7 +75,7 @@ export function AppLayout() {
   const isMobile = !screens.md;
 
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const bellWrapRef = useRef<HTMLButtonElement | null>(null);
+  const bellWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -104,133 +104,138 @@ export function AppLayout() {
   }, [location.pathname, isMobile]);
 
   const menuConfig = [
-    { key: '/', label: 'Dashboard', icon: <HomeOutlined />, permission: 'DASHBOARD_VIEW' },
     {
-      key: '/installation-projects',
+      key: '/',
+      label: 'Painel',
+      icon: <HomeOutlined />,
+      permission: 'DASHBOARD_VIEW',
+    },
+    {
+      key: '/projetos-instalacao',
       label: 'Projetos de Instalação',
       icon: <ProjectOutlined />,
       permission: 'INSTALLATION_PROJECTS_VIEW',
     },
     {
-      key: '/part-requests',
-      label: 'Pedido de Peças',
+      key: '/pedidos-pecas',
+      label: 'Pedidos de Peças',
       icon: <DatabaseOutlined />,
       permission: 'PART_REQUESTS_VIEW',
     },
     {
-      key: '/demands',
+      key: '/planejamento-cia',
       label: 'Planejamento CIA',
       icon: <ProfileOutlined />,
       permission: 'DASHBOARD_ACTIVITY_VIEW',
     },
     {
-      key: '/delivery-reports',
-      label: 'CTEs',
+      key: '/relatorios-entrega',
+      label: 'Relatório de Entregas',
       icon: <DatabaseOutlined />,
       permission: 'DELIVERY_REPORTS_VIEW',
     },
     {
-      key: '/my-part-requests',
+      key: '/meus-pedidos-pecas',
       label: 'Meus Pedidos de Peças',
       icon: <ProfileOutlined />,
       permission: 'MY_PART_REQUESTS_VIEW',
     },
     {
-      key: '/techs-pso',
-      label: 'Mapa Técnicos',
+      key: '/mapa-tecnicos',
+      label: 'Mapa de Técnicos',
       icon: <ToolOutlined />,
       permission: 'TECHS_MAP_VIEW',
     },
     {
-      key: '/users',
+      key: '/colaboradores',
       label: 'Colaboradores',
       icon: <TeamOutlined />,
       permission: 'USERS_VIEW',
     },
     {
-      key: '/org',
+      key: '/organograma',
       label: 'Organograma',
       icon: <ClusterOutlined />,
       permission: 'ORG_VIEW',
     },
     {
-      key: '/clients',
+      key: '/clientes',
       label: 'Clientes',
       icon: <ProfileOutlined />,
       permission: 'CLIENTS_VIEW',
     },
     {
-      key: '/tasks',
+      key: '/demandas',
       label: 'Demandas',
       icon: <ProfileOutlined />,
       permission: 'TASKS_VIEW',
     },
     {
-      key: '/tech-types',
+      key: '/tipos-tecnicos',
       label: 'Tipos de Técnicos',
       icon: <ToolOutlined />,
       permission: 'TECH_TYPES_VIEW',
     },
     {
-      key: '/needs',
-      label: 'Requisições',
+      key: '/requisicoes',
+      label: 'Prospecções Operação',
       icon: <DatabaseOutlined />,
       permission: 'NEEDS_VIEW',
     },
     {
-      key: '/needs/map',
-      label: 'Mapa de Requisições',
+      key: '/requisicoes/mapa',
+      label: 'Mapa de solicitações',
       icon: <EnvironmentOutlined />,
       permission: 'NEEDS_MAP_VIEW',
     },
     {
-      key: '/assignments',
+      key: '/agenda',
       label: 'Agenda',
       icon: <ScheduleOutlined />,
       permission: 'ASSIGNMENTS_VIEW',
     },
     {
-      key: '/news',
+      key: '/noticias',
       label: 'Notícias',
       icon: <NotificationOutlined />,
       permission: 'NEWS_VIEW',
     },
     {
-      key: '/news-admin',
-      label: 'Notícias (Admin)',
+      key: '/noticias-admin',
+      label: 'Administração de Notícias',
       icon: <NotificationOutlined />,
       permission: 'NEWS_ADMIN_VIEW',
     },
   ];
 
   const visibleMenuConfig = useMemo(() => {
-    return menuConfig.filter((m) => hasPermission(user, m.permission));
+    return menuConfig.filter((item) => hasPermission(user, item.permission));
   }, [user]);
 
   const menuItems = useMemo(() => {
-    return visibleMenuConfig.map((m) => ({
-      key: m.key,
-      icon: m.icon,
+    return visibleMenuConfig.map((item) => ({
+      key: item.key,
+      icon: item.icon,
       label: (
         <Link
-          to={m.key}
+          to={item.key}
           onClick={() => {
             if (isMobile) setDrawerOpen(false);
           }}
         >
-          {m.label}
+          {item.label}
         </Link>
       ),
     }));
   }, [visibleMenuConfig, isMobile]);
 
   const selectedKey = useMemo(() => {
-    const p = location.pathname;
+    const pathname = location.pathname;
 
     const found = visibleMenuConfig
-      .map((m) => m.key)
+      .map((item) => item.key)
       .sort((a, b) => b.length - a.length)
-      .find((k) => (k === '/' ? p === '/' : p.startsWith(k)));
+      .find((key) => (key === '/' ? pathname === '/' : pathname.startsWith(key)));
 
     return found ? [found] : [];
   }, [location.pathname, visibleMenuConfig]);
@@ -631,15 +636,15 @@ export function AppLayout() {
 
           <Space size={8} align="center">
             <div
-              ref={bellWrapRef as any}
+              ref={bellWrapRef}
               className="header-bell-wrap"
               onClick={handleActivityClick}
               aria-label="Abrir atividades"
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
                   handleActivityClick();
                 }
               }}
@@ -647,6 +652,7 @@ export function AppLayout() {
               <HeaderTasksBell />
               {!isMobile && <span className="header-bell-text">Atividade</span>}
             </div>
+
             <Button
               className="header-profile-btn"
               onClick={() => setProfileOpen(true)}
