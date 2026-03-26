@@ -460,7 +460,7 @@ export default function InstallationProjectsPage() {
       key: 'title',
       width: getColumnWidthPx('title', 16),
       ellipsis: true,
-      render: (v, r) => <Link to={`/installation-projects/${r.id}`}>{v}</Link>,
+      render: (v, r) => <Link to={`/projetos-instalacao/${r.id}`}>{v}</Link>,
     },
     {
       title: 'AF',
@@ -624,9 +624,9 @@ export default function InstallationProjectsPage() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
                         <div style={{ minWidth: 0 }}>
-                          <Typography.Text strong style={{ fontSize: 14 }}>
-                            <Link to={`/installation-projects/${r.id}`}>{r.title}</Link>
-                          </Typography.Text>
+                            <Typography.Text strong style={{ fontSize: 14 }}>
+                              <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                            </Typography.Text>
 
                           <div style={{ marginTop: 6 }}>
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -659,7 +659,11 @@ export default function InstallationProjectsPage() {
                       </div>
 
                       <div style={{ marginTop: 12 }}>
-                        <Button block type="primary" onClick={() => navigate(`/installation-projects/${r.id}`)}>
+                        <Button
+                          block
+                          type="primary"
+                          onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                        >
                           Abrir projeto
                         </Button>
                       </div>

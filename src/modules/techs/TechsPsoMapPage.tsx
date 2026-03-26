@@ -825,6 +825,108 @@ export default function TechsPsoMapPage() {
           <Empty description="Nenhum prestador encontrado" />
         ) : (
           <Space direction="vertical" style={{ width: '100%' }} size={16}>
+            {/* FILTROS NO MODAL */}
+            <Card
+              size="small"
+              style={{ borderRadius: 12, background: '#fafcff' }}
+              styles={{ body: { padding: 12 } }}
+            >
+              <Row gutter={[12, 12]}>
+                <Col xs={24} md={10}>
+                  <Text
+                    style={{
+                      display: 'block',
+                      marginBottom: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#475569',
+                    }}
+                  >
+                    Pesquisar prestador
+                  </Text>
+                  <Input
+                    allowClear
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Buscar por nome, tipo ou atendimento"
+                    prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                  />
+                </Col>
+
+                <Col xs={24} md={7}>
+                  <Text
+                    style={{
+                      display: 'block',
+                      marginBottom: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#475569',
+                    }}
+                  >
+                    Supervisor
+                  </Text>
+                  <Select
+                    allowClear
+                    value={supId}
+                    onChange={(v) => setSupId(v)}
+                    options={supOptions}
+                    placeholder="Filtrar por supervisor"
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ width: '100%' }}
+                  />
+                </Col>
+
+                <Col xs={24} md={7}>
+                  <Text
+                    style={{
+                      display: 'block',
+                      marginBottom: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#475569',
+                    }}
+                  >
+                    Coordenador
+                  </Text>
+                  <Select
+                    allowClear
+                    value={coordId}
+                    onChange={(v) => setCoordId(v)}
+                    options={coordOptions}
+                    placeholder="Filtrar por coordenador"
+                    showSearch
+                    optionFilterProp="label"
+                    style={{ width: '100%' }}
+                  />
+                </Col>
+              </Row>
+
+              <div style={{ marginTop: 12 }}>
+                <Space wrap>
+                  <Button
+                    icon={<SearchOutlined />}
+                    type="primary"
+                    onClick={() => setListPage(1)}
+                  >
+                    Pesquisar
+                  </Button>
+
+                  <Button
+                    icon={<CloseCircleOutlined />}
+                    onClick={() => {
+                      setQ('');
+                      setSupId(undefined);
+                      setCoordId(undefined);
+                      setListPage(1);
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                </Space>
+              </div>
+            </Card>
+
             <Row gutter={[16, 16]}>
               {paginatedUsers.map((t) => {
                 const s = supervisorOf(t);
@@ -908,7 +1010,7 @@ export default function TechsPsoMapPage() {
           </Space>
         )}
       </Modal>
-
+      
       <Modal
         open={detailsOpen}
         onCancel={closeDetails}

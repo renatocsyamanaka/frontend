@@ -171,12 +171,6 @@ export function AppLayout() {
       permission: 'TASKS_VIEW',
     },
     {
-      key: '/tipos-tecnicos',
-      label: 'Tipos de Técnicos',
-      icon: <ToolOutlined />,
-      permission: 'TECH_TYPES_VIEW',
-    },
-    {
       key: '/requisicoes',
       label: 'Prospecções Operação',
       icon: <DatabaseOutlined />,

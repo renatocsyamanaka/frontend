@@ -1018,7 +1018,7 @@ export default function InstallationProjectDetailPage() {
       <Card>
         <Typography.Text type="danger">Falha ao carregar projeto.</Typography.Text>
         <Divider />
-        <Button onClick={() => nav('/installation-projects')}>Voltar</Button>
+        <Button onClick={() => nav('/projetos-instalacao')}>Voltar</Button>
       </Card>
     );
   }
@@ -1026,7 +1026,7 @@ export default function InstallationProjectDetailPage() {
   return (
     <div style={pageWrap}>
       <div style={actionsWrap}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/installation-projects')} block={isMobile}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/projetos-instalacao')} block={isMobile}>
           Voltar para projetos
         </Button>
 

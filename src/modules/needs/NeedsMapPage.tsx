@@ -212,7 +212,7 @@ export default function NeedsMapPage() {
     <div style={{ display: 'grid', gridTemplateColumns: '370px 1fr', gap: 16 }}>
       <Card style={{ height: 'fit-content' }}>
         <Space direction="vertical" style={{ width: '100%' }} size={16}>
-          <Button icon={<LeftOutlined />} onClick={() => navigate('/needs')}>
+          <Button icon={<LeftOutlined />} onClick={() => navigate('/requisicoes')}>
             Voltar
           </Button>
 

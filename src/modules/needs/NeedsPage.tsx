@@ -731,7 +731,7 @@ export default function NeedsPage() {
   /** ===== Header extra ===== */
   const headerExtra = (
     <Space size="small" wrap style={{ maxWidth: '100%' }}>
-      <Button size={isMobile ? 'middle' : 'small'} onClick={() => navigate('/needs/map')}>
+      <Button size={isMobile ? 'middle' : 'small'} onClick={() => navigate('/requisicoes/mapa')}>
         Mapa geral
       </Button>
 

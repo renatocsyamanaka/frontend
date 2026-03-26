@@ -20,6 +20,18 @@ type Props = {
   onItemClick?: (item: ActivityItem) => void;
 };
 
+const PANEL_WIDTH = 360;
+const PANEL_MAX_HEIGHT = 420;
+
+const panelShellStyle: React.CSSProperties = {
+  width: PANEL_WIDTH,
+  background: '#ffffff',
+  border: '1px solid #e6eef7',
+  borderRadius: 16,
+  boxShadow: '0 16px 40px rgba(15, 23, 42, 0.14)',
+  overflow: 'hidden',
+};
+
 export default function HeaderTasksBell({
   items = [],
   loading = false,
@@ -32,36 +44,60 @@ export default function HeaderTasksBell({
   const menuContent = useMemo(() => {
     if (loading) {
       return (
-        <div style={{ width: 360, padding: 24, display: 'flex', justifyContent: 'center' }}>
-          <Spin />
+        <div style={panelShellStyle}>
+          <div
+            style={{
+              minHeight: 220,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              boxSizing: 'border-box',
+            }}
+          >
+            <Spin />
+          </div>
         </div>
       );
     }
 
     if (!items.length) {
       return (
-        <div style={{ width: 320, padding: 16 }}>
-          <Empty description="Nenhuma atividade" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <div style={panelShellStyle}>
+          <div
+            style={{
+              minHeight: 220,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              boxSizing: 'border-box',
+            }}
+          >
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Nenhuma atividade"
+            />
+          </div>
         </div>
       );
     }
 
     return (
-      <div style={{ width: 360, maxHeight: 420, overflowY: 'auto' }}>
+      <div style={panelShellStyle}>
         <div
           style={{
             padding: '12px 16px',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: '1px solid #eef2f7',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: '#fff',
-            position: 'sticky',
-            top: 0,
-            zIndex: 1,
+            background: '#ffffff',
           }}
         >
-          <Text strong>Atividades</Text>
+          <Text strong style={{ color: '#0f172a' }}>
+            Atividades
+          </Text>
 
           {onOpenAll ? (
             <Button
@@ -73,46 +109,65 @@ export default function HeaderTasksBell({
                 onOpenAll();
                 setOpen(false);
               }}
+              style={{ paddingInline: 0 }}
             >
               Ver todas
             </Button>
           ) : null}
         </div>
 
-        <List
-          dataSource={items}
-          renderItem={(item) => (
-            <List.Item
-              key={item.id}
-              onClick={() => {
-                onItemClick?.(item);
-                setOpen(false);
-              }}
-              style={{
-                cursor: onItemClick ? 'pointer' : 'default',
-                padding: '12px 16px',
-                background: item.read ? '#fff' : '#f6ffed',
-                alignItems: 'flex-start',
-              }}
-            >
-              <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                <Text strong={!item.read}>{item.title}</Text>
-
-                {item.description ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {item.description}
+        <div
+          style={{
+            maxHeight: PANEL_MAX_HEIGHT - 53,
+            overflowY: 'auto',
+            background: '#ffffff',
+          }}
+        >
+          <List
+            dataSource={items}
+            renderItem={(item) => (
+              <List.Item
+                key={item.id}
+                onClick={() => {
+                  onItemClick?.(item);
+                  setOpen(false);
+                }}
+                style={{
+                  cursor: onItemClick ? 'pointer' : 'default',
+                  padding: '12px 16px',
+                  background: item.read ? '#ffffff' : '#f6ffed',
+                  alignItems: 'flex-start',
+                  borderBottom: '1px solid #f5f5f5',
+                  transition: 'background 0.2s ease',
+                }}
+              >
+                <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                  <Text strong={!item.read} style={{ color: '#111827' }}>
+                    {item.title}
                   </Text>
-                ) : null}
 
-                {item.createdAt ? (
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {item.createdAt}
-                  </Text>
-                ) : null}
-              </Space>
-            </List.Item>
-          )}
-        />
+                  {item.description ? (
+                    <Text
+                      type="secondary"
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {item.description}
+                    </Text>
+                  ) : null}
+
+                  {item.createdAt ? (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {item.createdAt}
+                    </Text>
+                  ) : null}
+                </Space>
+              </List.Item>
+            )}
+          />
+        </div>
       </div>
     );
   }, [items, loading, onItemClick, onOpenAll]);
@@ -124,6 +179,11 @@ export default function HeaderTasksBell({
       trigger={['click']}
       dropdownRender={() => menuContent}
       placement="bottomRight"
+      overlayStyle={{
+        paddingTop: 8,
+        background: 'transparent',
+        boxShadow: 'none',
+      }}
     >
       <Badge count={unreadCount} size="small" overflowCount={99}>
         <Button

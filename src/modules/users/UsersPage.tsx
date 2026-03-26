@@ -26,6 +26,7 @@ import {
   Popconfirm,
   Empty,
   Divider,
+  Image,
 } from 'antd';
 import {
   EditOutlined,
@@ -39,6 +40,21 @@ import {
   CheckOutlined,
   CloseOutlined,
   UserAddOutlined,
+  ProjectOutlined,
+  ShoppingCartOutlined,
+  FileDoneOutlined,
+  TeamOutlined,
+  ClusterOutlined,
+  GlobalOutlined,
+  IdcardOutlined,
+  AppstoreOutlined,
+  ToolOutlined,
+  BuildOutlined,
+  FileTextOutlined,
+  BarChartOutlined,
+  CarOutlined,
+  NotificationOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
@@ -67,11 +83,16 @@ const abs = (url?: string | null) => {
 const initial = (s?: string | null) => (s?.trim()?.[0]?.toUpperCase() ?? '?');
 
 /** ===== Helpers telefone (MASK dinâmico) ===== */
-const onlyDigits = (v?: string) => String(v || '').replace(/\D/g, '');
+const formatPhone = (value?: string) => {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
 
-const phoneMask = (value?: string) => {
-  const digits = onlyDigits(value);
-  return digits.length > 10 ? '(00) 00000-0000' : '(00) 0000-0000';
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 };
 
 const normalizeRoleName = (s?: string | null) =>
@@ -130,7 +151,39 @@ const PERMISSION_OPTIONS = [
   { value: 'DASHBOARD_ACTIVITY_VIEW', label: 'Planejamento CIA' },
   { value: 'DELIVERY_REPORTS_VIEW', label: 'CTEs' },
 ];
+const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
+  DASHBOARD_VIEW: <HomeOutlined />,
+  INSTALLATION_PROJECTS_VIEW: <ProjectOutlined />,
+  PART_REQUESTS_VIEW: <ShoppingCartOutlined />,
+  MY_PART_REQUESTS_VIEW: <FileDoneOutlined />,
+  TECHS_MAP_VIEW: <EnvironmentOutlined />,
+  USERS_VIEW: <TeamOutlined />,
+  ORG_VIEW: <ClusterOutlined />,
+  LOCATIONS_VIEW: <GlobalOutlined />,
+  CLIENTS_VIEW: <IdcardOutlined />,
+  TASKS_VIEW: <AppstoreOutlined />,
+  TECH_TYPES_VIEW: <ToolOutlined />,
+  NEEDS_VIEW: <BuildOutlined />,
+  NEEDS_MAP_VIEW: <EnvironmentOutlined />,
+  ASSIGNMENTS_VIEW: <FileTextOutlined />,
+  OVERTIME_VIEW: <BarChartOutlined />,
+  TIMEOFF_VIEW: <CarOutlined />,
+  NEWS_VIEW: <NotificationOutlined />,
+  NEWS_ADMIN_VIEW: <SettingOutlined />,
+};
 
+const permissionOptionsWithIcons = PERMISSION_OPTIONS.map((item) => ({
+  ...item,
+  label: (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ color: '#1F71B8', fontSize: 15 }}>
+        {PERMISSION_ICON_MAP[item.value] || <AppstoreOutlined />}
+      </span>
+      <span>{item.label}</span>
+    </div>
+  ),
+  searchLabel: String(item.label || ''),
+}));
 const DEFAULT_PERMISSIONS = ['DASHBOARD_VIEW', 'ASSIGNMENTS_VIEW'];
 
 const permissionLabelMap = PERMISSION_OPTIONS.reduce<Record<string, string>>((acc, item) => {
@@ -312,7 +365,67 @@ const requestStatusTag = (status?: string) => {
   if (status === 'REJECTED') return <Tag color="red">Reprovada</Tag>;
   return <Tag>{status || '—'}</Tag>;
 };
+function UserPhotoPreview({
+  src,
+  name,
+  size = 48,
+}: {
+  src?: string | null;
+  name?: string | null;
+  size?: number;
+}) {
+  const imageSrc = abs(src);
 
+  if (!imageSrc) {
+    return (
+      <Avatar size={size}>
+        {initial(name)}
+      </Avatar>
+    );
+  }
+
+  return (
+    <Image
+      src={imageSrc}
+      alt={name || 'Foto do usuário'}
+      width={size}
+      height={size}
+      preview={{
+        mask: 'Ver foto',
+      }}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'cover',
+        borderRadius: '50%',
+        cursor: 'pointer',
+        border: '1px solid #f0f0f0',
+      }}
+    />
+  );
+}
+function PermissionChip({ permission }: { permission: string }) {
+  return (
+    <Tag
+      style={{
+        padding: '6px 10px',
+        borderRadius: 999,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        borderColor: '#bfdbfe',
+        background: '#eff6ff',
+        color: '#1d4ed8',
+        marginInlineEnd: 0,
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center' }}>
+        {PERMISSION_ICON_MAP[permission] || <EditOutlined />}
+      </span>
+      <span>{getPermissionLabel(permission)}</span>
+    </Tag>
+  );
+}
 export function UsersPage() {
   const qc = useQueryClient();
   const screens = useBreakpoint();
@@ -545,10 +658,74 @@ export function UsersPage() {
     }
   };
 
+  const normalizeZip = (value?: string | null) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
+
   const applyGeo = (it: any) => {
+    const street =
+      it.addressStreet ||
+      it.street ||
+      it.road ||
+      it.address?.road ||
+      it.address?.pedestrian ||
+      it.address?.residential ||
+      undefined;
+
+    const district =
+      it.addressDistrict ||
+      it.district ||
+      it.suburb ||
+      it.neighbourhood ||
+      it.neighborhood ||
+      it.address?.suburb ||
+      it.address?.neighbourhood ||
+      it.address?.neighborhood ||
+      undefined;
+
+    const city =
+      it.addressCity ||
+      it.city ||
+      it.town ||
+      it.village ||
+      it.address?.city ||
+      it.address?.town ||
+      it.address?.village ||
+      it.address?.municipality ||
+      undefined;
+
+    const state =
+      it.addressState ||
+      it.uf ||
+      it.state ||
+      it.address?.state_code ||
+      it.address?.state ||
+      undefined;
+
+    const zip =
+      normalizeZip(
+        it.addressZip ||
+        it.zip ||
+        it.postcode ||
+        it.cep ||
+        it.address?.postcode
+      ) || undefined;
+
+    const country =
+      it.addressCountry ||
+      it.country ||
+      it.address?.country ||
+      'Brasil';
+
     const patch = {
-      addressCity: it.city || undefined,
-      addressState: it.uf || it.state || undefined,
+      addressStreet: street,
+      addressDistrict: district,
+      addressCity: city,
+      addressState: state,
+      addressZip: zip,
+      addressCountry: country,
       lat: it.lat,
       lng: it.lng,
     };
@@ -944,15 +1121,54 @@ export function UsersPage() {
 
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Avatar src={abs(viewUser?.avatarUrl)} size={48}>
-              {viewUser?.name?.[0]}
-            </Avatar>
-            <div>
-              <div style={{ fontWeight: 600 }}>{viewUser?.name}</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>
-                {getDisplayRoleLabel(viewUser?.role?.name, viewUser?.cargoDescritivo, viewUser?.ocultarCargo)}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+              minWidth: 0,
+            }}
+          >
+            <UserPhotoPreview
+              src={viewUser?.avatarUrl}
+              name={viewUser?.name}
+              size={72}
+            />
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: 28,
+                  lineHeight: 1.15,
+                  color: '#0f172a',
+                }}
+              >
+                {viewUser?.name}
               </div>
+
+              <div
+                style={{
+                  color: '#64748b',
+                  fontSize: 15,
+                  marginTop: 4,
+                }}
+              >
+                {getDisplayRoleLabel(
+                  viewUser?.role?.name,
+                  viewUser?.cargoDescritivo,
+                  viewUser?.ocultarCargo
+                )}
+              </div>
+
+              <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                <Tag color={viewUser?.isActive ? 'green' : 'default'}>
+                  {viewUser?.isActive ? 'Ativo' : 'Inativo'}
+                </Tag>
+
+                {viewUser?.ocultarCargo && <Tag color="default">Cargo oculto</Tag>}
+                {!!viewUser?.estoqueAvancado && <Tag color="purple">Estoque avançado</Tag>}
+              </Space>
             </div>
           </div>
         }
@@ -1010,25 +1226,39 @@ export function UsersPage() {
           </Space>
         }
         destroyOnHidden
-        width={isMobile ? '100%' : 980}
+        width={isMobile ? '100%' : 1240}
+        centered
         style={isMobile ? { top: 0, padding: 0 } : undefined}
+        styles={{
+          body: {
+            paddingTop: 12,
+            maxHeight: isMobile ? 'calc(100vh - 120px)' : '78vh',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          },
+        }}
       >
         {viewUser && (
-          <Row gutter={[12, 12]}>
-            <Col xs={24} md={viewUserIsWorker ? 8 : 12}>
-              <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                <Card size="small" title="Profissional">
+          <Row gutter={[16, 16]} align="stretch">
+            <Col xs={24} xl={14}>
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Card
+                  size="small"
+                  title="Profissional"
+                  style={{ borderRadius: 14 }}
+                  styles={{ body: { paddingBottom: 8 } }}
+                >
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="Cargo descritivo">
                       {viewUser.ocultarCargo ? 'Oculto' : viewUser.cargoDescritivo || '—'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="Gestor">{viewUser.manager?.name || '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Gestor">{viewUser.manager?.name || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Status">{viewUser.isActive ? 'Ativo' : 'Inativo'}</Descriptions.Item>
                     <Descriptions.Item label="Login">
                       {viewUser.loginEnabled === false ? 'Sem login' : 'Com login'}
                     </Descriptions.Item>
                     {viewUserIsWorker && (
-                      <Descriptions.Item label="Estoque Avançado">
+                      <Descriptions.Item label="Estoque avançado">
                         {viewUser.estoqueAvancado ? 'Sim' : 'Não'}
                       </Descriptions.Item>
                     )}
@@ -1040,96 +1270,100 @@ export function UsersPage() {
                   </Descriptions>
                 </Card>
 
-                <Card size="small" title="Contato">
+                <Card
+                  size="small"
+                  title="Contato"
+                  style={{ borderRadius: 14 }}
+                  styles={{ body: { paddingBottom: 8 } }}
+                >
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="E-mail">{viewUser.email || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Telefone">{viewUser.phone || '—'}</Descriptions.Item>
                   </Descriptions>
                 </Card>
+
+                {viewUserIsWorker && (
+                  <Card
+                    size="small"
+                    title="Área de atendimento"
+                    style={{ borderRadius: 14 }}
+                    styles={{ body: { paddingBottom: 8 } }}
+                  >
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
+                      <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
+                      <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
+                      <Descriptions.Item label="Tipo de atendimento">
+                        {getTipoAtendimentoLabel(viewUser.tipoAtendimento, viewUser.tipoAtendimentoDescricao) || '—'}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Card>
+                )}
               </Space>
             </Col>
 
-            {viewUserIsWorker && (
-              <Col xs={24} md={8}>
-                <Card size="small" title="Área de atendimento">
+            <Col xs={24} xl={10}>
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Card
+                  size="small"
+                  title="Permissões"
+                  style={{ borderRadius: 14 }}
+                  styles={{ body: { paddingBottom: 8 } }}
+                >
+                  {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {viewUser.permissions.map((permission) => (
+                        <PermissionChip key={permission} permission={permission} />
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">Sem permissões definidas</Text>
+                  )}
+                </Card>
+
+                <Card
+                  size="small"
+                  title="Endereço"
+                  style={{ borderRadius: 14 }}
+                  styles={{ body: { paddingBottom: 8 } }}
+                >
                   <Descriptions column={1} size="small">
-                    <Descriptions.Item label="Código fornecedor">{viewUser.vendorCode || '—'}</Descriptions.Item>
-                    <Descriptions.Item label="Código da área">{viewUser.serviceAreaCode || '—'}</Descriptions.Item>
-                    <Descriptions.Item label="Nome da área">{viewUser.serviceAreaName || '—'}</Descriptions.Item>
-                    <Descriptions.Item label="Tipo de atendimento">
-                      {getTipoAtendimentoLabel(viewUser.tipoAtendimento, viewUser.tipoAtendimentoDescricao) || '—'}
+                    <Descriptions.Item label="Logradouro">
+                      {viewUser.addressStreet || '—'} {viewUser.addressNumber || ''}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Complemento">
+                      {viewUser.addressComplement || '—'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Bairro">
+                      {viewUser.addressDistrict || '—'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Cidade/UF">
+                      {viewUser.addressCity || '—'}
+                      {viewUser.addressState ? ` / ${viewUser.addressState}` : ''}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="CEP">{viewUser.addressZip || '—'}</Descriptions.Item>
+                    <Descriptions.Item label="País">{viewUser.addressCountry || 'Brasil'}</Descriptions.Item>
+                    <Descriptions.Item label="Coordenadas">
+                      {viewUser.lat && viewUser.lng ? (
+                        <Tag
+                          color="green"
+                          style={{
+                            maxWidth: '100%',
+                            display: 'inline-block',
+                            whiteSpace: 'normal',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {viewUser.lat}, {viewUser.lng}
+                        </Tag>
+                      ) : (
+                        <Tag>Sem coordenadas</Tag>
+                      )}
                     </Descriptions.Item>
                   </Descriptions>
                 </Card>
-
-                <Card size="small" title="Permissões" style={{ marginTop: 12 }}>
-                  {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {viewUser.permissions.map((permission) => (
-                        <Tag key={permission} color="blue">
-                          {getPermissionLabel(permission)}
-                        </Tag>
-                      ))}
-                    </div>
-                  ) : (
-                    <Text type="secondary">Sem permissões definidas</Text>
-                  )}
-                </Card>
-              </Col>
-            )}
-
-            {!viewUserIsWorker && (
-              <Col xs={24} md={12}>
-                <Card size="small" title="Permissões">
-                  {Array.isArray(viewUser.permissions) && viewUser.permissions.length > 0 ? (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {viewUser.permissions.map((permission) => (
-                        <Tag key={permission} color="blue">
-                          {getPermissionLabel(permission)}
-                        </Tag>
-                      ))}
-                    </div>
-                  ) : (
-                    <Text type="secondary">Sem permissões definidas</Text>
-                  )}
-                </Card>
-              </Col>
-            )}
-
-            <Col xs={24} md={viewUserIsWorker ? 8 : 12}>
-              <Card size="small" title="Endereço">
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Logradouro">
-                    {viewUser.addressStreet || '—'} {viewUser.addressNumber || ''}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Complemento">{viewUser.addressComplement || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Bairro">{viewUser.addressDistrict || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Cidade/UF">
-                    {viewUser.addressCity || '—'}
-                    {viewUser.addressState ? ` / ${viewUser.addressState}` : ''}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="CEP">{viewUser.addressZip || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="País">{viewUser.addressCountry || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Coordenadas">
-                    {viewUser.lat && viewUser.lng ? (
-                      <Tag
-                        color="green"
-                        style={{
-                          maxWidth: '100%',
-                          display: 'inline-block',
-                          whiteSpace: 'normal',
-                          overflowWrap: 'anywhere',
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {viewUser.lat}, {viewUser.lng}
-                      </Tag>
-                    ) : (
-                      <Tag>Sem coordenadas</Tag>
-                    )}
-                  </Descriptions.Item>
-                </Descriptions>
-              </Card>
+              </Space>
             </Col>
           </Row>
         )}
@@ -1154,334 +1388,57 @@ export function UsersPage() {
       />
 
       {canCreateAnyUser && (
-        <Modal
-          title="Novo colaborador"
-          open={createOpen}
-          onCancel={() => {
-            setCreateOpen(false);
-            setCreateAvatarFile(null);
-            createForm.resetFields();
-          }}
-          onOk={() => createForm.submit()}
-          destroyOnHidden
-          width={isMobile ? '100%' : 980}
-          style={isMobile ? { top: 0, padding: 0 } : undefined}
-        >
-          <Form
-            layout="vertical"
-            form={createForm}
-            initialValues={{
-              permissions: DEFAULT_PERMISSIONS,
-              sectors: DEFAULT_SECTORS,
-              ocultarCargo: false,
-            }}
-            onFinish={(v) => {
-              const isWorker = isWorkerRoleId(v.roleId);
-
-              const payload = {
-                name: v.name,
-                email: v.email,
-                password: v.password,
-                sex: v.sex,
-                roleId: v.roleId,
-                managerId: v.managerId ?? null,
-                locationId: v.locationId ?? null,
-                phone: v.phone || null,
-                cargoDescritivo: v.cargoDescritivo?.trim() || null,
-                ocultarCargo: !!v.ocultarCargo,
-                vendorCode: isWorker ? v.vendorCode || null : null,
-                serviceAreaCode: isWorker ? v.serviceAreaCode || null : null,
-                serviceAreaName: isWorker ? v.serviceAreaName || null : null,
-                tipoAtendimento: isWorker ? v.tipoAtendimento || null : null,
-                estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
-                sectors:
-                  Array.isArray(v.sectors) && v.sectors.length
-                    ? v.sectors
-                    : DEFAULT_SECTORS,
-                permissions:
-                  Array.isArray(v.permissions) && v.permissions.length
-                    ? v.permissions
-                    : DEFAULT_PERMISSIONS,
-              };
-              createUser.mutate(payload);
-            }}
-          >
-            <Row gutter={[12, 12]}>
-              <Col xs={24}>
-                <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="email" label="E-mail" rules={[{ required: true, type: 'email' }]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="password" label="Senha" rules={[{ required: true, min: 6 }]}>
-                  <Input.Password />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="sex" label="Sexo">
-                  <Select
-                    allowClear
-                    options={[
-                      { value: 'M', label: 'Masculino' },
-                      { value: 'F', label: 'Feminino' },
-                      { value: 'O', label: 'Outro' },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="roleId" label="Cargo" rules={[{ required: true }]}>
-                  <Select options={roleOptions} optionFilterProp="label" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="cargoDescritivo" label="Cargo descritivo">
-                  <Input placeholder="Ex.: Coordenador de Dados / Supervisor de Operações" maxLength={150} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="managerId" label="Gestor">
-                  <Select
-                    allowClear
-                    showSearch
-                    placeholder="Selecione o gestor"
-                    options={managerOptions}
-                    optionFilterProp="label"
-                    filterOption={(input, option) =>
-                      String(option?.label || '').toLowerCase().includes(input.toLowerCase())
-                    }
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item name="phone" label="Telefone">
-                  <MaskedInput mask={phoneMask(createPhone)} placeholder="(11) 99999-9999" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12} lg={8}>
-                <Form.Item
-                  name="ocultarCargo"
-                  label="Ocultar cargo"
-                  valuePropName="checked"
-                >
-                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-                </Form.Item>
-              </Col>
-
-              {createSelectedIsWorker && (
-                <>
-                  <Col xs={24} md={12} lg={8}>
-                    <Form.Item name="vendorCode" label="Cód do fornecedor">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={12} lg={12}>
-                    <Form.Item name="serviceAreaCode" label="Cód da área de atendimento">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={12} lg={12}>
-                    <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-                      <Input />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={12} lg={12}>
-                    <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
-                      <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
-                    </Form.Item>
-                  </Col>
-
-                  <Col xs={24} md={12} lg={12}>
-                    <Form.Item
-                      name="estoqueAvancado"
-                      label="Pertence ao Estoque Avançado?"
-                      valuePropName="checked"
-                      initialValue={false}
-                    >
-                      <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-                    </Form.Item>
-                  </Col>
-                </>
-              )}
-
-              <Col xs={24}>
-                <Form.Item
-                  name="sectors"
-                  label="Setor"
-                  rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
-                >
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Selecione o(s) setor(es) do usuário"
-                    options={SECTOR_OPTIONS}
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24}>
-                <Form.Item
-                  name="permissions"
-                  label="Abas / Permissões de acesso"
-                  rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
-                  tooltip="Selecione as páginas que esse usuário poderá acessar"
-                >
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Selecione as abas liberadas para este usuário"
-                    options={PERMISSION_OPTIONS}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Card size="small" title="Endereço (opcional)" style={{ marginTop: 8 }}>
-              <Row gutter={[12, 12]}>
-                <Col xs={24} md={12}>
-                  <Form.Item name="addressStreet" label="Logradouro">
-                    <Input placeholder="Rua/Avenida" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressNumber" label="Número">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressComplement" label="Complemento">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item name="addressDistrict" label="Bairro">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressCity" label="Cidade">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressState" label="UF/Estado">
-                    <Input placeholder="SP, RJ..." />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressZip" label="CEP">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="addressCountry" label="País" initialValue="Brasil">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="lat" label="Latitude">
-                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="lng" label="Longitude">
-                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
-                  <Button
-                    block={isMobile}
-                    icon={<SearchOutlined />}
-                    onClick={() => {
-                      setGeoForForm('create');
-                      setGeoOpen(true);
-                      setGeoResults([]);
-                      setGeoQuery('');
-                    }}
-                  >
-                    Buscar coordenadas
-                  </Button>
-                </Col>
-              </Row>
-            </Card>
-
-            <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
-              <Upload
-                accept="image/*"
-                maxCount={1}
-                beforeUpload={(file) => {
-                  setCreateAvatarFile(file);
-                  return false;
-                }}
-                onRemove={() => setCreateAvatarFile(null)}
-                listType="picture"
-              >
-                <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-              </Upload>
-            </Form.Item>
-          </Form>
-        </Modal>
-      )}
-
       <Modal
-        title={`Editar: ${editing?.name || ''}`}
-        open={editOpen}
+        title="Novo colaborador"
+        open={createOpen}
         onCancel={() => {
-          setEditOpen(false);
-          setEditing(null);
-          setEditAvatarFile(null);
+          setCreateOpen(false);
+          setCreateAvatarFile(null);
+          createForm.resetFields();
         }}
-        onOk={() => editForm.submit()}
+        onOk={() => createForm.submit()}
         destroyOnHidden
-        width={isMobile ? '100%' : 980}
+        width={isMobile ? '100%' : 1380}
+        centered
         style={isMobile ? { top: 0, padding: 0 } : undefined}
+        styles={{
+          body: {
+            paddingTop: 12,
+            maxHeight: isMobile ? 'calc(100vh - 110px)' : '78vh',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          },
+        }}
       >
         <Form
           layout="vertical"
-          form={editForm}
+          form={createForm}
+          initialValues={{
+            permissions: DEFAULT_PERMISSIONS,
+            sectors: DEFAULT_SECTORS,
+            ocultarCargo: false,
+            estoqueAvancado: false,
+            addressCountry: 'Brasil',
+          }}
           onFinish={(v) => {
             const isWorker = isWorkerRoleId(v.roleId);
 
-            const payload: any = {
+            const payload = {
               name: v.name,
-              email: v.email || null,
+              email: v.email,
+              password: v.password,
               sex: v.sex,
               roleId: v.roleId,
               managerId: v.managerId ?? null,
-              isActive: v.isActive,
-              phone: v.phone ?? null,
+              locationId: v.locationId ?? null,
+              phone: v.phone || null,
               cargoDescritivo: v.cargoDescritivo?.trim() || null,
               ocultarCargo: !!v.ocultarCargo,
+              vendorCode: isWorker ? v.vendorCode || null : null,
+              serviceAreaCode: isWorker ? v.serviceAreaCode || null : null,
+              serviceAreaName: isWorker ? v.serviceAreaName || null : null,
+              tipoAtendimento: isWorker ? v.tipoAtendimento || null : null,
+              estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
               sectors:
                 Array.isArray(v.sectors) && v.sectors.length
                   ? v.sectors
@@ -1490,51 +1447,635 @@ export function UsersPage() {
                 Array.isArray(v.permissions) && v.permissions.length
                   ? v.permissions
                   : DEFAULT_PERMISSIONS,
-
-              vendorCode: isWorker ? v.vendorCode ?? null : null,
-              serviceAreaCode: isWorker ? v.serviceAreaCode ?? null : null,
-              serviceAreaName: isWorker ? v.serviceAreaName ?? null : null,
-              tipoAtendimento: isWorker ? v.tipoAtendimento ?? null : null,
-              estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
+              addressStreet: v.addressStreet || null,
+              addressNumber: v.addressNumber || null,
+              addressComplement: v.addressComplement || null,
+              addressDistrict: v.addressDistrict || null,
+              addressCity: v.addressCity || null,
+              addressState: v.addressState || null,
+              addressZip: v.addressZip || null,
+              addressCountry: v.addressCountry || 'Brasil',
+              lat: v.lat ?? null,
+              lng: v.lng ?? null,
             };
 
-            updateUser.mutate({ id: editing!.id, payload });
+            createUser.mutate(payload);
           }}
+        >
+          <Row gutter={[16, 16]} align="stretch">
+            <Col xs={24} xl={13}>
+              <Card
+                size="small"
+                title="Dados do colaborador"
+                style={{ borderRadius: 14, height: '100%' }}
+                styles={{ body: { paddingBottom: 8 } }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col xs={24}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 16,
+                        alignItems: 'center',
+                        padding: 12,
+                        border: '1px dashed #d9d9d9',
+                        borderRadius: 12,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <Upload
+                        accept="image/*"
+                        maxCount={1}
+                        beforeUpload={(file) => {
+                          setCreateAvatarFile(file);
+                          return false;
+                        }}
+                        onRemove={() => setCreateAvatarFile(null)}
+                        showUploadList={false}
+                      >
+                        <div
+                          style={{
+                            width: 88,
+                            height: 88,
+                            borderRadius: 14,
+                            overflow: 'hidden',
+                            border: '1px solid #d9d9d9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {createAvatarFile ? (
+                            <img
+                              src={URL.createObjectURL(createAvatarFile)}
+                              alt="preview"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <UploadOutlined style={{ fontSize: 24, color: '#8c8c8c' }} />
+                          )}
+                        </div>
+                      </Upload>
+
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                          Foto do colaborador
+                        </div>
+                        <div style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 10 }}>
+                          Adicione uma foto para identificação do colaborador.
+                        </div>
+
+                        <Space wrap>
+                          <Upload
+                            accept="image/*"
+                            maxCount={1}
+                            beforeUpload={(file) => {
+                              setCreateAvatarFile(file);
+                              return false;
+                            }}
+                            onRemove={() => setCreateAvatarFile(null)}
+                            showUploadList={false}
+                          >
+                            <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+                          </Upload>
+
+                          {createAvatarFile && (
+                            <Button onClick={() => setCreateAvatarFile(null)}>
+                              Remover
+                            </Button>
+                          )}
+                        </Space>
+                      </div>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={14}>
+                    <Form.Item name="name" label="Nome" rules={[{ required: true, message: 'Informe o nome' }]}>
+                      <Input placeholder="Nome do colaborador" />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item name="phone" label="Telefone">
+                      <Input
+                        placeholder="(11) 99999-9999"
+                        maxLength={15}
+                        value={createForm.getFieldValue('phone')}
+                        onChange={(e) => {
+                          createForm.setFieldValue('phone', formatPhone(e.target.value));
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={14}>
+                    <Form.Item
+                      name="email"
+                      label="E-mail"
+                      rules={[{ required: true, type: 'email', message: 'Informe um e-mail válido' }]}
+                    >
+                      <Input placeholder="email@empresa.com" />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item
+                      name="password"
+                      label="Senha"
+                      rules={[{ required: true, min: 6, message: 'Informe uma senha com no mínimo 6 caracteres' }]}
+                    >
+                      <Input.Password placeholder="Digite a senha" />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="sex" label="Sexo">
+                      <Select
+                        allowClear
+                        placeholder="Selecione"
+                        options={[
+                          { value: 'M', label: 'Masculino' },
+                          { value: 'F', label: 'Feminino' },
+                          { value: 'O', label: 'Outro' },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione o cargo' }]}>
+                      <Select
+                        placeholder="Selecione"
+                        options={roleOptions}
+                        optionFilterProp="label"
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                      <Input
+                        placeholder="Ex.: Coordenador de Dados"
+                        maxLength={150}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item name="managerId" label="Gestor">
+                      <Select
+                        allowClear
+                        showSearch
+                        placeholder="Selecione o gestor"
+                        options={managerOptions}
+                        optionFilterProp="label"
+                        filterOption={(input, option) =>
+                          String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                        }
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      name="sectors"
+                      label="Setor"
+                      rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Selecione o(s) setor(es)"
+                        options={SECTOR_OPTIONS}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24}>
+                    <div
+                      style={{
+                        border: '1px solid #f0f0f0',
+                        borderRadius: 12,
+                        padding: 12,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <Row gutter={[12, 12]}>
+                        <Col xs={24} md={createSelectedIsWorker ? 12 : 24}>
+                          <Form.Item
+                            name="ocultarCargo"
+                            label="Ocultar cargo"
+                            valuePropName="checked"
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                          </Form.Item>
+                        </Col>
+
+                        {createSelectedIsWorker && (
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              name="estoqueAvancado"
+                              label="Pertence ao Estoque Avançado?"
+                              valuePropName="checked"
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                            </Form.Item>
+                          </Col>
+                        )}
+                      </Row>
+                    </div>
+                  </Col>
+
+                  {createSelectedIsWorker && (
+                    <>
+                      <Col xs={24} md={6}>
+                        <Form.Item name="vendorCode" label="Cód. fornecedor">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="serviceAreaCode" label="Cód. área">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="tipoAtendimento" label="Atendimento">
+                          <Select
+                            allowClear
+                            placeholder="Selecione"
+                            options={TIPO_ATENDIMENTO_OPTIONS}
+                          />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="serviceAreaName" label="Área">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+                    </>
+                  )}
+
+                  <Col xs={24}>
+                    <Form.Item
+                      name="permissions"
+                      label="Abas / Permissões de acesso"
+                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                      tooltip="Selecione as páginas que esse usuário poderá acessar"
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Selecione as abas liberadas para este usuário"
+                        options={PERMISSION_OPTIONS}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </Col>
+
+            <Col xs={24} xl={11}>
+              <Card
+                size="small"
+                title="Endereço"
+                style={{ borderRadius: 14, height: '100%' }}
+                styles={{ body: { paddingBottom: 8 } }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col xs={24} md={9}>
+                    <Form.Item name="addressZip" label="CEP">
+                      <Input
+                        placeholder="00000-000"
+                        onBlur={async (e) => {
+                          const raw = (e.target.value || '').replace(/\D/g, '');
+                          if (!raw) return;
+
+                          try {
+                            const resp = await api.get('/users/cep', { params: { cep: raw } });
+
+                            createForm.setFieldsValue({
+                              addressStreet: resp.data.addressStreet ?? undefined,
+                              addressDistrict: resp.data.addressDistrict ?? undefined,
+                              addressCity: resp.data.addressCity ?? undefined,
+                              addressState: resp.data.addressState ?? undefined,
+                              addressCountry: resp.data.addressCountry ?? 'Brasil',
+                              addressZip: resp.data.addressZip ?? e.target.value,
+                            });
+                          } catch {
+                            message.warning('Não foi possível buscar o CEP.');
+                          }
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={15} style={{ display: 'flex', alignItems: 'end' }}>
+                    <Form.Item label=" " style={{ width: '100%', marginBottom: 24 }}>
+                      <Button
+                        block
+                        icon={<SearchOutlined />}
+                        onClick={() => {
+                          setGeoForForm('create');
+                          setGeoOpen(true);
+                          setGeoResults([]);
+                          setGeoQuery('');
+                        }}
+                      >
+                        Buscar coordenadas
+                      </Button>
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24}>
+                    <Form.Item name="addressStreet" label="Logradouro">
+                      <Input placeholder="Rua / Avenida" />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={7}>
+                    <Form.Item name="addressNumber" label="Número">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={17}>
+                    <Form.Item name="addressComplement" label="Complemento">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item name="addressDistrict" label="Bairro">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item name="addressCity" label="Cidade">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={4}>
+                    <Form.Item name="addressState" label="UF">
+                      <Input placeholder="SP" />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                      <Input />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={6}>
+                    <Form.Item name="lat" label="Latitude">
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        step={0.000001}
+                        placeholder="-23.550520"
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={6}>
+                    <Form.Item name="lng" label="Longitude">
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        step={0.000001}
+                        placeholder="-46.633308"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+      )}
+
+<Modal
+  title={`Editar: ${editing?.name || ''}`}
+  open={editOpen}
+  onCancel={() => {
+    setEditOpen(false);
+    setEditing(null);
+    setEditAvatarFile(null);
+  }}
+  onOk={() => editForm.submit()}
+  destroyOnHidden
+  width={isMobile ? '100%' : 1380}
+  centered
+  style={isMobile ? { top: 0, padding: 0 } : undefined}
+  styles={{
+    body: {
+      paddingTop: 12,
+      maxHeight: isMobile ? 'calc(100vh - 110px)' : '80vh',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+    },
+  }}
+>
+  <Form
+    layout="vertical"
+    form={editForm}
+    onFinish={(v) => {
+      const isWorker = isWorkerRoleId(v.roleId);
+
+      const payload: any = {
+        name: v.name,
+        email: v.email || null,
+        sex: v.sex,
+        roleId: v.roleId,
+        managerId: v.managerId ?? null,
+        isActive: v.isActive,
+        phone: v.phone ?? null,
+        cargoDescritivo: v.cargoDescritivo?.trim() || null,
+        ocultarCargo: !!v.ocultarCargo,
+        sectors:
+          Array.isArray(v.sectors) && v.sectors.length
+            ? v.sectors
+            : DEFAULT_SECTORS,
+        permissions:
+          Array.isArray(v.permissions) && v.permissions.length
+            ? v.permissions
+            : DEFAULT_PERMISSIONS,
+
+        vendorCode: isWorker ? v.vendorCode ?? null : null,
+        serviceAreaCode: isWorker ? v.serviceAreaCode ?? null : null,
+        serviceAreaName: isWorker ? v.serviceAreaName ?? null : null,
+        tipoAtendimento: isWorker ? v.tipoAtendimento ?? null : null,
+        estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
+      };
+
+      updateUser.mutate({ id: editing!.id, payload });
+    }}
+  >
+    <Row gutter={[16, 16]} align="stretch">
+      <Col xs={24} xl={13}>
+        <Card
+          size="small"
+          title="Dados do colaborador"
+          style={{ borderRadius: 14, height: '100%' }}
+          styles={{ body: { paddingBottom: 8 } }}
         >
           <Row gutter={[12, 12]}>
             <Col xs={24}>
-              <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-                <Input />
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 16,
+                  alignItems: 'center',
+                  padding: 12,
+                  border: '1px dashed #d9d9d9',
+                  borderRadius: 12,
+                  background: '#fafafa',
+                }}
+              >
+                <div
+                  style={{
+                    width: 88,
+                    height: 88,
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    border: '1px solid #d9d9d9',
+                    background: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {editAvatarFile ? (
+                    <img
+                      src={URL.createObjectURL(editAvatarFile)}
+                      alt="preview"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <Avatar
+                      src={abs(editing?.avatarUrl)}
+                      size={88}
+                      style={{ borderRadius: 14 }}
+                    >
+                      {editing?.name?.[0]}
+                    </Avatar>
+                  )}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    Foto do colaborador
+                  </div>
+                  <div style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 10 }}>
+                    Atualize a imagem de identificação do colaborador.
+                  </div>
+
+                  <Space wrap>
+                    <Upload
+                      accept="image/*"
+                      maxCount={1}
+                      beforeUpload={(file) => {
+                        setEditAvatarFile(file);
+                        return false;
+                      }}
+                      onRemove={() => setEditAvatarFile(null)}
+                      showUploadList={false}
+                    >
+                      <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+                    </Upload>
+
+                    {editAvatarFile && (
+                      <Button onClick={() => setEditAvatarFile(null)}>
+                        Remover nova foto
+                      </Button>
+                    )}
+                  </Space>
+                </div>
+              </div>
+            </Col>
+
+            <Col xs={24} md={14}>
+              <Form.Item name="name" label="Nome" rules={[{ required: true, message: 'Informe o nome' }]}>
+                <Input placeholder="Nome do colaborador" />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="roleId" label="Cargo">
+            <Col xs={24} md={10}>
+              <Form.Item name="phone" label="Telefone">
+                <Input
+                  placeholder="(11) 99999-9999"
+                  maxLength={15}
+                  value={editForm.getFieldValue('phone')}
+                  onChange={(e) => {
+                    editForm.setFieldValue('phone', formatPhone(e.target.value));
+                  }}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={14}>
+              <Form.Item
+                name="email"
+                label="E-mail"
+                rules={
+                  editSelectedIsWorker
+                    ? [{ type: 'email', message: 'E-mail inválido' }]
+                    : [{ required: true, type: 'email', message: 'Informe um e-mail válido' }]
+                }
+              >
+                <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : 'email@empresa.com'} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={10}>
+              <Form.Item name="sex" label="Sexo">
                 <Select
                   allowClear
+                  placeholder="Selecione"
+                  options={[
+                    { value: 'M', label: 'Masculino' },
+                    { value: 'F', label: 'Feminino' },
+                    { value: 'O', label: 'Outro' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione o cargo' }]}>
+                <Select
+                  allowClear
+                  placeholder="Selecione"
                   options={canEditAnyUser ? roleOptions : workerRoleOptions}
                   optionFilterProp="label"
                 />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
+            <Col xs={24} md={8}>
               <Form.Item name="cargoDescritivo" label="Cargo descritivo">
-                <Input placeholder="Ex.: Supervisor de Atendimento / Coordenador de Operações" maxLength={150} />
+                <Input
+                  placeholder="Ex.: Supervisor de Atendimento / Coordenador de Operações"
+                  maxLength={150}
+                />
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item
-                name="ocultarCargo"
-                label="Ocultar cargo"
-                valuePropName="checked"
-              >
-                <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
+            <Col xs={24} md={8}>
               <Form.Item name="managerId" label="Gestor">
                 <Select
                   allowClear
@@ -1549,78 +2090,87 @@ export function UsersPage() {
               </Form.Item>
             </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item
-                name="email"
-                label="E-mail"
-                rules={
-                  editSelectedIsWorker
-                    ? [{ type: 'email', message: 'E-mail inválido' }]
-                    : [{ required: true, type: 'email' }]
-                }
+            <Col xs={24}>
+              <div
+                style={{
+                  border: '1px solid #f0f0f0',
+                  borderRadius: 12,
+                  padding: 12,
+                  background: '#fafafa',
+                }}
               >
-                <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : ''} />
-              </Form.Item>
-            </Col>
+                <Row gutter={[12, 12]}>
+                  <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
+                    <Form.Item
+                      name="ocultarCargo"
+                      label="Ocultar cargo"
+                      valuePropName="checked"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                    </Form.Item>
+                  </Col>
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="sex" label="Sexo">
-                <Select
-                  allowClear
-                  options={[
-                    { value: 'M', label: 'Masculino' },
-                    { value: 'F', label: 'Feminino' },
-                    { value: 'O', label: 'Outro' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
+                  {editSelectedIsWorker && (
+                    <Col xs={24} md={8}>
+                      <Form.Item
+                        name="estoqueAvancado"
+                        label="Estoque avançado"
+                        valuePropName="checked"
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                      </Form.Item>
+                    </Col>
+                  )}
 
-            <Col xs={24} md={12} lg={8}>
-              <Form.Item name="phone" label="Telefone">
-                <MaskedInput mask={phoneMask(editPhone)} placeholder="(11) 99999-9999" />
-              </Form.Item>
+                  <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
+                    <Form.Item
+                      name="isActive"
+                      label="Usuário ativo"
+                      valuePropName="checked"
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch checkedChildren="Ativo" unCheckedChildren="Inativo" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
             </Col>
 
             {editSelectedIsWorker && (
               <>
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="vendorCode" label="Código do fornecedor">
+                <Col xs={24} md={6}>
+                  <Form.Item name="vendorCode" label="Cód. fornecedor">
                     <Input />
                   </Form.Item>
                 </Col>
 
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="serviceAreaCode" label="Código da área">
+                <Col xs={24} md={6}>
+                  <Form.Item name="serviceAreaCode" label="Cód. área">
                     <Input />
                   </Form.Item>
                 </Col>
 
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="serviceAreaName" label="Nome da área">
+                <Col xs={24} md={6}>
+                  <Form.Item name="tipoAtendimento" label="Atendimento">
+                    <Select
+                      allowClear
+                      placeholder="Selecione"
+                      options={TIPO_ATENDIMENTO_OPTIONS}
+                    />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={6}>
+                  <Form.Item name="serviceAreaName" label="Área">
                     <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
-                    <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12} lg={8}>
-                  <Form.Item
-                    name="estoqueAvancado"
-                    label="Pertence ao Estoque Avançado?"
-                    valuePropName="checked"
-                  >
-                    <Switch checkedChildren="Sim" unCheckedChildren="Não" />
                   </Form.Item>
                 </Col>
               </>
             )}
 
-            <Col xs={24}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="sectors"
                 label="Setor"
@@ -1631,60 +2181,117 @@ export function UsersPage() {
                   allowClear
                   showSearch
                   optionFilterProp="label"
-                  placeholder="Selecione o(s) setor(es) do usuário"
+                  placeholder="Selecione o(s) setor(es)"
                   options={SECTOR_OPTIONS}
                 />
               </Form.Item>
             </Col>
 
-            <Col xs={24}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="permissions"
                 label="Abas / Permissões de acesso"
                 rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                tooltip="Selecione as páginas que esse usuário poderá acessar"
               >
                 <Select
                   mode="multiple"
                   allowClear
                   showSearch
-                  optionFilterProp="label"
+                  optionFilterProp="searchLabel"
                   placeholder="Selecione as abas liberadas para este usuário"
-                  options={PERMISSION_OPTIONS}
+                  options={permissionOptionsWithIcons}
+                  maxTagCount="responsive"
                 />
               </Form.Item>
             </Col>
-
-            <Col xs={24} md={6}>
-              <Form.Item name="isActive" label="Ativo" valuePropName="checked" style={{ marginTop: 8 }}>
-                <Switch />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={18}>
-              <Form.Item label="Foto (trocar)">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <Avatar src={abs(editing?.avatarUrl)} size={40}>
-                    {editing?.name?.[0]}
-                  </Avatar>
-
-                  <Upload
-                    accept="image/*"
-                    maxCount={1}
-                    beforeUpload={(file) => {
-                      setEditAvatarFile(file);
-                      return false;
-                    }}
-                    onRemove={() => setEditAvatarFile(null)}
-                    listType="picture"
-                  >
-                    <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-                  </Upload>
-                </div>
-              </Form.Item>
-            </Col>
           </Row>
-        </Form>
-      </Modal>
+        </Card>
+      </Col>
+
+      <Col xs={24} xl={11}>
+        <Card
+          size="small"
+          title="Resumo visual"
+          style={{ borderRadius: 14, height: '100%' }}
+          styles={{ body: { paddingBottom: 8 } }}
+        >
+          <div
+            style={{
+              border: '1px solid #f0f0f0',
+              borderRadius: 14,
+              padding: 18,
+              background: 'linear-gradient(180deg, #fafcff 0%, #f5f9ff 100%)',
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <Avatar src={editAvatarFile ? URL.createObjectURL(editAvatarFile) : abs(editing?.avatarUrl)} size={68}>
+                {editForm.getFieldValue('name')?.[0] || editing?.name?.[0]}
+              </Avatar>
+
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>
+                  {editForm.getFieldValue('name') || editing?.name || 'Colaborador'}
+                </div>
+                <div style={{ color: '#6b7280', marginTop: 4 }}>
+                  {editForm.getFieldValue('cargoDescritivo') ||
+                    (canEditAnyUser
+                      ? roleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label
+                      : workerRoleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label) ||
+                    'Cargo não informado'}
+                </div>
+                <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                  <Tag color={editForm.getFieldValue('isActive') ? 'green' : 'default'}>
+                    {editForm.getFieldValue('isActive') ? 'Ativo' : 'Inativo'}
+                  </Tag>
+                  {editForm.getFieldValue('ocultarCargo') && <Tag color="gold">Cargo oculto</Tag>}
+                  {editForm.getFieldValue('estoqueAvancado') && <Tag color="blue">Estoque avançado</Tag>}
+                </Space>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              border: '1px solid #f0f0f0',
+              borderRadius: 14,
+              padding: 16,
+              background: '#fff',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>Permissões selecionadas</div>
+
+            <Space wrap size={[8, 8]}>
+              {((editForm.getFieldValue('permissions') as string[]) || []).length ? (
+                ((editForm.getFieldValue('permissions') as string[]) || []).map((perm) => {
+                  const option = PERMISSION_OPTIONS.find((p) => p.value === perm);
+                  return (
+                    <Tag
+                      key={perm}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {PERMISSION_ICON_MAP[perm] || <AppstoreOutlined />}
+                      <span>{option?.label || perm}</span>
+                    </Tag>
+                  );
+                })
+              ) : (
+                <span style={{ color: '#8c8c8c' }}>Nenhuma permissão selecionada</span>
+              )}
+            </Space>
+          </div>
+        </Card>
+      </Col>
+    </Row>
+  </Form>
+</Modal>
 
       {addrUser && (
         <UserAddressModal
@@ -1715,7 +2322,7 @@ export function UsersPage() {
       )}
 
       <Modal
-        title="Buscar coordenadas (Nominatim)"
+        title="Buscar coordenadas "
         open={geoOpen}
         onCancel={() => setGeoOpen(false)}
         footer={null}
@@ -1770,13 +2377,27 @@ export function UsersPage() {
           }}
           onOk={() => workerForm.submit()}
           destroyOnHidden
-          width={isMobile ? '100%' : 980}
+          width={isMobile ? '100%' : 1360}
+          centered
           style={isMobile ? { top: 0, padding: 0 } : undefined}
+          styles={{
+            body: {
+              paddingTop: 12,
+              maxHeight: isMobile ? 'calc(100vh - 110px)' : '78vh',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+            },
+          }}
         >
           <Form
             layout="vertical"
             form={workerForm}
-            initialValues={{ sectors: DEFAULT_SECTORS, ocultarCargo: false }}
+            initialValues={{
+              sectors: DEFAULT_SECTORS,
+              ocultarCargo: false,
+              estoqueAvancado: false,
+              addressCountry: 'Brasil',
+            }}
             onFinish={(v) => {
               const payload = {
                 name: v.name,
@@ -1805,226 +2426,377 @@ export function UsersPage() {
                 lat: v.lat,
                 lng: v.lng,
               };
+
               createWorker.mutate(payload);
             }}
           >
-            <Row gutter={[12, 12]}>
-              <Col xs={24} md={8}>
-                <Form.Item
-                  name="roleId"
-                  label="Cargo"
-                  rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
+            <Row gutter={[16, 16]} align="stretch">
+              <Col xs={24} xl={13}>
+                <Card
+                  size="small"
+                  title="Dados do prestador"
+                  style={{ borderRadius: 14, height: '100%' }}
+                  styles={{ body: { paddingBottom: 8 } }}
                 >
-                  <Select placeholder="Selecione" optionFilterProp="label" options={workerRoleOptions} />
-                </Form.Item>
+                  <Row gutter={[12, 12]}>
+                    <Col xs={24}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 16,
+                          alignItems: 'center',
+                          padding: 12,
+                          border: '1px dashed #d9d9d9',
+                          borderRadius: 12,
+                          background: '#fafafa',
+                        }}
+                      >
+                        <Upload
+                          accept="image/*"
+                          maxCount={1}
+                          beforeUpload={(file) => {
+                            setWorkerAvatarFile(file);
+                            return false;
+                          }}
+                          onRemove={() => setWorkerAvatarFile(null)}
+                          showUploadList={false}
+                        >
+                          <div
+                            style={{
+                              width: 88,
+                              height: 88,
+                              borderRadius: 14,
+                              overflow: 'hidden',
+                              border: '1px solid #d9d9d9',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#fff',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {workerAvatarFile ? (
+                              <img
+                                src={URL.createObjectURL(workerAvatarFile)}
+                                alt="preview"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <UploadOutlined style={{ fontSize: 24, color: '#8c8c8c' }} />
+                            )}
+                          </div>
+                        </Upload>
+
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                            Foto do prestador
+                          </div>
+                          <div style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 10 }}>
+                            Adicione uma foto para identificação do colaborador.
+                          </div>
+
+                          <Space wrap>
+                            <Upload
+                              accept="image/*"
+                              maxCount={1}
+                              beforeUpload={(file) => {
+                                setWorkerAvatarFile(file);
+                                return false;
+                              }}
+                              onRemove={() => setWorkerAvatarFile(null)}
+                              showUploadList={false}
+                            >
+                              <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+                            </Upload>
+
+                            {workerAvatarFile && (
+                              <Button onClick={() => setWorkerAvatarFile(null)}>
+                                Remover
+                              </Button>
+                            )}
+                          </Space>
+                        </div>
+                      </div>
+                    </Col>
+
+                    <Col xs={24} md={10}>
+                      <Form.Item
+                        name="roleId"
+                        label="Cargo"
+                        rules={[{ required: true, message: 'Selecione o cargo do prestador' }]}
+                      >
+                        <Select
+                          placeholder="Selecione"
+                          optionFilterProp="label"
+                          options={workerRoleOptions}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={14}>
+                      <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                        <Input
+                          placeholder="Ex.: Técnico de Campo / PSO Operacional"
+                          maxLength={150}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={14}>
+                      <Form.Item name="name" label="Nome" rules={[{ required: true, message: 'Informe o nome' }]}>
+                        <Input placeholder="Nome do prestador" />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={10}>
+                      <Form.Item name="phone" label="Telefone">
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          maxLength={15}
+                          value={workerForm.getFieldValue('phone')}
+                          onChange={(e) => {
+                            workerForm.setFieldValue('phone', formatPhone(e.target.value));
+                          }}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item name="managerId" label="Gestor (opcional)">
+                        <Select
+                          allowClear
+                          showSearch
+                          placeholder="Selecione o gestor"
+                          options={managerOptions}
+                          optionFilterProp="label"
+                          filterOption={(input, option) =>
+                            String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="sectors"
+                        label="Setor"
+                        rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+                      >
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder="Selecione o(s) setor(es)"
+                          options={SECTOR_OPTIONS}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24}>
+                      <div
+                        style={{
+                          border: '1px solid #f0f0f0',
+                          borderRadius: 12,
+                          padding: 12,
+                          background: '#fafafa',
+                        }}
+                      >
+                        <Row gutter={[12, 12]}>
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              name="ocultarCargo"
+                              label="Ocultar cargo"
+                              valuePropName="checked"
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                            </Form.Item>
+                          </Col>
+
+                          <Col xs={24} md={12}>
+                            <Form.Item
+                              name="estoqueAvancado"
+                              label="Pertence ao Estoque Avançado?"
+                              valuePropName="checked"
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                      </div>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item name="vendorCode" label="Cód. fornecedor">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item name="serviceAreaCode" label="Cód. área">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item name="tipoAtendimento" label="Atendimento">
+                        <Select
+                          allowClear
+                          placeholder="Selecione"
+                          options={TIPO_ATENDIMENTO_OPTIONS}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item name="serviceAreaName" label="Área">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
               </Col>
 
-              <Col xs={24} md={8}>
-                <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={8}>
-                <Form.Item name="phone" label="Telefone">
-                  <MaskedInput mask={phoneMask(workerPhone)} placeholder="(11) 99999-9999" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="cargoDescritivo" label="Cargo descritivo">
-                  <Input placeholder="Ex.: Técnico de Campo / PSO Operacional" maxLength={150} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item name="ocultarCargo" label="Ocultar cargo" valuePropName="checked">
-                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24}>
-                <Form.Item name="managerId" label="Gestor (opcional)">
-                  <Select
-                    allowClear
-                    showSearch
-                    placeholder="Selecione o gestor"
-                    options={managerOptions}
-                    optionFilterProp="label"
-                    filterOption={(input, option) =>
-                      String(option?.label || '').toLowerCase().includes(input.toLowerCase())
-                    }
-                  />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24}>
-                <Form.Item
-                  name="estoqueAvancado"
-                  label="Pertence ao Estoque Avançado?"
-                  valuePropName="checked"
-                  initialValue={false}
+              <Col xs={24} xl={11}>
+                <Card
+                  size="small"
+                  title="Endereço"
+                  style={{ borderRadius: 14, height: '100%' }}
+                  styles={{ body: { paddingBottom: 8 } }}
                 >
-                  <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-                </Form.Item>
-              </Col>
+                  <Row gutter={[12, 12]}>
+                    <Col xs={24} md={9}>
+                      <Form.Item name="addressZip" label="CEP">
+                        <Input
+                          placeholder="00000-000"
+                          onBlur={async (e) => {
+                            const raw = (e.target.value || '').replace(/\D/g, '');
+                            if (!raw) return;
 
-              <Col xs={24} md={6}>
-                <Form.Item name="vendorCode" label="Código do fornecedor">
-                  <Input />
-                </Form.Item>
-              </Col>
+                            try {
+                              const resp = await api.get('/users/cep', { params: { cep: raw } });
 
-              <Col xs={24} md={6}>
-                <Form.Item name="serviceAreaCode" label="Código da área de atendimento">
-                  <Input />
-                </Form.Item>
-              </Col>
+                              workerForm.setFieldsValue({
+                                addressStreet: resp.data.addressStreet ?? undefined,
+                                addressDistrict: resp.data.addressDistrict ?? undefined,
+                                addressCity: resp.data.addressCity ?? undefined,
+                                addressState: resp.data.addressState ?? undefined,
+                                addressCountry: resp.data.addressCountry ?? 'Brasil',
+                                addressZip: resp.data.addressZip ?? e.target.value,
+                              });
+                            } catch {
+                              message.warning('Não foi possível buscar o CEP.');
+                            }
+                          }}
+                        />
+                      </Form.Item>
+                    </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="serviceAreaName" label="Nome da área de atendimento">
-                  <Input />
-                </Form.Item>
-              </Col>
+                    <Col xs={24} md={15} style={{ display: 'flex', alignItems: 'end' }}>
+                      <Form.Item label=" " style={{ width: '100%', marginBottom: 24 }}>
+                        <Button
+                          block
+                          icon={<SearchOutlined />}
+                          onClick={() => {
+                            setGeoForForm('worker');
+                            setGeoOpen(true);
+                            setGeoResults([]);
+                            setGeoQuery('');
+                          }}
+                        >
+                          Buscar coordenadas
+                        </Button>
+                      </Form.Item>
+                    </Col>
 
-              <Col xs={24} md={6}>
-                <Form.Item name="tipoAtendimento" label="Tipo de atendimento">
-                  <Select allowClear placeholder="Selecione" options={TIPO_ATENDIMENTO_OPTIONS} />
-                </Form.Item>
-              </Col>
+                    <Col xs={24}>
+                      <Form.Item
+                        name="addressStreet"
+                        label="Logradouro"
+                        rules={[{ required: true, message: 'Informe o logradouro' }]}
+                      >
+                        <Input placeholder="Rua / Avenida" />
+                      </Form.Item>
+                    </Col>
 
-              <Col xs={24}>
-                <Form.Item
-                  name="sectors"
-                  label="Setor"
-                  rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
-                >
-                  <Select
-                    mode="multiple"
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Selecione o(s) setor(es) do prestador"
-                    options={SECTOR_OPTIONS}
-                  />
-                </Form.Item>
+                    <Col xs={24} md={7}>
+                      <Form.Item name="addressNumber" label="Número">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={17}>
+                      <Form.Item name="addressComplement" label="Complemento">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={10}>
+                      <Form.Item name="addressDistrict" label="Bairro">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={10}>
+                      <Form.Item
+                        name="addressCity"
+                        label="Cidade"
+                        rules={[{ required: true, message: 'Informe a cidade' }]}
+                      >
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={4}>
+                      <Form.Item
+                        name="addressState"
+                        label="UF"
+                        rules={[{ required: true, message: 'Informe a UF' }]}
+                      >
+                        <Input placeholder="SP" />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <Form.Item name="addressCountry" label="País" initialValue="Brasil">
+                        <Input />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item
+                        name="lat"
+                        label="Latitude"
+                        rules={[{ required: true, message: 'Informe a latitude' }]}
+                      >
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          step={0.000001}
+                          placeholder="-23.550520"
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    <Col xs={24} md={6}>
+                      <Form.Item
+                        name="lng"
+                        label="Longitude"
+                        rules={[{ required: true, message: 'Informe a longitude' }]}
+                      >
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          step={0.000001}
+                          placeholder="-46.633308"
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Card>
               </Col>
             </Row>
-
-            <Card size="small" title="Endereço (obrigatório)" style={{ marginTop: 8 }}>
-              <Row gutter={[12, 12]}>
-                <Col xs={24} md={8}>
-                  <Form.Item name="addressZip" label="CEP">
-                    <Input
-                      placeholder="00000-000"
-                      onBlur={async (e) => {
-                        const raw = (e.target.value || '').replace(/\D/g, '');
-                        if (!raw) return;
-                        try {
-                          const resp = await api.get('/users/cep', { params: { cep: raw } });
-                          workerForm.setFieldsValue({
-                            addressStreet: resp.data.addressStreet ?? undefined,
-                            addressDistrict: resp.data.addressDistrict ?? undefined,
-                            addressCity: resp.data.addressCity ?? undefined,
-                            addressState: resp.data.addressState ?? undefined,
-                            addressCountry: resp.data.addressCountry ?? 'Brasil',
-                            addressZip: resp.data.addressZip ?? e.target.value,
-                          });
-                        } catch {
-                          message.warning('Não foi possível buscar o CEP.');
-                        }
-                      }}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={16} />
-
-                <Col xs={24}>
-                  <Form.Item name="addressStreet" label="Logradouro" rules={[{ required: true }]}>
-                    <Input placeholder="Rua/Avenida" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={8}>
-                  <Form.Item name="addressNumber" label="Número">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={16}>
-                  <Form.Item name="addressComplement" label="Complemento">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={10}>
-                  <Form.Item name="addressDistrict" label="Bairro">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={10}>
-                  <Form.Item name="addressCity" label="Cidade" rules={[{ required: true }]}>
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={4}>
-                  <Form.Item name="addressState" label="UF/Estado" rules={[{ required: true }]}>
-                    <Input placeholder="SP, RJ..." />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12}>
-                  <Form.Item name="addressCountry" label="País" initialValue="Brasil">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="lat" label="Latitude" rules={[{ required: true, message: 'Informe a latitude' }]}>
-                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-22.90" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="lng" label="Longitude" rules={[{ required: true, message: 'Informe a longitude' }]}>
-                    <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="-43.17" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={12} style={{ display: 'flex', alignItems: 'end' }}>
-                  <Button
-                    block={isMobile}
-                    icon={<SearchOutlined />}
-                    onClick={() => {
-                      setGeoForForm('worker');
-                      setGeoOpen(true);
-                      setGeoResults([]);
-                      setGeoQuery('');
-                    }}
-                  >
-                    Buscar coordenadas
-                  </Button>
-                </Col>
-              </Row>
-            </Card>
-
-            <Form.Item label="Foto (opcional)" style={{ marginTop: 8 }}>
-              <Upload
-                accept="image/*"
-                maxCount={1}
-                beforeUpload={(file) => {
-                  setWorkerAvatarFile(file);
-                  return false;
-                }}
-                onRemove={() => setWorkerAvatarFile(null)}
-                listType="picture"
-              >
-                <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-              </Upload>
-            </Form.Item>
           </Form>
         </Modal>
       )}
@@ -2400,9 +3172,16 @@ export function UsersPage() {
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item name="phone" label="Telefone">
-                <MaskedInput mask={phoneMask(editApprovePhone)} placeholder="(11) 99999-9999" />
-              </Form.Item>
+                <Form.Item name="phone" label="Telefone">
+                  <Input
+                    placeholder="(11) 99999-9999"
+                    maxLength={15}
+                    value={workerForm.getFieldValue('phone')}
+                    onChange={(e) => {
+                      workerForm.setFieldValue('phone', formatPhone(e.target.value));
+                    }}
+                  />
+                </Form.Item>
             </Col>
 
             <Col xs={24} md={6}>
