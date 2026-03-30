@@ -8,23 +8,25 @@ import Dashboard from './modules/dashboard/Dashboard';
 import DemandsPage from './modules/demands/DemandsPage';
 import InstallationProjectsPage from './modules/installationProjects/InstallationProjectsPage';
 import InstallationProjectDetailPage from './modules/installationProjects/InstallationProjectDetailPage';
-
+import InstallationProjectsDashboardPage from './modules/installationProjects/InstallationProjectsDashboardPage';
+import InstallationProjectsGeolocationAuditPage from './modules/installationProjects/InstallationProjectsGeolocationAuditPage';
 import TechsPsoMapPage from './modules/techs/TechsPsoMapPage';
 import { OrgPage } from './modules/org/OrgPage';
 import LocationsPage from './modules/locations/LocationsPage';
 import { ClientsPage } from './modules/clients/ClientsPage';
-
+import TechnicianRegistrationPage from './modules/needs/TechnicianRegistrationPage';
 import TasksPage from './modules/tasks/TasksPage';
 import { UsersPage } from './modules/users/UsersPage';
 import { TechTypesPage } from './modules/techtypes/TechTypesPage';
 import NeedsPage from './modules/needs/NeedsPage';
+import NeedHomologationPage from './modules/needs/NeedHomologationPage';
 import NeedsMapPage from './modules/needs/NeedsMapPage';
 import AssignmentsMonthPage from './modules/assignments/AssignmentsMonthPage';
 import OvertimePage from './modules/overtime/OvertimePage';
 import { TimeOffPage } from './modules/timeoff/TimeOffPage';
 import NewsCenterPage from './modules/news/NewsCenterPage';
 import NewsAdminPage from './modules/news/NewsAdminPage';
-
+import NeedAtaPage from './modules/needs/NeedAtaPage';
 import PartRequestsPage from './modules/PartRequests/PartRequests';
 import MyPartRequestsPage from './modules/PartRequests/MyPartRequestsPage';
 import PublicPartRequestPage from './modules/PartRequests/PublicPartRequestPage';
@@ -33,11 +35,10 @@ import DeliveryReportsPage from './modules/deliveryReports/DeliveryReportsPage';
 export default function App() {
   return (
     <Routes>
-      {/* rotas públicas */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/solicitar-peca" element={<PublicPartRequestPage />} />
+      <Route path="/cadastro-tecnico/:token" element={<TechnicianRegistrationPage />} />
 
-      {/* rotas protegidas */}
       <Route
         path="/"
         element={
@@ -62,6 +63,24 @@ export default function App() {
           element={
             <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectsPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="projetos-instalacao/dashboard"
+          element={
+            <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
+              <InstallationProjectsDashboardPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="projetos-instalacao/geolocalizacao"
+          element={
+            <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
+              <InstallationProjectsGeolocationAuditPage />
             </RequireAccess>
           }
         />
@@ -130,6 +149,15 @@ export default function App() {
         />
 
         <Route
+          path="requisicoes/:id/ata"
+          element={
+            <RequireAccess>
+              <NeedAtaPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
           path="localizacoes"
           element={
             <RequireAccess permission="LOCATIONS_VIEW">
@@ -170,6 +198,15 @@ export default function App() {
           element={
             <RequireAccess permission="NEEDS_VIEW">
               <NeedsPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="requisicoes/:id/homologacao"
+          element={
+            <RequireAccess permission="NEEDS_VIEW">
+              <NeedHomologationPage />
             </RequireAccess>
           }
         />
@@ -229,7 +266,6 @@ export default function App() {
         />
       </Route>
 
-      {/* fallback */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

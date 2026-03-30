@@ -1,42 +1,58 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
+  Alert,
   Button,
   Card,
+  Col,
+  Descriptions,
+  Divider,
+  Dropdown,
+  Empty,
   Form,
+  Grid,
+  Input,
+  List,
+  Modal,
+  Pagination,
+  Popconfirm,
+  Row,
   Select,
   Space,
-  Table,
+  Statistic,
   Tag,
-  message,
-  Modal,
-  Input,
   Typography,
   Upload,
-  List,
-  Divider,
-  Popconfirm,
-  Grid,
-  Spin,
-  Dropdown,
+  message,
 } from 'antd';
-import type { UploadFile } from 'antd/es/upload/interface';
+import type { UploadProps } from 'antd';
 import {
-  ReloadOutlined,
+  AimOutlined,
+  BuildOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CompassOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EnvironmentOutlined,
+  EyeOutlined,
+  FileImageOutlined,
+  FilePdfOutlined,
+  FolderOpenOutlined,
+  GlobalOutlined,
+  MoreOutlined,
+  PaperClipOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SearchOutlined,
   UploadOutlined,
-  PaperClipOutlined,
-  DeleteOutlined,
-  EyeOutlined,
-  WhatsAppOutlined,
-  EnvironmentOutlined,
-  MoreOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const { useBreakpoint } = Grid;
+const { Title, Text, Paragraph } = Typography;
 
 type TechType = { id: number; name: string };
 type SimpleUser = { id: number; name: string };
@@ -44,6 +60,16 @@ type SimpleUser = { id: number; name: string };
 type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED';
 type Tier = 'OURO' | 'PRATA' | 'BRONZE';
 type StepStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
+
+type HomologationStatus =
+  | 'NOT_SENT'
+  | 'LINK_SENT'
+  | 'IN_PROGRESS'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'ADJUSTMENT_REQUIRED'
+  | 'APPROVED'
+  | 'REJECTED';
 
 type Need = {
   id: number;
@@ -73,23 +99,26 @@ type Need = {
   homologContractStatus?: StepStatus | null;
   homologCrmStatus?: StepStatus | null;
   homologErpStatus?: StepStatus | null;
+
+  homologationStatus?: HomologationStatus | null;
 };
 
 type Requester = { id: number; name: string; count?: number };
 
-type AttachmentKind = 'CONTRATO' | 'DOCUMENTO' | 'FOTO' | 'OUTRO';
-
-type NeedAttachment = {
+type InternalDocument = {
   id: number;
-  needId: number;
-  kind: AttachmentKind;
+  title?: string | null;
+  description?: string | null;
   originalName: string;
   fileName: string;
   mimeType: string;
   size: number;
   url: string;
   createdAt: string;
+  updatedAt: string;
 };
+
+type QuickTypeMode = 'ALL' | 'ATA' | 'PSO_SPOT';
 
 const STATUS_OPTS = [
   { value: 'OPEN', label: 'Aberta' },
@@ -98,189 +127,488 @@ const STATUS_OPTS = [
   { value: 'CANCELLED', label: 'Cancelada' },
 ];
 
-const TIER_OPTS = [
-  { value: 'OURO', label: 'Ouro' },
-  { value: 'PRATA', label: 'Prata' },
-  { value: 'BRONZE', label: 'Bronze' },
-];
-
-const STEP_STATUS_OPTS = [
-  { value: 'PENDENTE', label: 'Pendente' },
-  { value: 'EM_ANDAMENTO', label: 'Em andamento' },
-  { value: 'CONCLUIDO', label: 'Concluído' },
-];
-
-const ATTACH_KIND_OPTS = [
-  { value: 'CONTRATO', label: 'Contrato' },
-  { value: 'DOCUMENTO', label: 'Documento' },
-  { value: 'FOTO', label: 'Foto' },
-  { value: 'OUTRO', label: 'Outro' },
-];
-
-function statusTag(s: NeedStatus) {
-  const map = {
-    OPEN: { color: 'blue', text: 'Aberta' },
-    IN_PROGRESS: { color: 'gold', text: 'Em andamento' },
-    FULFILLED: { color: 'green', text: 'Atendida' },
-    CANCELLED: { color: 'red', text: 'Cancelada' },
-  } as const;
-  const m = map[s];
-  return <Tag color={m.color}>{m.text}</Tag>;
+function fmtDate(v?: string | null) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString('pt-BR');
 }
 
-/** ===== Helpers ===== */
-function onlyDigits(v: string) {
-  return (v || '').replace(/\D+/g, '');
-}
-function maskPhoneBR(v: string) {
-  const d = onlyDigits(v).slice(0, 11);
-  if (!d) return '';
-  if (d.length <= 2) return `(${d}`;
-  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-}
-function maskCepBR(v: string) {
-  const d = onlyDigits(v).slice(0, 8);
-  if (!d) return '';
-  if (d.length <= 5) return d;
-  return `${d.slice(0, 5)}-${d.slice(5)}`;
-}
-function fmtBytes(n?: number) {
-  const x = Number(n || 0);
-  if (!x) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  let v = x;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-function whatsappLink(phone?: string | null) {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  return `https://wa.me/55${digits}`;
-}
-
-/** ✅ Resolve origin correto (pra NÃO virar /api/uploads...) */
-function getApiOrigin() {
-  const baseURL = (api as any)?.defaults?.baseURL || import.meta.env.VITE_API_URL || '';
-  try {
-    return baseURL ? new URL(baseURL).origin : window.location.origin;
-  } catch {
-    return window.location.origin;
-  }
-}
-
-/** ✅ Faz download autenticado e abre preview (imagem/pdf) via blob */
-async function fetchAsBlobUrl(fileUrl: string, mimeType?: string) {
-  const origin = getApiOrigin();
-  const isAbs = /^https?:\/\//i.test(fileUrl);
-  const full = isAbs ? fileUrl : `${origin}${fileUrl}`;
-
-  const res = await api.get(isAbs ? full : fileUrl, {
-    responseType: 'blob',
-    baseURL: isAbs ? undefined : origin,
-  });
-
-  const blob = new Blob([res.data], { type: mimeType || 'application/octet-stream' });
-  const blobUrl = URL.createObjectURL(blob);
-  return { blobUrl, fullUrl: full };
-}
-
-/** ===== Geocoding + Autocomplete ===== */
-type NominatimSuggestion = {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-  address?: any;
-};
-
-async function searchNominatim(q: string): Promise<NominatimSuggestion[]> {
-  const query = (q || '').trim();
-  if (query.length < 5) return [];
-  const url =
-    `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=br&q=` +
-    encodeURIComponent(query);
-
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) return [];
-  const data = (await res.json()) as any[];
-  if (!Array.isArray(data)) return [];
-  return data.map((x) => ({
-    place_id: Number(x.place_id),
-    display_name: String(x.display_name || ''),
-    lat: String(x.lat || ''),
-    lon: String(x.lon || ''),
-    address: x.address,
-  }));
-}
-
-function normalizeUF(uf?: string) {
-  if (!uf) return null;
-  const s = String(uf).trim().toUpperCase();
-  return s.length === 2 ? s : null;
-}
-
-function extractFromNominatim(address: any) {
-  const city =
-    address?.city ||
-    address?.town ||
-    address?.village ||
-    address?.municipality ||
-    address?.county ||
-    null;
-
-  const state = normalizeUF(address?.state_code) || null;
-  const postcode = address?.postcode ? String(address.postcode) : null;
-
-  return {
-    requestedCity: city ? String(city) : null,
-    requestedState: state,
-    requestedCep: postcode,
-  };
-}
-
-async function fetchViaCep(cepRaw: string): Promise<{ city: string; uf: string; cep: string } | null> {
-  const digits = onlyDigits(cepRaw);
-  if (digits.length !== 8) return null;
-  const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, { headers: { Accept: 'application/json' } });
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (data?.erro) return null;
-  const city = String(data?.localidade || '').trim();
-  const uf = String(data?.uf || '').trim().toUpperCase();
-  const cep = String(data?.cep || '').trim();
-  if (!city || !uf) return null;
-  return { city, uf, cep };
-}
-
-async function enrichWithViaCep(fields: {
-  requestedCity: string | null;
-  requestedState: string | null;
-  requestedCep: string | null;
-}) {
-  if (!fields.requestedCep) return fields;
-  const vc = await fetchViaCep(fields.requestedCep);
-  if (!vc) return fields;
-  return {
-    requestedCity: vc.city || fields.requestedCity,
-    requestedState: vc.uf || fields.requestedState,
-    requestedCep: vc.cep || fields.requestedCep,
-  };
-}
-
-function renderLocal(r: Need) {
-  const city = (r.requestedCity || '').trim();
-  const uf = (r.requestedState || '').trim().toUpperCase();
+function cityUfText(r: Need) {
+  const city = String(r.requestedCity || '').trim();
+  const uf = String(r.requestedState || '').trim().toUpperCase();
   if (city && uf) return `${city}/${uf}`;
   if (city) return city;
   if (uf) return uf;
   return r.requestedLocationText || '—';
+}
+
+function getStatusMeta(status?: NeedStatus | null) {
+  const map: Record<string, { color: string; label: string }> = {
+    OPEN: { color: 'gold', label: 'Aberta' },
+    IN_PROGRESS: { color: 'blue', label: 'Em andamento' },
+    FULFILLED: { color: 'green', label: 'Atendida' },
+    CANCELLED: { color: 'red', label: 'Cancelada' },
+  };
+  return map[String(status || '')] || { color: 'default', label: status || '—' };
+}
+
+function getStatusTag(status?: NeedStatus | null) {
+  const info = getStatusMeta(status);
+  return (
+    <Tag color={info.color} style={{ borderRadius: 999 }}>
+      {info.label}
+    </Tag>
+  );
+}
+
+function getHomologationMeta(status?: HomologationStatus | null) {
+  const map: Record<string, { color: string; label: string }> = {
+    NOT_SENT: { color: 'default', label: 'Não iniciado' },
+    LINK_SENT: { color: 'blue', label: 'Link enviado' },
+    IN_PROGRESS: { color: 'processing', label: 'Em preenchimento' },
+    SUBMITTED: { color: 'cyan', label: 'Enviado' },
+    UNDER_REVIEW: { color: 'gold', label: 'Em análise' },
+    ADJUSTMENT_REQUIRED: { color: 'orange', label: 'Ajuste solicitado' },
+    APPROVED: { color: 'green', label: 'Aprovado' },
+    REJECTED: { color: 'red', label: 'Reprovado' },
+  };
+  return map[String(status || '')] || { color: 'default', label: status || '—' };
+}
+
+function getHomologationTag(status?: HomologationStatus | null) {
+  const info = getHomologationMeta(status);
+  return (
+    <Tag color={info.color} style={{ borderRadius: 999 }}>
+      {info.label}
+    </Tag>
+  );
+}
+
+function getStepTag(status?: StepStatus | null) {
+  const map: Record<string, { color: string; label: string }> = {
+    PENDENTE: { color: 'default', label: 'Pendente' },
+    EM_ANDAMENTO: { color: 'processing', label: 'Em andamento' },
+    CONCLUIDO: { color: 'green', label: 'Concluído' },
+  };
+  const info = map[String(status || '')] || { color: 'default', label: '—' };
+  return (
+    <Tag color={info.color} style={{ borderRadius: 999 }}>
+      {info.label}
+    </Tag>
+  );
+}
+
+function formatCoord(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+  return Number(value).toFixed(6);
+}
+
+function hasCoords(lat?: number | null, lng?: number | null) {
+  return lat !== null && lat !== undefined && lng !== null && lng !== undefined;
+}
+
+function buildGoogleMapsLink(lat?: number | null, lng?: number | null, address?: string | null) {
+  if (hasCoords(lat, lng)) return `https://www.google.com/maps?q=${lat},${lng}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`;
+}
+
+function buildOsmEmbed(lat?: number | null, lng?: number | null) {
+  if (!hasCoords(lat, lng)) return '';
+  const dLat = 0.01;
+  const dLng = 0.01;
+  const bbox = `${Number(lng) - dLng}%2C${Number(lat) - dLat}%2C${Number(lng) + dLng}%2C${Number(lat) + dLat}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+}
+
+function resolveAttachmentUrl(url?: string | null) {
+  if (!url) return '#';
+  if (/^https?:\/\//i.test(url)) return url;
+
+  const base = String(api.defaults.baseURL || '').replace(/\/+$/, '');
+  const path = String(url).startsWith('/') ? String(url) : `/${String(url)}`;
+  return `${base}${path}`;
+}
+
+function formatFileSize(bytes?: number | null) {
+  const size = Number(bytes || 0);
+  if (!size) return '0 KB';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function clampText(lines = 2): React.CSSProperties {
+  return {
+    display: '-webkit-box',
+    WebkitLineClamp: lines,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  };
+}
+
+function normalizeTechName(name?: string | null) {
+  return String(name || '').trim().toUpperCase();
+}
+
+function isAtaTech(name?: string | null) {
+  const n = normalizeTechName(name);
+  return n === 'ATA' || n.includes('ATA');
+}
+
+function isPsoOrSpotTech(name?: string | null) {
+  const n = normalizeTechName(name);
+  return n.includes('PSO') || n.includes('SPOT');
+}
+
+function getTechTypeIdByExactOrContains(techTypes: TechType[], keyword: string) {
+  const upper = keyword.toUpperCase();
+  const exact = techTypes.find((t) => normalizeTechName(t.name) === upper);
+  if (exact) return exact.id;
+  const contains = techTypes.find((t) => normalizeTechName(t.name).includes(upper));
+  return contains?.id;
+}
+
+async function geocodeAddress(params: {
+  requestedLocationText?: string;
+  requestedCity?: string;
+  requestedState?: string;
+  requestedCep?: string;
+}) {
+  const parts = [
+    params.requestedLocationText,
+    params.requestedCity,
+    params.requestedState,
+    params.requestedCep,
+    'Brasil',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  if (!parts.trim()) {
+    throw new Error('Preencha o endereço antes de buscar no mapa');
+  }
+
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(parts)}`;
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error('Não foi possível consultar o mapa agora');
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data) || !data.length) {
+    throw new Error('Não encontramos esse endereço no mapa');
+  }
+
+  return {
+    lat: Number(data[0].lat),
+    lng: Number(data[0].lon),
+  };
+}
+
+function shellCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 26,
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 12px 34px rgba(15, 23, 42, 0.06)',
+  };
+}
+
+function softCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 22,
+    border: '1px solid #edf2f7',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)',
+    height: '100%',
+  };
+}
+
+function needCardStyle(): React.CSSProperties {
+  return {
+    borderRadius: 24,
+    border: '1px solid #e8eef5',
+    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.05)',
+    width: '100%',
+    overflow: 'hidden',
+  };
+}
+
+function NeedCard({
+  row,
+  onOpenFlow,
+  onEditAddress,
+  onOpenMap,
+  onChangeStatus,
+}: {
+  row: Need;
+  onOpenFlow: () => void;
+  onEditAddress: () => void;
+  onOpenMap: () => void;
+  onChangeStatus: (status: NeedStatus) => void;
+}) {
+  const statusMeta = getStatusMeta(row.status);
+  const ata = isAtaTech(row.techType?.name);
+
+  return (
+    <Card
+      style={needCardStyle()}
+      styles={{
+        body: {
+          padding: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+        },
+      }}
+    >
+      <div
+        style={{
+          padding: 18,
+          background:
+            'linear-gradient(135deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 55%, rgba(239,246,255,0.8) 100%)',
+          borderBottom: '1px solid #eef2f7',
+        }}
+      >
+        <Space
+          align="start"
+          style={{
+            width: '100%',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <Space align="start" size={12} style={{ minWidth: 0 }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                display: 'grid',
+                placeItems: 'center',
+                background: ata ? '#ecfdf5' : '#eff6ff',
+                color: ata ? '#16a34a' : '#2563eb',
+                flexShrink: 0,
+              }}
+            >
+              <BuildOutlined />
+            </div>
+
+            <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+              <Text strong style={{ fontSize: 16, ...clampText(2) }}>
+                {row.requestedName || 'Sem nome'}
+              </Text>
+
+              <Space wrap size={[8, 6]}>
+                <Tag style={{ borderRadius: 999 }}>#{row.id}</Tag>
+                <Tag style={{ borderRadius: 999 }} icon={<ClockCircleOutlined />}>
+                  {fmtDate(row.createdAt)}
+                </Tag>
+                {row.techType?.name ? (
+                  <Tag color={ata ? 'green' : 'blue'} style={{ borderRadius: 999 }}>
+                    {row.techType.name}
+                  </Tag>
+                ) : null}
+              </Space>
+            </div>
+          </Space>
+
+          <Space direction="vertical" size={6} align="end">
+            {getStatusTag(row.status)}
+            {getHomologationTag(row.homologationStatus)}
+          </Space>
+        </Space>
+      </div>
+
+      <div
+        style={{
+          padding: 18,
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={12}>
+            <Card
+              size="small"
+              style={{ borderRadius: 18, border: '1px solid #eef2f7', height: 132 }}
+              styles={{ body: { padding: 14, height: '100%' } }}
+            >
+              <Space align="start" size={10}>
+                <EnvironmentOutlined style={{ marginTop: 3, color: '#2563eb' }} />
+                <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+                  <Text strong>Local</Text>
+                  <Text>{cityUfText(row)}</Text>
+                  <Text type="secondary" style={clampText(3)}>
+                    {row.requestedLocationText || '—'}
+                  </Text>
+                </div>
+              </Space>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Card
+              size="small"
+              style={{ borderRadius: 18, border: '1px solid #eef2f7', height: 132 }}
+              styles={{ body: { padding: 14, height: '100%' } }}
+            >
+              <Space align="start" size={10}>
+                <UserOutlined style={{ marginTop: 3, color: '#7c3aed' }} />
+                <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+                  <Text strong>Pessoas</Text>
+                  <Text style={clampText(1)}>
+                    Solicitante: {row.requestedBy?.name || '—'}
+                  </Text>
+                  <Text type="secondary" style={clampText(1)}>
+                    Prestador: {row.providerName || 'Não definido'}
+                  </Text>
+                </div>
+              </Space>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Card
+              size="small"
+              style={{ borderRadius: 18, border: '1px solid #eef2f7', height: 120 }}
+              styles={{ body: { padding: 14, height: '100%' } }}
+            >
+              <Space align="start" size={10}>
+                <CompassOutlined style={{ marginTop: 3, color: '#0891b2' }} />
+                <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+                  <Text strong>Coordenadas</Text>
+                  <Text style={clampText(1)}>
+                    Lat: {formatCoord(row.requestedLat)} • Lng: {formatCoord(row.requestedLng)}
+                  </Text>
+                  <Text type="secondary">
+                    {hasCoords(row.requestedLat, row.requestedLng)
+                      ? 'Localização validada'
+                      : 'Sem coordenadas precisas'}
+                  </Text>
+                </div>
+              </Space>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Card
+              size="small"
+              style={{ borderRadius: 18, border: '1px solid #eef2f7', height: 120 }}
+              styles={{ body: { padding: 14, height: '100%' } }}
+            >
+              <Space align="start" size={10}>
+                <CheckCircleOutlined style={{ marginTop: 3, color: '#16a34a' }} />
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <Text strong>Etapas internas</Text>
+                  <Space wrap size={[6, 6]}>
+                    {getStepTag(row.homologTablesStatus)}
+                    {getStepTag(row.homologDocsStatus)}
+                    {getStepTag(row.homologContractStatus)}
+                    {getStepTag(row.homologCrmStatus)}
+                    {getStepTag(row.homologErpStatus)}
+                  </Space>
+                </div>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
+
+        {row.notes ? (
+          <Card
+            size="small"
+            style={{ borderRadius: 18, border: '1px dashed #dbe4ee', background: '#fafcff' }}
+            styles={{ body: { padding: 14 } }}
+          >
+            <Text strong>Observações</Text>
+            <Paragraph style={{ marginTop: 8, marginBottom: 0, ...clampText(2) }}>
+              {row.notes}
+            </Paragraph>
+          </Card>
+        ) : null}
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Space wrap>
+            <Button icon={<EyeOutlined />} onClick={onOpenFlow} style={{ borderRadius: 12 }}>
+              {ata ? 'Cadastro ATA' : 'Homologação'}
+            </Button>
+
+            <Button icon={<EditOutlined />} onClick={onEditAddress} style={{ borderRadius: 12 }}>
+              Endereço
+            </Button>
+
+            <Button icon={<GlobalOutlined />} onClick={onOpenMap} style={{ borderRadius: 12 }}>
+              Mapa
+            </Button>
+          </Space>
+
+          <Space wrap>
+            <Text type="secondary">Status</Text>
+            <Select
+              value={row.status}
+              options={STATUS_OPTS}
+              style={{ width: 170 }}
+              onChange={onChangeStatus}
+            />
+
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'flow',
+                    label: ata ? 'Abrir cadastro ATA' : 'Abrir homologação',
+                    icon: <CheckCircleOutlined />,
+                    onClick: onOpenFlow,
+                  },
+                  {
+                    key: 'endereco',
+                    label: 'Editar endereço',
+                    icon: <EnvironmentOutlined />,
+                    onClick: onEditAddress,
+                  },
+                  {
+                    key: 'mapa',
+                    label: 'Abrir no mapa',
+                    icon: <CompassOutlined />,
+                    onClick: onOpenMap,
+                  },
+                ],
+              }}
+              trigger={['click']}
+            >
+              <Button icon={<MoreOutlined />} style={{ borderRadius: 12 }} />
+            </Dropdown>
+          </Space>
+        </div>
+      </div>
+
+      <div
+        style={{
+          height: 4,
+          background:
+            statusMeta.color === 'green'
+              ? 'linear-gradient(90deg,#22c55e,#16a34a)'
+              : statusMeta.color === 'blue'
+              ? 'linear-gradient(90deg,#60a5fa,#2563eb)'
+              : statusMeta.color === 'gold'
+              ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
+              : 'linear-gradient(90deg,#f87171,#dc2626)',
+        }}
+      />
+    </Card>
+  );
 }
 
 export default function NeedsPage() {
@@ -290,7 +618,31 @@ export default function NeedsPage() {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
-  const [form] = Form.useForm();
+  const [formFilter] = Form.useForm();
+  const [formAta] = Form.useForm();
+  const [formPsoSpot] = Form.useForm();
+  const [formAddress] = Form.useForm();
+
+  const [openAtaRequest, setOpenAtaRequest] = useState(false);
+  const [openPsoSpotRequest, setOpenPsoSpotRequest] = useState(false);
+  const [openAddress, setOpenAddress] = useState(false);
+  const [selectedNeed, setSelectedNeed] = useState<Need | null>(null);
+
+  const [openInternalDocs, setOpenInternalDocs] = useState(false);
+  const [previewInternalDoc, setPreviewInternalDoc] = useState<InternalDocument | null>(null);
+
+  const [locatingAta, setLocatingAta] = useState(false);
+  const [locatingPsoSpot, setLocatingPsoSpot] = useState(false);
+  const [locatingAddress, setLocatingAddress] = useState(false);
+
+  const [searchingMapAta, setSearchingMapAta] = useState(false);
+  const [searchingMapPsoSpot, setSearchingMapPsoSpot] = useState(false);
+  const [searchingMapAddress, setSearchingMapAddress] = useState(false);
+
+  const [page, setPage] = useState(1);
+  const pageSize = 6;
+
+  const [quickTypeMode, setQuickTypeMode] = useState<QuickTypeMode>('ALL');
 
   const initial = {
     status: params.get('status') || undefined,
@@ -298,6 +650,15 @@ export default function NeedsPage() {
     requesterId: params.get('requesterId') ? Number(params.get('requesterId')) : undefined,
     q: params.get('q') || '',
   };
+
+  useEffect(() => {
+    formFilter.setFieldsValue(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [initial.status, initial.techTypeId, initial.requesterId, initial.q, quickTypeMode]);
 
   const { data: techTypes = [] } = useQuery<TechType[]>({
     queryKey: ['techtypes'],
@@ -338,7 +699,20 @@ export default function NeedsPage() {
 
       return rows;
     },
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
+  });
+
+  const {
+    data: internalDocs = [],
+    isLoading: loadingInternalDocs,
+    refetch: refetchInternalDocs,
+  } = useQuery<InternalDocument[]>({
+    queryKey: ['needs-internal-documents'],
+    queryFn: async () => {
+      const res = await api.get('/needs/internal-documents');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    enabled: openInternalDocs,
   });
 
   const derivedRequesters: Requester[] = useMemo(() => {
@@ -354,14 +728,37 @@ export default function NeedsPage() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
-  const requesters: Requester[] = serverRequesters.length ? serverRequesters : derivedRequesters;
+  const requesters = serverRequesters.length ? serverRequesters : derivedRequesters;
 
-  useEffect(() => {
-    form.setFieldsValue(initial);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const ataTechTypeId = useMemo(() => getTechTypeIdByExactOrContains(techTypes, 'ATA'), [techTypes]);
 
-  /** ===== Mutations ===== */
+  const filteredByQuickMode = useMemo(() => {
+    if (quickTypeMode === 'ALL') return data;
+    if (quickTypeMode === 'ATA') return data.filter((n) => isAtaTech(n.techType?.name));
+    return data.filter((n) => isPsoOrSpotTech(n.techType?.name));
+  }, [data, quickTypeMode]);
+
+  const paginatedNeeds = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredByQuickMode.slice(start, end);
+  }, [filteredByQuickMode, page]);
+
+  const createNeed = useMutation({
+    mutationFn: async (payload: any) => (await api.post('/needs', payload)).data,
+    onSuccess: async () => {
+      message.success('Solicitação criada com sucesso');
+      setOpenAtaRequest(false);
+      setOpenPsoSpotRequest(false);
+      formAta.resetFields();
+      formPsoSpot.resetFields();
+      await qc.invalidateQueries({ queryKey: ['needs'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao criar solicitação');
+    },
+  });
+
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: NeedStatus }) =>
       (await api.patch(`/needs/${id}/status`, { status })).data,
@@ -369,999 +766,1050 @@ export default function NeedsPage() {
       message.success('Status atualizado');
       await qc.invalidateQueries({ queryKey: ['needs'] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar status'),
-  });
-
-  const confirmStatus = (id: number, to: NeedStatus, title: string) => {
-    Modal.confirm({
-      title,
-      okText: 'Confirmar',
-      cancelText: 'Cancelar',
-      onOk: () => updateStatus.mutate({ id, status: to }),
-    });
-  };
-
-  /** ===== Modal Novo Pedido ===== */
-  const [openNew, setOpenNew] = useState(false);
-  const [formNew] = Form.useForm();
-
-  const createNeed = useMutation({
-    mutationFn: async (payload: any) => (await api.post('/needs', payload)).data as Need,
-    onSuccess: async () => {
-      message.success('Solicitação criada');
-      setOpenNew(false);
-      formNew.resetFields();
-      await qc.invalidateQueries({ queryKey: ['needs'] });
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao criar solicitação'),
-  });
-
-  /** ===== Modal Prestador ===== */
-  const [openProvider, setOpenProvider] = useState(false);
-  const [providerNeed, setProviderNeed] = useState<Need | null>(null);
-  const [formProvider] = Form.useForm();
-
-  const updateProvider = useMutation({
-    mutationFn: async (payload: any) => (await api.patch(`/needs/${payload.id}/provider`, payload)).data,
-    onSuccess: async () => {
-      message.success('Prestador atualizado');
-      await qc.invalidateQueries({ queryKey: ['needs'] });
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar prestador'),
-  });
-
-  const openProviderModal = (n: Need) => {
-    setProviderNeed(n);
-    setOpenProvider(true);
-    setUploadKind('DOCUMENTO');
-    setUploadFileList([]);
-
-    formProvider.setFieldsValue({
-      providerName: n.providerName ?? '',
-      providerWhatsapp: n.providerWhatsapp ?? '',
-      negotiationTier: n.negotiationTier ?? null,
-
-      homologTablesStatus: n.homologTablesStatus ?? 'PENDENTE',
-      homologDocsStatus: n.homologDocsStatus ?? 'PENDENTE',
-      homologContractStatus: n.homologContractStatus ?? 'PENDENTE',
-      homologCrmStatus: n.homologCrmStatus ?? 'PENDENTE',
-      homologErpStatus: n.homologErpStatus ?? 'PENDENTE',
-
-      negotiationNotes: n.negotiationNotes ?? '',
-    });
-  };
-
-  const closeProviderModal = () => {
-    setOpenProvider(false);
-    setProviderNeed(null);
-    formProvider.resetFields();
-    setUploadFileList([]);
-  };
-
-  /** ===== Anexos ===== */
-  const [uploadKind, setUploadKind] = useState<AttachmentKind>('DOCUMENTO');
-  const [uploadFileList, setUploadFileList] = useState<UploadFile[]>([]);
-
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState<string>('');
-  const [previewMime, setPreviewMime] = useState<string>('');
-  const lastBlobUrlRef = useRef<string | null>(null);
-
-  const {
-    data: attachments = [],
-    refetch: refetchAttachments,
-    isFetching: isFetchingAttachments,
-  } = useQuery<NeedAttachment[]>({
-    queryKey: ['need-attachments', providerNeed?.id],
-    enabled: !!providerNeed?.id && openProvider,
-    queryFn: async () => {
-      const res = await api.get(`/needs/${providerNeed!.id}/attachments`);
-      return res.data as NeedAttachment[];
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao atualizar status');
     },
   });
-
-  async function openAttachment(a: NeedAttachment) {
-    if (!a?.url) return;
-
-    const mime = (a.mimeType || '').toLowerCase();
-    const isPreviewable = mime.startsWith('image/') || mime === 'application/pdf';
-
-    try {
-      if (lastBlobUrlRef.current?.startsWith('blob:')) {
-        URL.revokeObjectURL(lastBlobUrlRef.current);
-        lastBlobUrlRef.current = null;
-      }
-
-      const { blobUrl } = await fetchAsBlobUrl(a.url, a.mimeType);
-
-      if (isPreviewable) {
-        lastBlobUrlRef.current = blobUrl;
-        setPreviewUrl(blobUrl);
-        setPreviewTitle(a.originalName);
-        setPreviewMime(mime);
-        setPreviewOpen(true);
-        return;
-      }
-
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = a.originalName || 'arquivo';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Não foi possível abrir o arquivo.');
-    }
-  }
-
-  const uploadAttachment = useMutation({
-    mutationFn: async (payload: { needId: number; kind: AttachmentKind; file: File }) => {
-      const fd = new FormData();
-      fd.append('file', payload.file);
-      fd.append('kind', payload.kind);
-
-      const res = await api.post(`/needs/${payload.needId}/attachments`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      return res.data;
-    },
-    onSuccess: async () => {
-      message.success('Arquivo anexado');
-      setUploadFileList([]);
-      await refetchAttachments();
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao anexar arquivo'),
-  });
-
-  const deleteAttachment = useMutation({
-    mutationFn: async (attachmentId: number) => {
-      if (!providerNeed?.id) throw new Error('Need não selecionada');
-      await api.delete(`/needs/${providerNeed.id}/attachments/${attachmentId}`);
-      return true;
-    },
-    onSuccess: async () => {
-      message.success('Arquivo removido');
-      await refetchAttachments();
-    },
-    onError: (e: any) => message.error(e?.response?.data?.error || e?.message || 'Falha ao remover arquivo'),
-  });
-
-  const handleUpload = async () => {
-    if (!providerNeed?.id) return;
-    const f = uploadFileList?.[0]?.originFileObj as File | undefined;
-    if (!f) return message.error('Selecione um arquivo');
-    uploadAttachment.mutate({ needId: providerNeed.id, kind: uploadKind, file: f });
-  };
-
-  /** ===== Editar Endereço ===== */
-  const [openEditAddr, setOpenEditAddr] = useState(false);
-  const [editAddrNeed, setEditAddrNeed] = useState<Need | null>(null);
-  const [formAddr] = Form.useForm();
 
   const updateAddress = useMutation({
-    mutationFn: async (payload: any) => (await api.patch(`/needs/${payload.id}/address`, payload)).data,
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) =>
+      (await api.patch(`/needs/${id}/address`, payload)).data,
     onSuccess: async () => {
       message.success('Endereço atualizado');
-      setOpenEditAddr(false);
-      setEditAddrNeed(null);
-      formAddr.resetFields();
+      setOpenAddress(false);
+      setSelectedNeed(null);
       await qc.invalidateQueries({ queryKey: ['needs'] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar endereço'),
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao atualizar endereço');
+    },
   });
 
-  /** ===== Autocomplete ===== */
-  const [addrLoading, setAddrLoading] = useState(false);
-  const [addrOptions, setAddrOptions] = useState<NominatimSuggestion[]>([]);
-  const debounceRef = useRef<any>(null);
+  const uploadInternalDocument = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', file.name);
 
-  const runSearch = (q: string) => {
-    const s = (q || '').trim();
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+      return (
+        await api.post('/needs/internal-documents', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      ).data;
+    },
+    onSuccess: async () => {
+      message.success('Documento interno enviado com sucesso');
+      await refetchInternalDocs();
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao enviar documento interno');
+    },
+  });
 
-    debounceRef.current = setTimeout(async () => {
-      if (s.length < 5) {
-        setAddrOptions([]);
-        return;
-      }
-      setAddrLoading(true);
-      try {
-        const items = await searchNominatim(s);
-        setAddrOptions(items);
-      } finally {
-        setAddrLoading(false);
-      }
-    }, 350);
+  const deleteInternalDocument = useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/needs/internal-documents/${id}`)).data,
+    onSuccess: async () => {
+      message.success('Documento interno excluído com sucesso');
+      await refetchInternalDocs();
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao excluir documento interno');
+    },
+  });
+
+  const totals = useMemo(() => {
+    return {
+      total: data.length,
+      abertas: data.filter((x) => x.status === 'OPEN').length,
+      andamento: data.filter((x) => x.status === 'IN_PROGRESS').length,
+      atendidas: data.filter((x) => x.status === 'FULFILLED').length,
+      homologacaoAprovada: data.filter((x) => x.homologationStatus === 'APPROVED').length,
+    };
+  }, [data]);
+
+  const applyFilters = (values: any) => {
+    const next = new URLSearchParams();
+
+    if (values.status) next.set('status', values.status);
+    if (values.techTypeId) next.set('techTypeId', String(values.techTypeId));
+    if (values.requesterId) next.set('requesterId', String(values.requesterId));
+    if (values.q) next.set('q', String(values.q).trim());
+
+    setParams(next);
   };
 
-  const applySuggestionToForm = async (targetForm: any, opt: any) => {
-    const lat = Number(opt?.lat);
-    const lng = Number(opt?.lon);
+  const clearFilters = () => {
+    formFilter.resetFields();
+    setParams({});
+  };
 
-    const base = extractFromNominatim(opt?.address);
-    const enriched = await enrichWithViaCep(base);
-
-    targetForm.setFieldsValue({
-      requestedLocationText: opt.display_name,
-      requestedLat: Number.isFinite(lat) ? lat : null,
-      requestedLng: Number.isFinite(lng) ? lng : null,
-      requestedCity: enriched.requestedCity,
-      requestedState: enriched.requestedState,
-      requestedCep: enriched.requestedCep ? maskCepBR(enriched.requestedCep) : null,
+  const openAddressModal = (need: Need) => {
+    setSelectedNeed(need);
+    setOpenAddress(true);
+    formAddress.setFieldsValue({
+      requestedLocationText: need.requestedLocationText || '',
+      requestedCity: need.requestedCity || '',
+      requestedState: need.requestedState || '',
+      requestedCep: need.requestedCep || '',
+      requestedLat: need.requestedLat ?? null,
+      requestedLng: need.requestedLng ?? null,
     });
-
-    setAddrOptions([]);
   };
 
-  const openEditAddressModal = (n: Need) => {
-    setEditAddrNeed(n);
-    setOpenEditAddr(true);
-    setAddrOptions([]);
+  const openNeedFlow = (need: Need) => {
+    if (isAtaTech(need.techType?.name)) {
+      navigate(`/requisicoes/${need.id}/ata`);
+      return;
+    }
 
-    formAddr.setFieldsValue({
-      requestedLocationText: n.requestedLocationText || '',
-      requestedLat: n.requestedLat ?? null,
-      requestedLng: n.requestedLng ?? null,
-      requestedCity: n.requestedCity ?? null,
-      requestedState: n.requestedState ?? null,
-      requestedCep: n.requestedCep ? maskCepBR(n.requestedCep) : null,
-    });
-
-    runSearch(n.requestedLocationText || '');
+    navigate(`/requisicoes/${need.id}/homologacao`);
   };
 
-  /** ===== Actions menu (DESKTOP compacto) ===== */
-  const actionsMenuItems = (r: Need) => [
-    {
-      key: 'map',
-      label: 'Abrir no mapa',
-      onClick: () => navigate(`/needs/map?focus=${r.id}`),
-    },
-    { type: 'divider' as const },
-    {
-      key: 'fulfill',
-      label: 'Marcar como atendida',
-      disabled: r.status === 'FULFILLED',
-      onClick: () => confirmStatus(r.id, 'FULFILLED', 'Marcar como atendida?'),
-    },
-    {
-      key: 'cancel',
-      label: 'Cancelar',
-      danger: true,
-      disabled: r.status === 'CANCELLED',
-      onClick: () => confirmStatus(r.id, 'CANCELLED', 'Cancelar solicitação?'),
-    },
-    {
-      key: 'reopen',
-      label: 'Reabrir',
-      disabled: r.status === 'OPEN',
-      onClick: () => confirmStatus(r.id, 'OPEN', 'Reabrir solicitação?'),
-    },
-  ];
+  const capturePreciseLocation = async (
+    form: any,
+    mode: 'ata' | 'pso-spot' | 'address'
+  ) => {
+    const setLoading =
+      mode === 'ata'
+        ? setLocatingAta
+        : mode === 'pso-spot'
+        ? setLocatingPsoSpot
+        : setLocatingAddress;
 
-  /** ===== Columns (DESKTOP SEM SCROLL) ===== */
-  const columnsDesktop = useMemo(
-    () => [
-      {
-        title: 'Local',
-        key: 'local',
-        width: 140,
-        render: (_: any, r: Need) => (
-          <Typography.Text ellipsis={{ tooltip: r.requestedLocationText }}>
-            {renderLocal(r)}
-          </Typography.Text>
-        ),
-      },
-      {
-        title: 'Técnico',
-        key: 'requestedName',
-        width: 220,
-        render: (_: any, r: Need) => (
-          <Typography.Text ellipsis={{ tooltip: r.requestedName }}>
-            {r.requestedName || '—'}
-          </Typography.Text>
-        ),
-      },
-      {
-        title: 'Tipo',
-        key: 'tipo',
-        width: 80,
-        render: (_: any, r: Need) => r.techType?.name || '—',
-      },
-      {
-        title: 'Status',
-        key: 'status',
-        width: 130,
-        render: (_: any, r: Need) => statusTag(r.status),
-        filters: STATUS_OPTS.map((s) => ({ text: s.label, value: s.value })),
-        onFilter: (v: any, rec: Need) => rec.status === v,
-      },
-      {
-        title: 'Solicitante / Prestador',
-        key: 'who',
-        width: 260,
-        render: (_: any, r: Need) => (
-          <div style={{ lineHeight: 1.25 }}>
-            <Typography.Text ellipsis={{ tooltip: r.requestedBy?.name || '' }}>
-              <b>{r.requestedBy?.name || '—'}</b>
-            </Typography.Text>
-            <br />
-            <Typography.Text type="secondary" ellipsis={{ tooltip: r.providerName || '' }}>
-              {r.providerName || '—'}
-            </Typography.Text>
+    if (!navigator.geolocation) {
+      message.error('Seu navegador não suporta geolocalização');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+
+      form.setFieldsValue({
+        requestedLat: Number(position.coords.latitude.toFixed(6)),
+        requestedLng: Number(position.coords.longitude.toFixed(6)),
+      });
+
+      message.success('Localização precisa capturada com sucesso');
+    } catch {
+      message.error('Não foi possível capturar sua localização precisa');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchCoordsByAddress = async (
+    form: any,
+    mode: 'ata' | 'pso-spot' | 'address'
+  ) => {
+    const setLoading =
+      mode === 'ata'
+        ? setSearchingMapAta
+        : mode === 'pso-spot'
+        ? setSearchingMapPsoSpot
+        : setSearchingMapAddress;
+
+    try {
+      setLoading(true);
+      const values = form.getFieldsValue();
+      const result = await geocodeAddress(values);
+
+      form.setFieldsValue({
+        requestedLat: Number(result.lat.toFixed(6)),
+        requestedLng: Number(result.lng.toFixed(6)),
+      });
+
+      message.success('Coordenadas localizadas no mapa');
+    } catch (error: any) {
+      message.error(error?.message || 'Não foi possível localizar esse endereço');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderMapPreview = (form: any) => {
+    const lat = form.getFieldValue('requestedLat');
+    const lng = form.getFieldValue('requestedLng');
+    const address = form.getFieldValue('requestedLocationText');
+    const embedUrl = buildOsmEmbed(lat, lng);
+
+    return (
+      <div style={{ display: 'grid', gap: 12, width: '100%', overflowX: 'hidden' }}>
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={12}>
+            <Card size="small" style={{ borderRadius: 18 }} styles={{ body: { padding: 12 } }}>
+              <Descriptions size="small" column={1}>
+                <Descriptions.Item label="Latitude">{formatCoord(lat)}</Descriptions.Item>
+                <Descriptions.Item label="Longitude">{formatCoord(lng)}</Descriptions.Item>
+              </Descriptions>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Card size="small" style={{ borderRadius: 18 }} styles={{ body: { padding: 12 } }}>
+              <Space wrap>
+                <Button
+                  icon={<GlobalOutlined />}
+                  disabled={!address && !hasCoords(lat, lng)}
+                  onClick={() => window.open(buildGoogleMapsLink(lat, lng, address), '_blank')}
+                >
+                  Abrir no Google Maps
+                </Button>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
+
+        {embedUrl ? (
+          <div
+            style={{
+              borderRadius: 18,
+              overflow: 'hidden',
+              border: '1px solid #e5e7eb',
+              background: '#f8fafc',
+              width: '100%',
+            }}
+          >
+            <iframe
+              title="Mapa da localização"
+              src={embedUrl}
+              style={{ width: '100%', height: 260, border: 0 }}
+              loading="lazy"
+            />
           </div>
-        ),
-      },
-      {
-        title: 'Criado',
-        key: 'createdAt',
-        width: 110,
-        render: (_: any, r: Need) => new Date(r.createdAt).toLocaleDateString('pt-BR'),
-      },
-      {
-        title: 'Ações',
-        key: 'actions',
-        width: 180,
-        render: (_: any, r: Need) => (
-          <Space size={6}>
-            <Button size="small" onClick={() => openEditAddressModal(r)}>
-              Endereço
-            </Button>
-            <Button size="small" onClick={() => openProviderModal(r)}>
-              Prestador
-            </Button>
-            <Dropdown
-              menu={{ items: actionsMenuItems(r) as any }}
-              trigger={['click']}
-              placement="bottomRight"
-            >
-              <Button size="small" icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
-        ),
-      },
-    ],
-    [navigate]
-  );
-
-  /** ===== Header extra ===== */
-  const headerExtra = (
-    <Space size="small" wrap style={{ maxWidth: '100%' }}>
-      <Button size={isMobile ? 'middle' : 'small'} onClick={() => navigate('/requisicoes/mapa')}>
-        Mapa geral
-      </Button>
-
-      <Button
-        size={isMobile ? 'middle' : 'small'}
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={() => {
-          formNew.setFieldsValue({
-            requestedLocationText: '',
-            requestedCity: '',
-            requestedState: '',
-            requestedCep: '',
-            requestedLat: null,
-            requestedLng: null,
-            requestedName: 'Técnico a definir',
-            techTypeId: undefined,
-            notes: '',
-          });
-          setAddrOptions([]);
-          setOpenNew(true);
-        }}
-      >
-        Novo pedido
-      </Button>
-
-      <span style={{ color: '#64748b' }}>{isFetching ? 'Atualizando…' : ''}</span>
-    </Space>
-  );
-
-  return (
-    <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
-      {/* ===== FILTROS ===== */}
-      <Card  styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}> 
-        <Form
-          form={form}
-          initialValues={initial}
-          size={isMobile ? 'middle' : 'small'}
-          layout={isMobile ? 'vertical' : 'inline'}
-          onFinish={(v) => {
-            const next = new URLSearchParams();
-            if (v.status) next.set('status', v.status);
-            if (v.techTypeId) next.set('techTypeId', String(v.techTypeId));
-            if (v.requesterId) next.set('requesterId', String(v.requesterId));
-            if (v.q) next.set('q', String(v.q));
-            setParams(next, { replace: true });
-            refetch();
-          }}
-        >
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 12 : 10, width: '100%', alignItems: 'end' }}>
-            <Form.Item name="status" label="Status" style={{ marginBottom: 0 }}>
-              <Select allowClear style={{ width: isMobile ? '100%' : 160 }} options={STATUS_OPTS} placeholder="Selecione" />
-            </Form.Item>
-
-            <Form.Item name="techTypeId" label="Tipo técnico" style={{ marginBottom: 0 }}>
-              <Select
-                allowClear
-                style={{ width: isMobile ? '100%' : 220 }}
-                options={techTypes.map((t) => ({ value: t.id, label: t.name }))}
-                placeholder="Selecione"
-              />
-            </Form.Item>
-
-            <Form.Item name="requesterId" label="Solicitante" style={{ marginBottom: 0 }}>
-              <Select
-                allowClear
-                showSearch
-                style={{ width: isMobile ? '100%' : 260 }}
-                placeholder="Filtrar por solicitante"
-                suffixIcon={<SearchOutlined />}
-                options={requesters.map((r) => ({
-                  value: r.id,
-                  label: r.count ? `${r.name} (${r.count})` : r.name,
-                }))}
-                optionFilterProp="label"
-              />
-            </Form.Item>
-
-            <Form.Item name="q" label="Busca" style={{ marginBottom: 0 }}>
-              <Input style={{ width: isMobile ? '100%' : 240 }} placeholder="Local / técnico / prestador" allowClear />
-            </Form.Item>
-
-            <Space wrap>
-              <Button type="primary" htmlType="submit" icon={<ReloadOutlined />}>
-                Filtrar
-              </Button>
-              <Button
-                onClick={() => {
-                  form.resetFields();
-                  setParams(new URLSearchParams(), { replace: true });
-                  refetch();
-                }}
-              >
-                Limpar
-              </Button>
-            </Space>
-          </div>
-        </Form>
-      </Card>
-
-      {/* ===== LISTA ===== */}
-      <Card title="Prospecçãoes de técnicos" extra={headerExtra} styles={{ body: { padding: isMobile ? 16 : 12} }}>
-        {/* MOBILE (cards) */}
-        {isMobile ? (
-          <>
-            {isLoading ? (
-              <div style={{ padding: 16, textAlign: 'center' }}>
-                <Spin />
-              </div>
-            ) : (
-              <List
-                dataSource={data}
-                locale={{ emptyText: 'Nenhuma requisição encontrada.' }}
-                renderItem={(r) => (
-                  <List.Item style={{ paddingLeft: 0, paddingRight: 0 }}>
-                    <Card style={{ width: '100%' }} bodyStyle={{ padding: 12 }}>
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <Space wrap>
-                          <Tag icon={<EnvironmentOutlined />}>{renderLocal(r)}</Tag>
-                          {statusTag(r.status)}
-                        </Space>
-
-                        <div>
-                          <Typography.Text type="secondary">Técnico</Typography.Text>
-                          <div style={{ fontWeight: 600 }}>{r.requestedName || '—'}</div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                          <div>
-                            <Typography.Text type="secondary">Tipo</Typography.Text>
-                            <div>{r.techType?.name || '—'}</div>
-                          </div>
-
-                          <div>
-                            <Typography.Text type="secondary">Solicitante</Typography.Text>
-                            <div>{r.requestedBy?.name || '—'}</div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Typography.Text type="secondary">Prestador</Typography.Text>
-                          <div>{r.providerName || '—'}</div>
-                        </div>
-
-                        <Typography.Text type="secondary">
-                          Criado: {new Date(r.createdAt).toLocaleDateString('pt-BR')}
-                        </Typography.Text>
-
-                        <Space wrap style={{ marginTop: 6 }}>
-                          <Button onClick={() => openEditAddressModal(r)}>Endereço</Button>
-                          <Button onClick={() => openProviderModal(r)}>Prestador</Button>
-                          <Button onClick={() => navigate(`/needs/map?focus=${r.id}`)}>Mapa</Button>
-
-                          <Button
-                            type="primary"
-                            disabled={r.status === 'FULFILLED'}
-                            onClick={() => confirmStatus(r.id, 'FULFILLED', 'Marcar como atendida?')}
-                          >
-                            Atender
-                          </Button>
-
-                          <Button
-                            danger
-                            disabled={r.status === 'CANCELLED'}
-                            onClick={() => confirmStatus(r.id, 'CANCELLED', 'Cancelar solicitação?')}
-                          >
-                            Cancelar
-                          </Button>
-
-                          <Button
-                            disabled={r.status === 'OPEN'}
-                            onClick={() => confirmStatus(r.id, 'OPEN', 'Reabrir solicitação?')}
-                          >
-                            Reabrir
-                          </Button>
-                        </Space>
-                      </div>
-                    </Card>
-                  </List.Item>
-                )}
-              />
-            )}
-          </>
         ) : (
-          // DESKTOP (tabela SEM scroll)
-          <Table
-            rowKey="id"
-            loading={isLoading || updateStatus.isPending}
-            dataSource={data}
-            columns={columnsDesktop as any}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            size="small"
-            tableLayout="fixed"
-            style={{ width: '100%' }}
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Capture ou busque uma localização para visualizar o mapa"
           />
         )}
-      </Card>
+      </div>
+    );
+  };
 
-      {/* ===== Modal Novo Pedido ===== */}
-      <Modal
-        title="Nova solicitação de técnico"
-        open={openNew}
-        onCancel={() => {
-          setOpenNew(false);
-          setAddrOptions([]);
+  const uploadInternalProps: UploadProps = {
+    multiple: true,
+    showUploadList: false,
+    beforeUpload: (file) => {
+      uploadInternalDocument.mutate(file);
+      return false;
+    },
+  };
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 16,
+        width: '100%',
+        maxWidth: '100%',
+        minWidth: 0,
+        overflow: 'visible',
+        overflowX: 'hidden',
+        height: 'auto',
+        maxHeight: 'none',
+      }}
+    >
+      <Card
+        style={{
+          ...shellCardStyle(),
+          overflow: 'hidden',
         }}
-        onOk={() => formNew.submit()}
-        confirmLoading={createNeed.isPending}
-        destroyOnHidden
-        width={isMobile ? 520 : 820}
+        styles={{
+          body: {
+            display: 'grid',
+            gap: 22,
+            padding: isMobile ? 16 : 24,
+            background:
+              'linear-gradient(135deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 50%, rgba(239,246,255,0.72) 100%)',
+          },
+        }}
       >
-        <Form
-          layout="vertical"
-          form={formNew}
-          onFinish={async (v) => {
-            const requestedLocationText = String(v.requestedLocationText || '').trim();
-
-            const lat = Number(v.requestedLat);
-            const lng = Number(v.requestedLng);
-            const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-
-            if (!requestedLocationText || requestedLocationText.length < 5) {
-              message.error('Informe o endereço');
-              return;
-            }
-            if (!hasCoords) {
-              message.error('Selecione um endereço da lista para gerar lat/lng.');
-              return;
-            }
-
-            createNeed.mutate({
-              requestedLocationText,
-              requestedCity: v.requestedCity ? String(v.requestedCity).trim() : null,
-              requestedState: v.requestedState ? String(v.requestedState).trim().toUpperCase() : null,
-              requestedCep: v.requestedCep ? String(v.requestedCep).trim() : null,
-              requestedLat: lat,
-              requestedLng: lng,
-              requestedName: String(v.requestedName || 'Técnico a definir').trim(),
-              techTypeId: v.techTypeId || null,
-              notes: v.notes || '',
-            });
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            gap: 16,
+            flexWrap: 'wrap',
           }}
         >
-          <Form.Item
-            name="requestedLocationText"
-            label="Endereço (digite e selecione o correto)"
-            rules={[{ required: true, message: 'Informe o endereço' }, { min: 5 }]}
-          >
-            <Select
-              showSearch
-              filterOption={false}
-              onSearch={(q) => runSearch(q)}
-              notFoundContent={addrLoading ? 'Buscando…' : 'Digite para buscar'}
-              placeholder="Ex.: Av. X, 123 - Osasco/SP"
-              options={addrOptions.map((x) => ({
-                value: x.display_name,
-                label: x.display_name,
-                ...x,
-              }))}
-              onSelect={async (_value, option: any) => {
-                await applySuggestionToForm(formNew, option);
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Space wrap>
+              <Tag color="blue" style={{ borderRadius: 999 }}>
+                Gestão de prospecção
+              </Tag>
+              <Tag style={{ borderRadius: 999 }}>{totals.total} solicitações</Tag>
+            </Space>
+
+            <Title level={3} style={{ margin: 0 }}>
+              Prospecção de técnicos
+            </Title>
+
+            <Text type="secondary">
+              Solicitação ATA separada da solicitação PSO/SPOT, com rolagem única da página.
+            </Text>
+          </div>
+
+          <Space wrap>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={isFetching}
+              onClick={() => refetch()}
+              style={{ borderRadius: 12 }}
+            >
+              Atualizar
+            </Button>
+
+            <Button
+              icon={<FolderOpenOutlined />}
+              onClick={() => setOpenInternalDocs(true)}
+              style={{ borderRadius: 12 }}
+            >
+              Documentos internos
+            </Button>
+
+            <Button
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                formPsoSpot.resetFields();
+                setOpenPsoSpotRequest(true);
               }}
+              style={{ borderRadius: 12 }}
+            >
+              Solicitar PSO/SPOT
+            </Button>
+
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                formAta.resetFields();
+                if (ataTechTypeId) {
+                  formAta.setFieldsValue({ techTypeId: ataTechTypeId });
+                }
+                setOpenAtaRequest(true);
+              }}
+              style={{ borderRadius: 12 }}
+            >
+              Solicitar ATA
+            </Button>
+          </Space>
+        </div>
+
+        <Row gutter={[14, 14]}>
+          <Col xs={24} sm={12} xl={6}>
+            <Card style={softCardStyle()} styles={{ body: { padding: 18 } }}>
+              <Statistic title="Total" value={totals.total} prefix={<BuildOutlined />} />
+            </Card>
+          </Col>
+
+          <Col xs={24} sm={12} xl={6}>
+            <Card style={softCardStyle()} styles={{ body: { padding: 18 } }}>
+              <Statistic title="Abertas" value={totals.abertas} prefix={<ClockCircleOutlined />} />
+            </Card>
+          </Col>
+
+          <Col xs={24} sm={12} xl={6}>
+            <Card style={softCardStyle()} styles={{ body: { padding: 18 } }}>
+              <Statistic title="Em andamento" value={totals.andamento} prefix={<ReloadOutlined />} />
+            </Card>
+          </Col>
+
+          <Col xs={24} sm={12} xl={6}>
+            <Card style={softCardStyle()} styles={{ body: { padding: 18 } }}>
+              <Statistic title="Homologadas" value={totals.homologacaoAprovada} prefix={<CheckCircleOutlined />} />
+            </Card>
+          </Col>
+        </Row>
+
+        <Card
+          size="small"
+          style={{ borderRadius: 22, border: '1px solid #edf2f7' }}
+          styles={{ body: { padding: 16 } }}
+        >
+          <Space wrap>
+            <Text strong>Separar visualização:</Text>
+
+            <Button
+              type={quickTypeMode === 'ALL' ? 'primary' : 'default'}
+              onClick={() => setQuickTypeMode('ALL')}
+              style={{ borderRadius: 999 }}
+            >
+              Todos
+            </Button>
+
+            <Button
+              type={quickTypeMode === 'ATA' ? 'primary' : 'default'}
+              onClick={() => setQuickTypeMode('ATA')}
+              style={{ borderRadius: 999 }}
+            >
+              ATA
+            </Button>
+
+            <Button
+              type={quickTypeMode === 'PSO_SPOT' ? 'primary' : 'default'}
+              onClick={() => setQuickTypeMode('PSO_SPOT')}
+              style={{ borderRadius: 999 }}
+            >
+              PSO/SPOT
+            </Button>
+          </Space>
+        </Card>
+      </Card>
+
+      <Card style={shellCardStyle()} styles={{ body: { padding: isMobile ? 14 : 20 } }}>
+        <Form form={formFilter} layout="vertical" onFinish={applyFilters}>
+          <Row gutter={[12, 12]} align="bottom">
+            <Col xs={24} md={6}>
+              <Form.Item name="status" label="Status" style={{ marginBottom: 0 }}>
+                <Select allowClear options={STATUS_OPTS} placeholder="Todos" />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={5}>
+              <Form.Item name="techTypeId" label="Tipo técnico" style={{ marginBottom: 0 }}>
+                <Select
+                  allowClear
+                  placeholder="Todos"
+                  options={techTypes.map((t) => ({ value: t.id, label: t.name }))}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={5}>
+              <Form.Item name="requesterId" label="Solicitante" style={{ marginBottom: 0 }}>
+                <Select
+                  allowClear
+                  placeholder="Todos"
+                  options={requesters.map((r) => ({
+                    value: r.id,
+                    label: r.count ? `${r.name} (${r.count})` : r.name,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={5}>
+              <Form.Item name="q" label="Buscar" style={{ marginBottom: 0 }}>
+                <Input placeholder="Nome, local ou prestador" prefix={<SearchOutlined />} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Space wrap>
+                <Button htmlType="submit" type="primary" style={{ borderRadius: 12 }}>
+                  Filtrar
+                </Button>
+                <Button onClick={clearFilters} style={{ borderRadius: 12 }}>
+                  Limpar
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        </Form>
+      </Card>
+
+      {isLoading ? (
+        <Card style={shellCardStyle()} styles={{ body: { padding: 28 } }}>
+          <Empty description="Carregando solicitações..." />
+        </Card>
+      ) : !filteredByQuickMode.length ? (
+        <Card style={shellCardStyle()} styles={{ body: { padding: 28 } }}>
+          <Empty description="Nenhuma solicitação encontrada" />
+        </Card>
+      ) : (
+        <div style={{ display: 'grid', gap: 18, width: '100%', overflow: 'visible', overflowX: 'hidden' }}>
+          <Row gutter={[16, 16]} align="stretch">
+            {paginatedNeeds.map((row) => (
+              <Col xs={24} xl={12} key={row.id} style={{ display: 'flex' }}>
+                <NeedCard
+                  row={row}
+                  onOpenFlow={() => openNeedFlow(row)}
+                  onEditAddress={() => openAddressModal(row)}
+                  onOpenMap={() =>
+                    window.open(
+                      buildGoogleMapsLink(row.requestedLat, row.requestedLng, row.requestedLocationText),
+                      '_blank'
+                    )
+                  }
+                  onChangeStatus={(status) => updateStatus.mutate({ id: row.id, status })}
+                />
+              </Col>
+            ))}
+          </Row>
+
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Pagination
+              current={page}
+              pageSize={pageSize}
+              total={filteredByQuickMode.length}
+              onChange={(p) => setPage(p)}
+              showSizeChanger={false}
             />
-          </Form.Item>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item name="requestedLat" label="Latitude">
-              <Input disabled />
-            </Form.Item>
-            <Form.Item name="requestedLng" label="Longitude">
-              <Input disabled />
-            </Form.Item>
           </div>
+        </div>
+      )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 120px 160px', gap: 12 }}>
-            <Form.Item name="requestedCity" label="Cidade">
-              <Input />
-            </Form.Item>
-            <Form.Item name="requestedState" label="UF">
-              <Input maxLength={2} />
-            </Form.Item>
-            <Form.Item name="requestedCep" label="CEP">
-              <Input placeholder="00000-000" onChange={(e) => formNew.setFieldValue('requestedCep', maskCepBR(e.target.value))} />
-            </Form.Item>
-          </div>
+      <Modal
+        title="Solicitar ATA"
+        open={openAtaRequest}
+        onCancel={() => {
+          setOpenAtaRequest(false);
+          formAta.resetFields();
+        }}
+        onOk={() => formAta.submit()}
+        confirmLoading={createNeed.isPending}
+        okText="Salvar"
+        width={920}
+        destroyOnHidden
+      >
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 16, borderRadius: 14 }}
+          message="Fluxo ATA"
+          description="Fluxo simplificado. Após criar, o card abrirá o cadastro ATA."
+        />
 
-          <Form.Item name="requestedName" label="Nome do técnico (livre)" rules={[{ required: true }]}>
-            <Input placeholder="Ex.: Técnico João / Técnico a definir" />
-          </Form.Item>
+        <Form
+          form={formAta}
+          layout="vertical"
+          onFinish={(values) =>
+            createNeed.mutate({
+              ...values,
+              techTypeId: ataTechTypeId || values.techTypeId,
+            })
+          }
+        >
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="requestedName"
+                label="Nome da solicitação"
+                rules={[{ required: true, message: 'Informe o nome' }]}
+              >
+                <Input placeholder="Ex.: ATA para Vitória" />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="techTypeId" label="Tipo de técnico">
-            <Select allowClear placeholder="Selecione (opcional)" options={techTypes.map((tt) => ({ value: tt.id, label: tt.name }))} />
-          </Form.Item>
+            <Col xs={24} md={12}>
+              <Form.Item name="techTypeId" label="Tipo técnico">
+                <Select
+                  disabled
+                  value={ataTechTypeId}
+                  options={techTypes
+                    .filter((t) => isAtaTech(t.name))
+                    .map((t) => ({ value: t.id, label: t.name }))}
+                />
+              </Form.Item>
+            </Col>
 
-          <Form.Item name="notes" label="Observações">
-            <Input.TextArea rows={3} placeholder="Requisitos, disponibilidade, etc." />
-          </Form.Item>
+            <Col xs={24}>
+              <Form.Item
+                name="requestedLocationText"
+                label="Endereço / local"
+                rules={[{ required: true, message: 'Informe o local' }]}
+              >
+                <Input placeholder="Ex.: Rua, número, bairro ou referência" />
+              </Form.Item>
+            </Col>
 
-          <Typography.Text type="secondary">
-            Dica: sempre selecione um item da lista para preencher lat/lng automaticamente.
-          </Typography.Text>
+            <Col xs={24} md={8}>
+              <Form.Item name="requestedCity" label="Cidade">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={4}>
+              <Form.Item name="requestedState" label="UF">
+                <Input maxLength={2} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Form.Item name="requestedCep" label="CEP">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLat" label="Latitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLng" label="Longitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Space wrap>
+                <Button
+                  icon={<AimOutlined />}
+                  loading={locatingAta}
+                  onClick={() => capturePreciseLocation(formAta, 'ata')}
+                >
+                  Usar minha localização precisa
+                </Button>
+
+                <Button
+                  icon={<EnvironmentOutlined />}
+                  loading={searchingMapAta}
+                  onClick={() => searchCoordsByAddress(formAta, 'ata')}
+                >
+                  Buscar coordenadas pelo endereço
+                </Button>
+
+                <Button
+                  icon={<GlobalOutlined />}
+                  onClick={() => {
+                    const vals = formAta.getFieldsValue();
+                    window.open(
+                      buildGoogleMapsLink(
+                        vals.requestedLat,
+                        vals.requestedLng,
+                        vals.requestedLocationText
+                      ),
+                      '_blank'
+                    );
+                  }}
+                >
+                  Validar no Google Maps
+                </Button>
+              </Space>
+            </Col>
+
+            <Col xs={24}>{renderMapPreview(formAta)}</Col>
+
+            <Col xs={24}>
+              <Divider style={{ margin: '8px 0' }} />
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item name="notes" label="Observações">
+                <Input.TextArea rows={4} />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 
-      {/* ===== Modal Prestador + Anexos ===== */}
       <Modal
-        title="Prestador (captação / homologação)"
-        open={openProvider}
-        onCancel={closeProviderModal}
-        okText="Salvar"
-        confirmLoading={updateProvider.isPending}
-        onOk={async () => {
-          try {
-            const v = await formProvider.validateFields();
-            if (!providerNeed?.id) return;
-
-            await updateProvider.mutateAsync({
-              id: providerNeed.id,
-              providerName: String(v.providerName).trim(),
-              providerWhatsapp: v.providerWhatsapp ? String(v.providerWhatsapp).trim() : null,
-              negotiationTier: v.negotiationTier ?? null,
-              negotiationNotes: v.negotiationNotes ? String(v.negotiationNotes) : null,
-
-              homologTablesStatus: v.homologTablesStatus ?? null,
-              homologDocsStatus: v.homologDocsStatus ?? null,
-              homologContractStatus: v.homologContractStatus ?? null,
-              homologCrmStatus: v.homologCrmStatus ?? null,
-              homologErpStatus: v.homologErpStatus ?? null,
-            });
-          } catch {}
-        }}
-        width={isMobile ? 560 : 900}
-        destroyOnHidden
-      >
-        {providerNeed ? (
-          <>
-            <Typography.Text type="secondary">
-              Pedido #{providerNeed.id} • {providerNeed.requestedLocationText}
-            </Typography.Text>
-
-            <Form layout="vertical" form={formProvider} style={{ marginTop: 12 }}>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
-                  gap: 12,
-                  alignItems: 'end',
-                }}
-              >
-                <Form.Item
-                  name="providerName"
-                  label="Nome do prestador (obrigatório)"
-                  rules={[{ required: true, message: 'Informe o nome do prestador' }, { min: 2 }]}
-                >
-                  <Input placeholder="Ex.: João da Silva (Prestador X)" />
-                </Form.Item>
-
-                <Form.Item name="providerWhatsapp" label="WhatsApp do prestador">
-                  <Input
-                    placeholder="(11) 99999-9999"
-                    onChange={(e) => formProvider.setFieldValue('providerWhatsapp', maskPhoneBR(e.target.value))}
-                    addonAfter={(() => {
-                      const phone = formProvider.getFieldValue('providerWhatsapp');
-                      const link = whatsappLink(phone);
-
-                      return (
-                        <Button
-                          type="text"
-                          icon={<WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} />}
-                          disabled={!link}
-                          onClick={() => {
-                            if (link) window.open(link, '_blank');
-                          }}
-                        />
-                      );
-                    })()}
-                  />
-                </Form.Item>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                <Form.Item name="negotiationTier" label="Categoria negociada">
-                  <Select allowClear options={TIER_OPTS} placeholder="Ouro / Prata / Bronze" />
-                </Form.Item>
-                <div />
-              </div>
-
-              <Divider style={{ margin: '8px 0 12px' }} />
-              <Typography.Title level={5} style={{ marginTop: 0 }}>
-                Status da homologação
-              </Typography.Title>
-
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                <Form.Item name="homologTablesStatus" label="Apresentação de Tabelas">
-                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
-                </Form.Item>
-
-                <Form.Item name="homologDocsStatus" label="Envio de documentos">
-                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
-                </Form.Item>
-
-                <Form.Item name="homologContractStatus" label="Assinatura de contrato">
-                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
-                </Form.Item>
-
-                <Form.Item name="homologCrmStatus" label="Cadastro no CRM">
-                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
-                </Form.Item>
-
-                <Form.Item name="homologErpStatus" label="Cadastro no ERP">
-                  <Select options={STEP_STATUS_OPTS} placeholder="Selecione" />
-                </Form.Item>
-              </div>
-
-              <Form.Item name="negotiationNotes" label="Observações da negociação">
-                <Input.TextArea rows={4} placeholder="Detalhes de valores, prazo, pendências, documentos, etc." />
-              </Form.Item>
-            </Form>
-
-            <Divider style={{ margin: '10px 0 14px' }} />
-
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                Documentos do prestador
-              </Typography.Title>
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => refetchAttachments()} loading={isFetchingAttachments}>
-                Atualizar
-              </Button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '180px 1fr auto', gap: 12, marginTop: 12 }}>
-              <Select value={uploadKind} onChange={(v) => setUploadKind(v)} options={ATTACH_KIND_OPTS} />
-
-              <Upload
-                beforeUpload={() => false}
-                fileList={uploadFileList}
-                onChange={({ fileList }) => setUploadFileList(fileList.slice(-1))}
-                maxCount={1}
-              >
-                <Button icon={<UploadOutlined />}>Selecionar arquivo</Button>
-              </Upload>
-
-              <Button type="primary" icon={<PaperClipOutlined />} loading={uploadAttachment.isPending} onClick={handleUpload}>
-                Anexar
-              </Button>
-            </div>
-
-            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-              Dica: anexar <b>CONTRATO</b> e <b>DOCUMENTO</b> ajuda no controle de homologação.
-            </Typography.Text>
-
-            <Divider style={{ margin: '14px 0' }} />
-
-            <List
-              bordered
-              locale={{ emptyText: 'Nenhum documento anexado' }}
-              dataSource={attachments}
-              renderItem={(a) => (
-                <List.Item
-                  actions={[
-                    <Button key="open" size="small" icon={<EyeOutlined />} onClick={() => void openAttachment(a)}>
-                      Abrir
-                    </Button>,
-                    <Popconfirm
-                      key="del"
-                      title="Excluir este arquivo?"
-                      okText="Excluir"
-                      cancelText="Cancelar"
-                      onConfirm={() => deleteAttachment.mutate(a.id)}
-                    >
-                      <Button size="small" danger icon={<DeleteOutlined />} loading={deleteAttachment.isPending}>
-                        Excluir
-                      </Button>
-                    </Popconfirm>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space wrap>
-                        <Tag>{a.kind}</Tag>
-                        <span style={{ fontWeight: 600 }}>{a.originalName}</span>
-                      </Space>
-                    }
-                    description={
-                      <Space wrap split={<span style={{ color: '#cbd5e1' }}>•</span>}>
-                        <span>{a.mimeType}</span>
-                        <span>{fmtBytes(a.size)}</span>
-                        <span>{new Date(a.createdAt).toLocaleString('pt-BR')}</span>
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
-
-            <Modal
-              open={previewOpen}
-              title={previewTitle}
-              footer={null}
-              onCancel={() => {
-                setPreviewOpen(false);
-                setPreviewMime('');
-                setPreviewTitle('');
-
-                if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
-                if (lastBlobUrlRef.current?.startsWith('blob:')) {
-                  URL.revokeObjectURL(lastBlobUrlRef.current);
-                  lastBlobUrlRef.current = null;
-                }
-                setPreviewUrl(null);
-              }}
-              width={isMobile ? 560 : 900}
-              destroyOnHidden
-            >
-              {!previewUrl ? null : previewMime.startsWith('image/') ? (
-                <img
-                  src={previewUrl}
-                  alt={previewTitle}
-                  style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 8 }}
-                />
-              ) : previewMime === 'application/pdf' ? (
-                <iframe src={previewUrl} title={previewTitle} style={{ width: '100%', height: '70vh', border: 'none' }} />
-              ) : (
-                <div style={{ textAlign: 'center' }}>
-                  <Typography.Text>Pré-visualização não disponível para este tipo de arquivo.</Typography.Text>
-                </div>
-              )}
-            </Modal>
-          </>
-        ) : (
-          <Typography.Text type="secondary">Nenhum pedido selecionado.</Typography.Text>
-        )}
-      </Modal>
-
-      {/* ===== Modal Editar Endereço ===== */}
-      <Modal
-        title="Editar endereço (gera lat/lng)"
-        open={openEditAddr}
+        title="Solicitar PSO / SPOT"
+        open={openPsoSpotRequest}
         onCancel={() => {
-          setOpenEditAddr(false);
-          setEditAddrNeed(null);
-          formAddr.resetFields();
-          setAddrOptions([]);
+          setOpenPsoSpotRequest(false);
+          formPsoSpot.resetFields();
         }}
+        onOk={() => formPsoSpot.submit()}
+        confirmLoading={createNeed.isPending}
         okText="Salvar"
-        confirmLoading={updateAddress.isPending}
-        onOk={async () => {
-          try {
-            const v = await formAddr.validateFields();
-            if (!editAddrNeed?.id) return;
-
-            const lat = Number(v.requestedLat);
-            const lng = Number(v.requestedLng);
-            const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-
-            if (!hasCoords) {
-              message.error('Selecione um endereço da lista para gerar lat/lng.');
-              return;
-            }
-
-            updateAddress.mutate({
-              id: editAddrNeed.id,
-              requestedLocationText: String(v.requestedLocationText).trim(),
-              requestedLat: lat,
-              requestedLng: lng,
-              requestedCity: v.requestedCity ? String(v.requestedCity).trim() : null,
-              requestedState: v.requestedState ? String(v.requestedState).trim().toUpperCase() : null,
-              requestedCep: v.requestedCep ? String(v.requestedCep).trim() : null,
-            });
-          } catch {}
-        }}
-        width={isMobile ? 560 : 820}
+        width={920}
         destroyOnHidden
       >
-        {editAddrNeed ? (
-          <>
-            <Typography.Text type="secondary">Pedido #{editAddrNeed.id}</Typography.Text>
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 16, borderRadius: 14 }}
+          message="Fluxo PSO / SPOT"
+          description="Após criar, o card abrirá a homologação completa."
+        />
 
-            <Form layout="vertical" form={formAddr} style={{ marginTop: 12 }}>
+        <Form
+          form={formPsoSpot}
+          layout="vertical"
+          onFinish={(values) => createNeed.mutate(values)}
+        >
+          <Row gutter={[12, 12]}>
+            <Col xs={24} md={12}>
               <Form.Item
-                name="requestedLocationText"
-                label="Endereço (digite e selecione o correto)"
-                rules={[{ required: true, message: 'Informe o endereço' }, { min: 5 }]}
+                name="requestedName"
+                label="Nome da solicitação"
+                rules={[{ required: true, message: 'Informe o nome' }]}
+              >
+                <Input placeholder="Ex.: Técnico PSO para Barueri" />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="techTypeId"
+                label="Tipo técnico"
+                rules={[{ required: true, message: 'Selecione o tipo' }]}
               >
                 <Select
-                  showSearch
-                  filterOption={false}
-                  onSearch={(q) => runSearch(q)}
-                  notFoundContent={addrLoading ? 'Buscando…' : 'Digite para buscar'}
-                  placeholder="Digite o endereço e selecione"
-                  options={addrOptions.map((x) => ({
-                    value: x.display_name,
-                    label: x.display_name,
-                    ...x,
-                  }))}
-                  onSelect={async (_value, option: any) => {
-                    await applySuggestionToForm(formAddr, option);
-                  }}
+                  options={techTypes
+                    .filter((t) => isPsoOrSpotTech(t.name))
+                    .map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Selecione PSO ou SPOT"
                 />
               </Form.Item>
+            </Col>
 
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                <Form.Item name="requestedLat" label="Latitude">
-                  <Input disabled />
-                </Form.Item>
-                <Form.Item name="requestedLng" label="Longitude">
-                  <Input disabled />
-                </Form.Item>
-              </div>
+            <Col xs={24}>
+              <Form.Item
+                name="requestedLocationText"
+                label="Endereço / local"
+                rules={[{ required: true, message: 'Informe o local' }]}
+              >
+                <Input placeholder="Ex.: Rua, número, bairro ou referência" />
+              </Form.Item>
+            </Col>
 
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 120px 160px', gap: 12 }}>
-                <Form.Item name="requestedCity" label="Cidade">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="requestedState" label="UF">
-                  <Input maxLength={2} />
-                </Form.Item>
-                <Form.Item name="requestedCep" label="CEP">
-                  <Input placeholder="00000-000" onChange={(e) => formAddr.setFieldValue('requestedCep', maskCepBR(e.target.value))} />
-                </Form.Item>
-              </div>
+            <Col xs={24} md={8}>
+              <Form.Item name="requestedCity" label="Cidade">
+                <Input />
+              </Form.Item>
+            </Col>
 
-              <Typography.Text type="secondary">
-                Se o CEP vier preenchido, o sistema usa ViaCEP para garantir cidade/UF corretos.
-              </Typography.Text>
-            </Form>
-          </>
-        ) : (
-          <Typography.Text type="secondary">Nenhum pedido selecionado.</Typography.Text>
-        )}
+            <Col xs={24} md={4}>
+              <Form.Item name="requestedState" label="UF">
+                <Input maxLength={2} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Form.Item name="requestedCep" label="CEP">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLat" label="Latitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLng" label="Longitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Space wrap>
+                <Button
+                  icon={<AimOutlined />}
+                  loading={locatingPsoSpot}
+                  onClick={() => capturePreciseLocation(formPsoSpot, 'pso-spot')}
+                >
+                  Usar minha localização precisa
+                </Button>
+
+                <Button
+                  icon={<EnvironmentOutlined />}
+                  loading={searchingMapPsoSpot}
+                  onClick={() => searchCoordsByAddress(formPsoSpot, 'pso-spot')}
+                >
+                  Buscar coordenadas pelo endereço
+                </Button>
+
+                <Button
+                  icon={<GlobalOutlined />}
+                  onClick={() => {
+                    const vals = formPsoSpot.getFieldsValue();
+                    window.open(
+                      buildGoogleMapsLink(
+                        vals.requestedLat,
+                        vals.requestedLng,
+                        vals.requestedLocationText
+                      ),
+                      '_blank'
+                    );
+                  }}
+                >
+                  Validar no Google Maps
+                </Button>
+              </Space>
+            </Col>
+
+            <Col xs={24}>{renderMapPreview(formPsoSpot)}</Col>
+
+            <Col xs={24}>
+              <Divider style={{ margin: '8px 0' }} />
+            </Col>
+
+            <Col xs={24}>
+              <Form.Item name="notes" label="Observações">
+                <Input.TextArea rows={4} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Editar endereço${selectedNeed ? ` • #${selectedNeed.id}` : ''}`}
+        open={openAddress}
+        onCancel={() => {
+          setOpenAddress(false);
+          setSelectedNeed(null);
+          formAddress.resetFields();
+        }}
+        onOk={() => formAddress.submit()}
+        confirmLoading={updateAddress.isPending}
+        okText="Salvar"
+        width={920}
+        destroyOnHidden
+      >
+        <Alert
+          showIcon
+          type="info"
+          style={{ marginBottom: 16, borderRadius: 14 }}
+          message="Validação geográfica"
+          description="Atualize o endereço, capture a localização precisa ou busque as coordenadas pelo mapa."
+        />
+
+        <Form
+          form={formAddress}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!selectedNeed?.id) return;
+            updateAddress.mutate({ id: selectedNeed.id, payload: values });
+          }}
+        >
+          <Row gutter={[12, 12]}>
+            <Col xs={24}>
+              <Form.Item name="requestedLocationText" label="Endereço / referência">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="requestedCity" label="Cidade">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={4}>
+              <Form.Item name="requestedState" label="UF">
+                <Input maxLength={2} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={6}>
+              <Form.Item name="requestedCep" label="CEP">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLat" label="Latitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={3}>
+              <Form.Item name="requestedLng" label="Longitude">
+                <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24}>
+              <Space wrap>
+                <Button
+                  icon={<AimOutlined />}
+                  loading={locatingAddress}
+                  onClick={() => capturePreciseLocation(formAddress, 'address')}
+                >
+                  Capturar localização precisa
+                </Button>
+
+                <Button
+                  icon={<EnvironmentOutlined />}
+                  loading={searchingMapAddress}
+                  onClick={() => searchCoordsByAddress(formAddress, 'address')}
+                >
+                  Buscar coordenadas pelo endereço
+                </Button>
+
+                <Button
+                  icon={<GlobalOutlined />}
+                  onClick={() => {
+                    const vals = formAddress.getFieldsValue();
+                    window.open(
+                      buildGoogleMapsLink(
+                        vals.requestedLat,
+                        vals.requestedLng,
+                        vals.requestedLocationText
+                      ),
+                      '_blank'
+                    );
+                  }}
+                >
+                  Abrir no Google Maps
+                </Button>
+              </Space>
+            </Col>
+
+            <Col xs={24}>{renderMapPreview(formAddress)}</Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Documentos internos"
+        open={openInternalDocs}
+        onCancel={() => setOpenInternalDocs(false)}
+        footer={null}
+        width={900}
+        destroyOnHidden
+      >
+        <div style={{ display: 'grid', gap: 16 }}>
+          <Alert
+            showIcon
+            type="info"
+            style={{ borderRadius: 14 }}
+            message="Documentos internos gerais"
+            description="Área para a equipe interna cadastrar, visualizar, baixar e excluir arquivos de uso interno do módulo Need."
+          />
+
+          <Space wrap style={{ justifyContent: 'space-between', width: '100%' }}>
+            <Upload {...uploadInternalProps}>
+              <Button
+                type="primary"
+                icon={<UploadOutlined />}
+                loading={uploadInternalDocument.isPending}
+              >
+                Enviar documento
+              </Button>
+            </Upload>
+
+            <Button
+              icon={<ReloadOutlined />}
+              loading={loadingInternalDocs}
+              onClick={() => refetchInternalDocs()}
+            >
+              Atualizar lista
+            </Button>
+          </Space>
+
+          <Card size="small" style={{ borderRadius: 18 }} styles={{ body: { padding: 12 } }}>
+            <List
+              loading={loadingInternalDocs}
+              locale={{ emptyText: 'Nenhum documento interno cadastrado' }}
+              dataSource={internalDocs}
+              renderItem={(item) => {
+                const isPdf = String(item.mimeType || '').includes('pdf');
+                const isImage = String(item.mimeType || '').includes('image');
+                const fileUrl = resolveAttachmentUrl(item.url);
+
+                return (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="visualizar"
+                        size="small"
+                        type="link"
+                        onClick={() => setPreviewInternalDoc(item)}
+                      >
+                        Visualizar
+                      </Button>,
+                      <Button
+                        key="baixar"
+                        size="small"
+                        type="link"
+                        onClick={() => window.open(fileUrl, '_blank')}
+                      >
+                        Baixar
+                      </Button>,
+                      <Popconfirm
+                        key="excluir"
+                        title="Excluir documento?"
+                        description="Essa ação não poderá ser desfeita."
+                        okText="Excluir"
+                        cancelText="Cancelar"
+                        onConfirm={() => deleteInternalDocument.mutate(item.id)}
+                      >
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          loading={
+                            deleteInternalDocument.isPending &&
+                            deleteInternalDocument.variables === item.id
+                          }
+                        >
+                          Excluir
+                        </Button>
+                      </Popconfirm>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={
+                        isPdf ? (
+                          <FilePdfOutlined style={{ fontSize: 20 }} />
+                        ) : isImage ? (
+                          <FileImageOutlined style={{ fontSize: 20 }} />
+                        ) : (
+                          <PaperClipOutlined style={{ fontSize: 20 }} />
+                        )
+                      }
+                      title={item.title || item.originalName}
+                      description={
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <div>{item.originalName}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                            {formatFileSize(item.size)} • {fmtDate(item.createdAt)}
+                          </div>
+                        </div>
+                      }
+                    />
+                  </List.Item>
+                );
+              }}
+            />
+          </Card>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!previewInternalDoc}
+        onCancel={() => setPreviewInternalDoc(null)}
+        footer={null}
+        title={previewInternalDoc?.title || previewInternalDoc?.originalName || 'Visualizar documento'}
+        width={1000}
+        destroyOnHidden
+      >
+        {previewInternalDoc ? (
+          String(previewInternalDoc.mimeType || '').includes('pdf') ? (
+            <iframe
+              src={resolveAttachmentUrl(previewInternalDoc.url)}
+              title={previewInternalDoc.originalName}
+              style={{ width: '100%', height: '75vh', border: 0, borderRadius: 12 }}
+            />
+          ) : String(previewInternalDoc.mimeType || '').includes('image') ? (
+            <div style={{ textAlign: 'center' }}>
+              <img
+                src={resolveAttachmentUrl(previewInternalDoc.url)}
+                alt={previewInternalDoc.originalName}
+                style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 12 }}
+              />
+            </div>
+          ) : (
+            <Empty
+              description={
+                <Space direction="vertical">
+                  <Text>Pré-visualização não disponível para este formato.</Text>
+                  <Button onClick={() => window.open(resolveAttachmentUrl(previewInternalDoc.url), '_blank')}>
+                    Abrir arquivo
+                  </Button>
+                </Space>
+              }
+            />
+          )
+        ) : null}
       </Modal>
     </div>
   );

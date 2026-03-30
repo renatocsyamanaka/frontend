@@ -96,7 +96,6 @@ export default function UserAddressModal({ open, onClose, userId, initial }: Pro
       lng: typeof it.lng === 'number' ? it.lng : null,
     };
 
-    // mantém o que usuário já digitou (ex: número/complemento) e só sobrescreve os que vieram
     form.setFieldsValue(patch);
     message.success('Endereço aplicado nos campos');
   };

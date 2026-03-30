@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import {
@@ -27,6 +27,7 @@ import {
   Empty,
   Divider,
   Image,
+  Pagination,
 } from 'antd';
 import {
   EditOutlined,
@@ -442,7 +443,7 @@ export function UsersPage() {
   const [fRoles, setFRoles] = useState<number[] | undefined>(undefined);
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [fManagerId, setFManagerId] = useState<number | undefined>(undefined);
-
+  const [tipoUsuario, setTipoUsuario] = useState<'COLABORADOR' | 'TECNICO'>('COLABORADOR');
   const [mapOpen, setMapOpen] = useState(false);
 
   const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
@@ -511,6 +512,12 @@ export function UsersPage() {
     const list = data || [];
 
     return list.filter((u) => {
+      const isWorker = isWorkerRoleByName(u.role?.name);
+
+      // 👉 AQUI ESTÁ O FILTRO PRINCIPAL
+      if (tipoUsuario === 'COLABORADOR' && isWorker) return false;
+      if (tipoUsuario === 'TECNICO' && !isWorker) return false;
+
       if (fSearch) {
         const q = fSearch.toLowerCase();
         const inName = (u.name || '').toLowerCase().includes(q);
@@ -529,7 +536,30 @@ export function UsersPage() {
 
       return true;
     });
-  }, [data, fSearch, fRoles, fActive, fManagerId]);
+  }, [data, tipoUsuario, fSearch, fRoles, fActive, fManagerId]);
+
+  // ================= PAGINAÇÃO =================
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const pageSize = isMobile ? 6 : 12;
+
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  // Resetar página quando filtros mudam
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [fSearch, fRoles, fActive, fManagerId, tipoUsuario]);
+
+  // Evitar página inválida
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [filtered.length, currentPage, pageSize]);
 
   const [workerOpen, setWorkerOpen] = useState(false);
   const [workerForm] = Form.useForm();
@@ -909,54 +939,197 @@ export function UsersPage() {
   const viewUserIsWorker = isWorkerRoleByName(viewUser?.role?.name);
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <Row gutter={[12, 12]} align="middle" justify="space-between">
-        <Col xs={24} md="auto">
-          <h2 style={{ margin: 0 }}>Colaboradores</h2>
-        </Col>
-
-        <Col xs={24} md="auto">
-          <Space
-            wrap
-            style={{
-              width: '100%',
-              justifyContent: isMobile ? 'flex-start' : 'flex-end',
-            }}
-          >
-            <Button block={isMobile} icon={<ReloadOutlined />} loading={isFetching} onClick={() => refetch()}>
-              Atualizar
-            </Button>
-
-            {canReviewRegistrationRequests && (
-              <Button
-                block={isMobile}
-                icon={<UserAddOutlined />}
-                onClick={() => {
-                  setRequestsOpen(true);
-                  refetchRequests();
+      <div
+        style={{
+          display: 'grid',
+          gap: 16,
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'hidden',
+        }}
+      >
+    <div
+      style={{
+        display: 'grid',
+        gap: 16,
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'clip',
+      }}
+    >
+      <Card
+        style={{
+          borderRadius: 24,
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+          width: '100%',
+          maxWidth: '100%',
+          overflow: 'hidden',
+        }}
+        bodyStyle={{
+          padding: isMobile ? 16 : 24,
+        }}
+      >
+        <Row
+          gutter={[16, 16]}
+          align="middle"
+          justify="space-between"
+          style={{ width: '100%', margin: 0 }}
+        >
+          <Col xs={24} md={14} style={{ minWidth: 0 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
+                  background: 'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 22,
+                  flexShrink: 0,
+                  boxShadow: '0 8px 18px rgba(22,119,255,0.22)',
                 }}
               >
-                Solicitações de cadastro
-              </Button>
-            )}
+                <TeamOutlined />
+              </div>
 
-            {canCreateAnyUser && (
-              <Button block={isMobile} type="primary" onClick={() => setCreateOpen(true)}>
-                Novo usuário
-              </Button>
-            )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: isMobile ? 22 : 28,
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {tipoUsuario === 'COLABORADOR' ? 'Colaboradores' : 'Técnicos'}
+                </div>
 
-            {canCreateWorker && (
-              <Button block={isMobile} onClick={() => setWorkerOpen(true)}>
-                Cadastrar prestador
-              </Button>
-            )}
-          </Space>
-        </Col>
-      </Row>
+                <div
+                  style={{
+                    color: '#64748b',
+                    fontSize: 14,
+                    marginTop: 4,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {tipoUsuario === 'COLABORADOR'
+                    ? 'Gerencie os colaboradores internos e acompanhe seus dados de acesso.'
+                    : 'Gerencie os técnicos e prestadores cadastrados no sistema.'}
+                </div>
+              </div>
+            </div>
+          </Col>
 
-      <Card size="small">
-        <Row gutter={[12, 12]}>
+          <Col xs={24} md="auto" style={{ minWidth: 0 }}>
+            <Space
+              wrap
+              size={[8, 8]}
+              style={{
+                width: '100%',
+                justifyContent: isMobile ? 'flex-start' : 'flex-end',
+              }}
+            >
+              <Button
+                icon={<ReloadOutlined />}
+                loading={isFetching}
+                onClick={() => refetch()}
+              >
+                Atualizar
+              </Button>
+
+              {canReviewRegistrationRequests && tipoUsuario === 'COLABORADOR' && (
+                <Button
+                  icon={<UserAddOutlined />}
+                  onClick={() => {
+                    setRequestsOpen(true);
+                    refetchRequests();
+                  }}
+                >
+                  Solicitações de cadastro
+                </Button>
+              )}
+
+              {canCreateAnyUser && tipoUsuario === 'COLABORADOR' && (
+                <Button
+                  type="primary"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  Novo usuário
+                </Button>
+              )}
+
+              {canCreateWorker && tipoUsuario === 'TECNICO' && (
+                <Button
+                  type="primary"
+                  onClick={() => setWorkerOpen(true)}
+                >
+                  Cadastrar prestador
+                </Button>
+              )}
+            </Space>
+          </Col>
+        </Row>
+
+        <div style={{ marginTop: 20 }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              width: '100%',
+            }}
+          >
+            <Button
+              type={tipoUsuario === 'COLABORADOR' ? 'primary' : 'default'}
+              onClick={() => setTipoUsuario('COLABORADOR')}
+              style={{
+                borderRadius: 12,
+                fontWeight: 600,
+                minWidth: isMobile ? undefined : 150,
+                flex: isMobile ? 1 : undefined,
+              }}
+            >
+              Colaboradores
+            </Button>
+
+            <Button
+              type={tipoUsuario === 'TECNICO' ? 'primary' : 'default'}
+              onClick={() => setTipoUsuario('TECNICO')}
+              style={{
+                borderRadius: 12,
+                fontWeight: 600,
+                minWidth: isMobile ? undefined : 150,
+                flex: isMobile ? 1 : undefined,
+              }}
+            >
+              Técnicos
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        size="small"
+        style={{
+          borderRadius: 18,
+          border: '1px solid #eef2f7',
+          boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)',
+          overflow: 'hidden',
+        }}
+        bodyStyle={{ padding: 16 }}
+      >
+        <Row gutter={[12, 12]} style={{ margin: 0 }}>
           <Col xs={24} md={8} lg={7}>
             <Input
               allowClear
@@ -977,6 +1150,7 @@ export function UsersPage() {
               options={roleOptions}
               optionFilterProp="label"
               style={{ width: '100%' }}
+              maxTagCount="responsive"
             />
           </Col>
 
@@ -1025,99 +1199,195 @@ export function UsersPage() {
         </Row>
       </Card>
 
-      <List
-        loading={isLoading}
-        grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4, xxl: 4 }}
-        dataSource={filtered}
-        rowKey={(u) => u.id}
-        pagination={{
-          pageSize: 12,
-          showSizeChanger: false,
-          hideOnSinglePage: true,
-          align: 'end',
-        }}
-        renderItem={(u) => {
-          const atendimentoLabel = getTipoAtendimentoLabel(u.tipoAtendimento, u.tipoAtendimentoDescricao);
-          const userIsWorker = isWorkerRoleByName(u.role?.name);
+      {isLoading ? (
+        <Card
+          style={{
+            borderRadius: 18,
+            textAlign: 'center',
+            padding: 32,
+          }}
+        >
+          <Spin />
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card
+          style={{
+            borderRadius: 18,
+          }}
+        >
+          <Empty description="Nenhum usuário encontrado" />
+        </Card>
+      ) : (
+        <>
+          <Row gutter={[16, 16]} style={{ margin: 0 }}>
+           {paginatedUsers.map((u) => {
+              const atendimentoLabel = getTipoAtendimentoLabel(
+                u.tipoAtendimento,
+                u.tipoAtendimentoDescricao
+              );
+              const userIsWorker = isWorkerRoleByName(u.role?.name);
 
-          return (
-            <List.Item>
-              <Card hoverable styles={{ body: { padding: 16 } }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    justifyContent: 'flex-end',
-                    marginBottom: 10,
-                  }}
-                >
-                  {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
-                  {userIsWorker && !!u.estoqueAvancado && <Tag color="purple">Estoque Avançado</Tag>}
-                  {userIsWorker && !!atendimentoLabel && <Tag color="cyan">{atendimentoLabel}</Tag>}
-                  {u.ocultarCargo && <Tag color="default">Cargo oculto</Tag>}
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <Avatar src={abs(u.avatarUrl)} size={56}>
-                    {u.name?.[0]}
-                  </Avatar>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Title
-                      level={5}
-                      style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              return (
+                <Col xs={24} sm={12} lg={8} xl={6} key={u.id}>
+                  <Card
+                    hoverable
+                    style={{
+                      borderRadius: 20,
+                      border: '1px solid #eaeef5',
+                      boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
+                      height: '100%',
+                    }}
+                    bodyStyle={{
+                      padding: 18,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        minHeight: 28,
+                        marginBottom: 14,
+                      }}
                     >
-                      {u.name}
-                    </Title>
-
-                    <div style={{ color: '#64748b' }}>
-                      {getDisplayRoleLabel(u.role?.name, u.cargoDescritivo, u.ocultarCargo)}
+                      {u.isActive ? <Tag color="green">Ativo</Tag> : <Tag>Inativo</Tag>}
+                      {userIsWorker && !!u.estoqueAvancado && (
+                        <Tag color="purple">Estoque avançado</Tag>
+                      )}
+                      {userIsWorker && !!atendimentoLabel && (
+                        <Tag color="cyan">{atendimentoLabel}</Tag>
+                      )}
+                      {u.ocultarCargo && <Tag color="default">Cargo oculto</Tag>}
                     </div>
-                    <div style={{ color: '#94a3b8' }}>Gestor: {u.manager?.name || '-'}</div>
 
-                    {Array.isArray(u.sectors) && u.sectors.length > 0 && (
-                      <div style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        Setor: {u.sectors.map(getSectorLabel).join(', ')}
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 14,
+                        alignItems: 'flex-start',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      <Avatar
+                        src={abs(u.avatarUrl)}
+                        size={58}
+                        style={{
+                          flexShrink: 0,
+                          background: '#dbeafe',
+                          color: '#1d4ed8',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {u.name?.[0]}
+                      </Avatar>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Title
+                          level={5}
+                          style={{
+                            margin: 0,
+                            lineHeight: 1.25,
+                            fontSize: 18,
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {u.name}
+                        </Title>
+
+                        <div
+                          style={{
+                            color: '#475569',
+                            marginTop: 6,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {getDisplayRoleLabel(u.role?.name, u.cargoDescritivo, u.ocultarCargo)}
+                        </div>
+
+                        <div style={{ color: '#94a3b8', marginTop: 8 }}>
+                          Gestor: {u.manager?.name || '-'}
+                        </div>
+
+                        {Array.isArray(u.sectors) && u.sectors.length > 0 && (
+                          <div style={{ color: '#94a3b8', marginTop: 4 }}>
+                            Setor: {u.sectors.map(getSectorLabel).join(', ')}
+                          </div>
+                        )}
+
+                        {userIsWorker && !!atendimentoLabel && (
+                          <div style={{ color: '#94a3b8', marginTop: 4 }}>
+                            Atendimento: {atendimentoLabel}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
 
-                    {userIsWorker && !!atendimentoLabel && (
-                      <div style={{ color: '#94a3b8' }}>Atendimento: {atendimentoLabel}</div>
-                    )}
-                  </div>
-                </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                        gap: 8,
+                        marginTop: 18,
+                      }}
+                    >
+                      <Button
+                        icon={<EyeOutlined />}
+                        onClick={() => {
+                          setViewUser(u);
+                          setViewOpen(true);
+                        }}
+                      >
+                        Informações
+                      </Button>
 
-                <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <Button
-                    block={isMobile}
-                    icon={<EyeOutlined />}
-                    onClick={() => {
-                      setViewUser(u);
-                      setViewOpen(true);
-                    }}
-                  >
-                    Informações
-                  </Button>
+                      <Button
+                        icon={<ApartmentOutlined />}
+                        onClick={() => {
+                          setViewUser(u);
+                          setStructureOpen(true);
+                          fetchStructure(u.id);
+                        }}
+                      >
+                        Estrutura
+                      </Button>
+                    </div>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
 
-                  <Button
-                    block={isMobile}
-                    icon={<ApartmentOutlined />}
-                    onClick={() => {
-                      setViewUser(u);
-                      setStructureOpen(true);
-                      fetchStructure(u.id);
-                    }}
-                  >
-                    Estrutura
-                  </Button>
-                </div>
-              </Card>
-            </List.Item>
-          );
-        }}
-      />
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+              marginTop: 20,
+            }}
+          >
+            <Text type="secondary">
+              Total: {filtered.length} {filtered.length === 1 ? 'registro' : 'registros'}
+            </Text>
+
+            <Pagination
+              current={currentPage}
+              pageSize={pageSize}
+              total={filtered.length}
+              onChange={(page) => setCurrentPage(page)}
+              showSizeChanger={false}
+            />
+          </div>
+        </>
+      )}
+    </div>
+
 
       <Modal
         title={
@@ -1234,7 +1504,7 @@ export function UsersPage() {
             paddingTop: 12,
             maxHeight: isMobile ? 'calc(100vh - 120px)' : '78vh',
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'clip',
           },
         }}
       >
@@ -1867,431 +2137,431 @@ export function UsersPage() {
       </Modal>
       )}
 
-<Modal
-  title={`Editar: ${editing?.name || ''}`}
-  open={editOpen}
-  onCancel={() => {
-    setEditOpen(false);
-    setEditing(null);
-    setEditAvatarFile(null);
-  }}
-  onOk={() => editForm.submit()}
-  destroyOnHidden
-  width={isMobile ? '100%' : 1380}
-  centered
-  style={isMobile ? { top: 0, padding: 0 } : undefined}
-  styles={{
-    body: {
-      paddingTop: 12,
-      maxHeight: isMobile ? 'calc(100vh - 110px)' : '80vh',
-      overflowY: 'auto',
-      overflowX: 'hidden',
-    },
-  }}
->
-  <Form
-    layout="vertical"
-    form={editForm}
-    onFinish={(v) => {
-      const isWorker = isWorkerRoleId(v.roleId);
+      <Modal
+        title={`Editar: ${editing?.name || ''}`}
+        open={editOpen}
+        onCancel={() => {
+          setEditOpen(false);
+          setEditing(null);
+          setEditAvatarFile(null);
+        }}
+        onOk={() => editForm.submit()}
+        destroyOnHidden
+        width={isMobile ? '100%' : 1380}
+        centered
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+        styles={{
+          body: {
+            paddingTop: 12,
+            maxHeight: isMobile ? 'calc(100vh - 110px)' : '80vh',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+          },
+        }}
+      >
+        <Form
+          layout="vertical"
+          form={editForm}
+          onFinish={(v) => {
+            const isWorker = isWorkerRoleId(v.roleId);
 
-      const payload: any = {
-        name: v.name,
-        email: v.email || null,
-        sex: v.sex,
-        roleId: v.roleId,
-        managerId: v.managerId ?? null,
-        isActive: v.isActive,
-        phone: v.phone ?? null,
-        cargoDescritivo: v.cargoDescritivo?.trim() || null,
-        ocultarCargo: !!v.ocultarCargo,
-        sectors:
-          Array.isArray(v.sectors) && v.sectors.length
-            ? v.sectors
-            : DEFAULT_SECTORS,
-        permissions:
-          Array.isArray(v.permissions) && v.permissions.length
-            ? v.permissions
-            : DEFAULT_PERMISSIONS,
+            const payload: any = {
+              name: v.name,
+              email: v.email || null,
+              sex: v.sex,
+              roleId: v.roleId,
+              managerId: v.managerId ?? null,
+              isActive: v.isActive,
+              phone: v.phone ?? null,
+              cargoDescritivo: v.cargoDescritivo?.trim() || null,
+              ocultarCargo: !!v.ocultarCargo,
+              sectors:
+                Array.isArray(v.sectors) && v.sectors.length
+                  ? v.sectors
+                  : DEFAULT_SECTORS,
+              permissions:
+                Array.isArray(v.permissions) && v.permissions.length
+                  ? v.permissions
+                  : DEFAULT_PERMISSIONS,
 
-        vendorCode: isWorker ? v.vendorCode ?? null : null,
-        serviceAreaCode: isWorker ? v.serviceAreaCode ?? null : null,
-        serviceAreaName: isWorker ? v.serviceAreaName ?? null : null,
-        tipoAtendimento: isWorker ? v.tipoAtendimento ?? null : null,
-        estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
-      };
+              vendorCode: isWorker ? v.vendorCode ?? null : null,
+              serviceAreaCode: isWorker ? v.serviceAreaCode ?? null : null,
+              serviceAreaName: isWorker ? v.serviceAreaName ?? null : null,
+              tipoAtendimento: isWorker ? v.tipoAtendimento ?? null : null,
+              estoqueAvancado: isWorker ? !!v.estoqueAvancado : false,
+            };
 
-      updateUser.mutate({ id: editing!.id, payload });
-    }}
-  >
-    <Row gutter={[16, 16]} align="stretch">
-      <Col xs={24} xl={13}>
-        <Card
-          size="small"
-          title="Dados do colaborador"
-          style={{ borderRadius: 14, height: '100%' }}
-          styles={{ body: { paddingBottom: 8 } }}
+            updateUser.mutate({ id: editing!.id, payload });
+          }}
         >
-          <Row gutter={[12, 12]}>
-            <Col xs={24}>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 16,
-                  alignItems: 'center',
-                  padding: 12,
-                  border: '1px dashed #d9d9d9',
-                  borderRadius: 12,
-                  background: '#fafafa',
-                }}
-              >
-                <div
-                  style={{
-                    width: 88,
-                    height: 88,
-                    borderRadius: 14,
-                    overflow: 'hidden',
-                    border: '1px solid #d9d9d9',
-                    background: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {editAvatarFile ? (
-                    <img
-                      src={URL.createObjectURL(editAvatarFile)}
-                      alt="preview"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <Avatar
-                      src={abs(editing?.avatarUrl)}
-                      size={88}
-                      style={{ borderRadius: 14 }}
-                    >
-                      {editing?.name?.[0]}
-                    </Avatar>
-                  )}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    Foto do colaborador
-                  </div>
-                  <div style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 10 }}>
-                    Atualize a imagem de identificação do colaborador.
-                  </div>
-
-                  <Space wrap>
-                    <Upload
-                      accept="image/*"
-                      maxCount={1}
-                      beforeUpload={(file) => {
-                        setEditAvatarFile(file);
-                        return false;
-                      }}
-                      onRemove={() => setEditAvatarFile(null)}
-                      showUploadList={false}
-                    >
-                      <Button icon={<UploadOutlined />}>Selecionar foto</Button>
-                    </Upload>
-
-                    {editAvatarFile && (
-                      <Button onClick={() => setEditAvatarFile(null)}>
-                        Remover nova foto
-                      </Button>
-                    )}
-                  </Space>
-                </div>
-              </div>
-            </Col>
-
-            <Col xs={24} md={14}>
-              <Form.Item name="name" label="Nome" rules={[{ required: true, message: 'Informe o nome' }]}>
-                <Input placeholder="Nome do colaborador" />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={10}>
-              <Form.Item name="phone" label="Telefone">
-                <Input
-                  placeholder="(11) 99999-9999"
-                  maxLength={15}
-                  value={editForm.getFieldValue('phone')}
-                  onChange={(e) => {
-                    editForm.setFieldValue('phone', formatPhone(e.target.value));
-                  }}
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={14}>
-              <Form.Item
-                name="email"
-                label="E-mail"
-                rules={
-                  editSelectedIsWorker
-                    ? [{ type: 'email', message: 'E-mail inválido' }]
-                    : [{ required: true, type: 'email', message: 'Informe um e-mail válido' }]
-                }
-              >
-                <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : 'email@empresa.com'} />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={10}>
-              <Form.Item name="sex" label="Sexo">
-                <Select
-                  allowClear
-                  placeholder="Selecione"
-                  options={[
-                    { value: 'M', label: 'Masculino' },
-                    { value: 'F', label: 'Feminino' },
-                    { value: 'O', label: 'Outro' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione o cargo' }]}>
-                <Select
-                  allowClear
-                  placeholder="Selecione"
-                  options={canEditAnyUser ? roleOptions : workerRoleOptions}
-                  optionFilterProp="label"
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="cargoDescritivo" label="Cargo descritivo">
-                <Input
-                  placeholder="Ex.: Supervisor de Atendimento / Coordenador de Operações"
-                  maxLength={150}
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={8}>
-              <Form.Item name="managerId" label="Gestor">
-                <Select
-                  allowClear
-                  showSearch
-                  placeholder="Selecione o gestor"
-                  options={managerOptions}
-                  optionFilterProp="label"
-                  filterOption={(input, option) =>
-                    String(option?.label || '').toLowerCase().includes(input.toLowerCase())
-                  }
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24}>
-              <div
-                style={{
-                  border: '1px solid #f0f0f0',
-                  borderRadius: 12,
-                  padding: 12,
-                  background: '#fafafa',
-                }}
+          <Row gutter={[16, 16]} align="stretch">
+            <Col xs={24} xl={13}>
+              <Card
+                size="small"
+                title="Dados do colaborador"
+                style={{ borderRadius: 14, height: '100%' }}
+                styles={{ body: { paddingBottom: 8 } }}
               >
                 <Row gutter={[12, 12]}>
-                  <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
-                    <Form.Item
-                      name="ocultarCargo"
-                      label="Ocultar cargo"
-                      valuePropName="checked"
-                      style={{ marginBottom: 0 }}
+                  <Col xs={24}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 16,
+                        alignItems: 'center',
+                        padding: 12,
+                        border: '1px dashed #d9d9d9',
+                        borderRadius: 12,
+                        background: '#fafafa',
+                      }}
                     >
-                      <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                      <div
+                        style={{
+                          width: 88,
+                          height: 88,
+                          borderRadius: 14,
+                          overflow: 'hidden',
+                          border: '1px solid #d9d9d9',
+                          background: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {editAvatarFile ? (
+                          <img
+                            src={URL.createObjectURL(editAvatarFile)}
+                            alt="preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <Avatar
+                            src={abs(editing?.avatarUrl)}
+                            size={88}
+                            style={{ borderRadius: 14 }}
+                          >
+                            {editing?.name?.[0]}
+                          </Avatar>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                          Foto do colaborador
+                        </div>
+                        <div style={{ color: '#8c8c8c', fontSize: 13, marginBottom: 10 }}>
+                          Atualize a imagem de identificação do colaborador.
+                        </div>
+
+                        <Space wrap>
+                          <Upload
+                            accept="image/*"
+                            maxCount={1}
+                            beforeUpload={(file) => {
+                              setEditAvatarFile(file);
+                              return false;
+                            }}
+                            onRemove={() => setEditAvatarFile(null)}
+                            showUploadList={false}
+                          >
+                            <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+                          </Upload>
+
+                          {editAvatarFile && (
+                            <Button onClick={() => setEditAvatarFile(null)}>
+                              Remover nova foto
+                            </Button>
+                          )}
+                        </Space>
+                      </div>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={14}>
+                    <Form.Item name="name" label="Nome" rules={[{ required: true, message: 'Informe o nome' }]}>
+                      <Input placeholder="Nome do colaborador" />
                     </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item name="phone" label="Telefone">
+                      <Input
+                        placeholder="(11) 99999-9999"
+                        maxLength={15}
+                        value={editForm.getFieldValue('phone')}
+                        onChange={(e) => {
+                          editForm.setFieldValue('phone', formatPhone(e.target.value));
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={14}>
+                    <Form.Item
+                      name="email"
+                      label="E-mail"
+                      rules={
+                        editSelectedIsWorker
+                          ? [{ type: 'email', message: 'E-mail inválido' }]
+                          : [{ required: true, type: 'email', message: 'Informe um e-mail válido' }]
+                      }
+                    >
+                      <Input placeholder={editSelectedIsWorker ? 'Opcional para prestador sem login' : 'email@empresa.com'} />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={10}>
+                    <Form.Item name="sex" label="Sexo">
+                      <Select
+                        allowClear
+                        placeholder="Selecione"
+                        options={[
+                          { value: 'M', label: 'Masculino' },
+                          { value: 'F', label: 'Feminino' },
+                          { value: 'O', label: 'Outro' },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="roleId" label="Cargo" rules={[{ required: true, message: 'Selecione o cargo' }]}>
+                      <Select
+                        allowClear
+                        placeholder="Selecione"
+                        options={canEditAnyUser ? roleOptions : workerRoleOptions}
+                        optionFilterProp="label"
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="cargoDescritivo" label="Cargo descritivo">
+                      <Input
+                        placeholder="Ex.: Supervisor de Atendimento / Coordenador de Operações"
+                        maxLength={150}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={8}>
+                    <Form.Item name="managerId" label="Gestor">
+                      <Select
+                        allowClear
+                        showSearch
+                        placeholder="Selecione o gestor"
+                        options={managerOptions}
+                        optionFilterProp="label"
+                        filterOption={(input, option) =>
+                          String(option?.label || '').toLowerCase().includes(input.toLowerCase())
+                        }
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24}>
+                    <div
+                      style={{
+                        border: '1px solid #f0f0f0',
+                        borderRadius: 12,
+                        padding: 12,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <Row gutter={[12, 12]}>
+                        <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
+                          <Form.Item
+                            name="ocultarCargo"
+                            label="Ocultar cargo"
+                            valuePropName="checked"
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                          </Form.Item>
+                        </Col>
+
+                        {editSelectedIsWorker && (
+                          <Col xs={24} md={8}>
+                            <Form.Item
+                              name="estoqueAvancado"
+                              label="Estoque avançado"
+                              valuePropName="checked"
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Switch checkedChildren="Sim" unCheckedChildren="Não" />
+                            </Form.Item>
+                          </Col>
+                        )}
+
+                        <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
+                          <Form.Item
+                            name="isActive"
+                            label="Usuário ativo"
+                            valuePropName="checked"
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Switch checkedChildren="Ativo" unCheckedChildren="Inativo" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    </div>
                   </Col>
 
                   {editSelectedIsWorker && (
-                    <Col xs={24} md={8}>
-                      <Form.Item
-                        name="estoqueAvancado"
-                        label="Estoque avançado"
-                        valuePropName="checked"
-                        style={{ marginBottom: 0 }}
-                      >
-                        <Switch checkedChildren="Sim" unCheckedChildren="Não" />
-                      </Form.Item>
-                    </Col>
+                    <>
+                      <Col xs={24} md={6}>
+                        <Form.Item name="vendorCode" label="Cód. fornecedor">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="serviceAreaCode" label="Cód. área">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="tipoAtendimento" label="Atendimento">
+                          <Select
+                            allowClear
+                            placeholder="Selecione"
+                            options={TIPO_ATENDIMENTO_OPTIONS}
+                          />
+                        </Form.Item>
+                      </Col>
+
+                      <Col xs={24} md={6}>
+                        <Form.Item name="serviceAreaName" label="Área">
+                          <Input />
+                        </Form.Item>
+                      </Col>
+                    </>
                   )}
 
-                  <Col xs={24} md={editSelectedIsWorker ? 8 : 12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
-                      name="isActive"
-                      label="Usuário ativo"
-                      valuePropName="checked"
-                      style={{ marginBottom: 0 }}
+                      name="sectors"
+                      label="Setor"
+                      rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
                     >
-                      <Switch checkedChildren="Ativo" unCheckedChildren="Inativo" />
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder="Selecione o(s) setor(es)"
+                        options={SECTOR_OPTIONS}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      name="permissions"
+                      label="Abas / Permissões de acesso"
+                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                      tooltip="Selecione as páginas que esse usuário poderá acessar"
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        showSearch
+                        optionFilterProp="searchLabel"
+                        placeholder="Selecione as abas liberadas para este usuário"
+                        options={permissionOptionsWithIcons}
+                        maxTagCount="responsive"
+                      />
                     </Form.Item>
                   </Col>
                 </Row>
-              </div>
+              </Card>
             </Col>
 
-            {editSelectedIsWorker && (
-              <>
-                <Col xs={24} md={6}>
-                  <Form.Item name="vendorCode" label="Cód. fornecedor">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="serviceAreaCode" label="Cód. área">
-                    <Input />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="tipoAtendimento" label="Atendimento">
-                    <Select
-                      allowClear
-                      placeholder="Selecione"
-                      options={TIPO_ATENDIMENTO_OPTIONS}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <Form.Item name="serviceAreaName" label="Área">
-                    <Input />
-                  </Form.Item>
-                </Col>
-              </>
-            )}
-
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="sectors"
-                label="Setor"
-                rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+            <Col xs={24} xl={11}>
+              <Card
+                size="small"
+                title="Resumo visual"
+                style={{ borderRadius: 14, height: '100%' }}
+                styles={{ body: { paddingBottom: 8 } }}
               >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Selecione o(s) setor(es)"
-                  options={SECTOR_OPTIONS}
-                />
-              </Form.Item>
-            </Col>
+                <div
+                  style={{
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 14,
+                    padding: 18,
+                    background: 'linear-gradient(180deg, #fafcff 0%, #f5f9ff 100%)',
+                    marginBottom: 16,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <Avatar src={editAvatarFile ? URL.createObjectURL(editAvatarFile) : abs(editing?.avatarUrl)} size={68}>
+                      {editForm.getFieldValue('name')?.[0] || editing?.name?.[0]}
+                    </Avatar>
 
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="permissions"
-                label="Abas / Permissões de acesso"
-                rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
-                tooltip="Selecione as páginas que esse usuário poderá acessar"
-              >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  showSearch
-                  optionFilterProp="searchLabel"
-                  placeholder="Selecione as abas liberadas para este usuário"
-                  options={permissionOptionsWithIcons}
-                  maxTagCount="responsive"
-                />
-              </Form.Item>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>
+                        {editForm.getFieldValue('name') || editing?.name || 'Colaborador'}
+                      </div>
+                      <div style={{ color: '#6b7280', marginTop: 4 }}>
+                        {editForm.getFieldValue('cargoDescritivo') ||
+                          (canEditAnyUser
+                            ? roleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label
+                            : workerRoleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label) ||
+                          'Cargo não informado'}
+                      </div>
+                      <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
+                        <Tag color={editForm.getFieldValue('isActive') ? 'green' : 'default'}>
+                          {editForm.getFieldValue('isActive') ? 'Ativo' : 'Inativo'}
+                        </Tag>
+                        {editForm.getFieldValue('ocultarCargo') && <Tag color="gold">Cargo oculto</Tag>}
+                        {editForm.getFieldValue('estoqueAvancado') && <Tag color="blue">Estoque avançado</Tag>}
+                      </Space>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 14,
+                    padding: 16,
+                    background: '#fff',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 12 }}>Permissões selecionadas</div>
+
+                  <Space wrap size={[8, 8]}>
+                    {((editForm.getFieldValue('permissions') as string[]) || []).length ? (
+                      ((editForm.getFieldValue('permissions') as string[]) || []).map((perm) => {
+                        const option = PERMISSION_OPTIONS.find((p) => p.value === perm);
+                        return (
+                          <Tag
+                            key={perm}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: 999,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            {PERMISSION_ICON_MAP[perm] || <AppstoreOutlined />}
+                            <span>{option?.label || perm}</span>
+                          </Tag>
+                        );
+                      })
+                    ) : (
+                      <span style={{ color: '#8c8c8c' }}>Nenhuma permissão selecionada</span>
+                    )}
+                  </Space>
+                </div>
+              </Card>
             </Col>
           </Row>
-        </Card>
-      </Col>
-
-      <Col xs={24} xl={11}>
-        <Card
-          size="small"
-          title="Resumo visual"
-          style={{ borderRadius: 14, height: '100%' }}
-          styles={{ body: { paddingBottom: 8 } }}
-        >
-          <div
-            style={{
-              border: '1px solid #f0f0f0',
-              borderRadius: 14,
-              padding: 18,
-              background: 'linear-gradient(180deg, #fafcff 0%, #f5f9ff 100%)',
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <Avatar src={editAvatarFile ? URL.createObjectURL(editAvatarFile) : abs(editing?.avatarUrl)} size={68}>
-                {editForm.getFieldValue('name')?.[0] || editing?.name?.[0]}
-              </Avatar>
-
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>
-                  {editForm.getFieldValue('name') || editing?.name || 'Colaborador'}
-                </div>
-                <div style={{ color: '#6b7280', marginTop: 4 }}>
-                  {editForm.getFieldValue('cargoDescritivo') ||
-                    (canEditAnyUser
-                      ? roleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label
-                      : workerRoleOptions.find((r) => r.value === editForm.getFieldValue('roleId'))?.label) ||
-                    'Cargo não informado'}
-                </div>
-                <Space wrap size={[8, 8]} style={{ marginTop: 10 }}>
-                  <Tag color={editForm.getFieldValue('isActive') ? 'green' : 'default'}>
-                    {editForm.getFieldValue('isActive') ? 'Ativo' : 'Inativo'}
-                  </Tag>
-                  {editForm.getFieldValue('ocultarCargo') && <Tag color="gold">Cargo oculto</Tag>}
-                  {editForm.getFieldValue('estoqueAvancado') && <Tag color="blue">Estoque avançado</Tag>}
-                </Space>
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: '1px solid #f0f0f0',
-              borderRadius: 14,
-              padding: 16,
-              background: '#fff',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>Permissões selecionadas</div>
-
-            <Space wrap size={[8, 8]}>
-              {((editForm.getFieldValue('permissions') as string[]) || []).length ? (
-                ((editForm.getFieldValue('permissions') as string[]) || []).map((perm) => {
-                  const option = PERMISSION_OPTIONS.find((p) => p.value === perm);
-                  return (
-                    <Tag
-                      key={perm}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: 999,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {PERMISSION_ICON_MAP[perm] || <AppstoreOutlined />}
-                      <span>{option?.label || perm}</span>
-                    </Tag>
-                  );
-                })
-              ) : (
-                <span style={{ color: '#8c8c8c' }}>Nenhuma permissão selecionada</span>
-              )}
-            </Space>
-          </div>
-        </Card>
-      </Col>
-    </Row>
-  </Form>
-</Modal>
+        </Form>
+      </Modal>
 
       {addrUser && (
         <UserAddressModal
