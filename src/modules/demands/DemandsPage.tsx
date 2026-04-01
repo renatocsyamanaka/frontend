@@ -100,10 +100,19 @@ type Demand = {
   deletedAt?: string | null;
 };
 
+type DashboardResponsibilityType =
+  | 'DASHBOARD'
+  | 'PROGRAMACAO'
+  | 'BOOT'
+  | 'PLANILHA'
+  | 'OUTROS';
+
 type DashboardActivity = {
   id: number;
   workspace: string;
   nome: string;
+  tipoResponsabilidade?: DashboardResponsibilityType | string | null;
+  dashboardLink?: string | null;
   periodicidade: 'DIARIO' | 'SEMANAL' | 'MENSAL' | string;
   diaAplicacao?: string | null;
   responsavelId?: number | null;
@@ -186,6 +195,25 @@ const PERIODICIDADE_OPTIONS = [
   { label: 'Semanal', value: 'SEMANAL' },
   { label: 'Mensal', value: 'MENSAL' },
 ];
+const RESPONSIBILITY_TYPE_OPTIONS = [
+  { label: 'Dashboard', value: 'DASHBOARD' },
+  { label: 'Programação', value: 'PROGRAMACAO' },
+  { label: 'Boot', value: 'BOOT' },
+  { label: 'Planilha', value: 'PLANILHA' },
+  { label: 'Outros', value: 'OUTROS' },
+];
+
+function getResponsibilityTypeLabel(value?: string | null) {
+  const map: Record<string, string> = {
+    DASHBOARD: 'Dashboard',
+    PROGRAMACAO: 'Programação',
+    BOOT: 'Boot',
+    PLANILHA: 'Planilha',
+    OUTROS: 'Outros',
+  };
+
+  return map[normalizeText(value).toUpperCase()] || normalizeText(value) || '-';
+}
 
 const TYPE_LABEL: Record<string, string> = {
   DEV_WEB: 'Dev Web',
@@ -598,6 +626,7 @@ export default function DemandsPage() {
     activityForm.setFieldsValue({
       periodicidade: 'DIARIO',
       urgencia: 'MEDIA',
+      tipoResponsabilidade: 'DASHBOARD',
     });
     setActivityFormOpen(true);
   };
@@ -607,6 +636,8 @@ export default function DemandsPage() {
     activityForm.setFieldsValue({
       workspace: record.workspace || undefined,
       nome: record.nome || undefined,
+      tipoResponsabilidade: record.tipoResponsabilidade || undefined,
+      dashboardLink: record.dashboardLink || undefined,
       periodicidade: record.periodicidade || undefined,
       diaAplicacao: record.diaAplicacao || undefined,
       responsavelId: record.responsavelId || undefined,
@@ -624,6 +655,11 @@ export default function DemandsPage() {
       const payload = {
         workspace: values.workspace,
         nome: values.nome,
+        tipoResponsabilidade: values.tipoResponsabilidade || null,
+        dashboardLink:
+          values.tipoResponsabilidade === 'DASHBOARD'
+            ? values.dashboardLink || null
+            : null,
         periodicidade: values.periodicidade,
         diaAplicacao: values.diaAplicacao || null,
         responsavelId: values.responsavelId || null,
@@ -775,6 +811,37 @@ export default function DemandsPage() {
       dataIndex: 'nome',
       key: 'nome',
       render: (value) => value || '-',
+    },
+    {
+      title: 'Tipo de responsabilidade',
+      dataIndex: 'tipoResponsabilidade',
+      key: 'tipoResponsabilidade',
+      render: (value) => getResponsibilityTypeLabel(value),
+    },
+    {
+      title: 'Dashboard',
+      dataIndex: 'dashboardLink',
+      key: 'dashboardLink',
+      render: (value) =>
+        value ? (
+          <Tooltip title="Abrir dashboard">
+            <Button
+              type="link"
+              href={value}
+              target="_blank"
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <img
+                src="https://upload.wikimedia.org/wikipedia/commons/c/cf/New_Power_BI_Logo.svg"
+                alt="Power BI"
+                style={{ width: 18, height: 18 }}
+              />
+              Abrir
+            </Button>
+          </Tooltip>
+        ) : (
+          '-'
+        ),
     },
     {
       title: 'Periodicidade',
@@ -1348,6 +1415,57 @@ export default function DemandsPage() {
                 rules={[{ required: true, message: 'Informe o nome.' }]}
               >
                 <Input />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item
+                label="Tipo de responsabilidade"
+                name="tipoResponsabilidade"
+                rules={[{ required: true, message: 'Selecione o tipo de responsabilidade.' }]}
+              >
+                <Select options={RESPONSIBILITY_TYPE_OPTIONS} />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={16}>
+              <Form.Item shouldUpdate noStyle>
+                {({ getFieldValue }) => {
+                  const link = getFieldValue('dashboardLink');
+
+                  return getFieldValue('tipoResponsabilidade') === 'DASHBOARD' ? (
+                    <Form.Item
+                      label="Link do dashboard"
+                      name="dashboardLink"
+                      rules={[
+                        { required: true, message: 'Informe o link do dashboard.' },
+                        { type: 'url', message: 'Informe uma URL válida.' },
+                      ]}
+                    >
+                      <Input
+                        placeholder="https://..."
+                        addonAfter={
+                          <Tooltip title="Abrir dashboard">
+                            <Button
+                              type="text"
+                              href={link}
+                              target="_blank"
+                              disabled={!link || !String(link).startsWith('http')}
+                              style={{ display: 'flex', alignItems: 'center' }}
+                              icon={
+                                <img
+                                  src="https://upload.wikimedia.org/wikipedia/commons/c/cf/New_Power_BI_Logo.svg"
+                                  alt="Power BI"
+                                  style={{ width: 16 }}
+                                />
+                              }
+                            />
+                          </Tooltip>
+                        }
+                      />
+                    </Form.Item>
+                  ) : null;
+                }}
               </Form.Item>
             </Col>
 
