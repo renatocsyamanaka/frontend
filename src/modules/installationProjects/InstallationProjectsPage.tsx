@@ -21,11 +21,17 @@ import {
   Pagination,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, ReloadOutlined, SearchOutlined,BarChartOutlined  } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  BarChartOutlined,
+} from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../../lib/api';
+
 type Client = { id: number; name: string };
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
 type RoleLite = { id: number; name: string; level: number };
@@ -338,38 +344,38 @@ export default function InstallationProjectsPage() {
     refetchOnWindowFocus: false,
   });
 
-const usersQuery = useQuery<UserLite[]>({
-  queryKey: ['users'],
-  queryFn: async () => {
-    const res = await api.get('/users');
-    return unwrap<UserLite[]>(res.data);
-  },
-  staleTime: 60_000,
-  retry: false,
-  refetchOnWindowFocus: false,
-});
+  const usersQuery = useQuery<UserLite[]>({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await api.get('/users');
+      return unwrap<UserLite[]>(res.data);
+    },
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
-const allUsers = usersQuery.data || [];
+  const allUsers = usersQuery.data || [];
 
-const technicianOptions: Option[] = useMemo(() => {
-  const q = techSearch.trim().toLowerCase();
+  const technicianOptions: Option[] = useMemo(() => {
+    const q = techSearch.trim().toLowerCase();
 
-  return allUsers
-    .filter(isTechnicianOrPSO)
-    .filter((u) => !q || String(u.name || '').toLowerCase().includes(q))
-    .map((u) => ({ id: u.id, name: u.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}, [allUsers, techSearch]);
+    return allUsers
+      .filter(isTechnicianOrPSO)
+      .filter((u) => !q || String(u.name || '').toLowerCase().includes(q))
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allUsers, techSearch]);
 
-const supervisorOptions: Option[] = useMemo(() => {
-  const q = supervisorSearch.trim().toLowerCase();
+  const supervisorOptions: Option[] = useMemo(() => {
+    const q = supervisorSearch.trim().toLowerCase();
 
-  return allUsers
-    .filter(isSupervisor)
-    .filter((u) => !q || String(u.name || '').toLowerCase().includes(q))
-    .map((u) => ({ id: u.id, name: u.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}, [allUsers, supervisorSearch]);
+    return allUsers
+      .filter(isSupervisor)
+      .filter((u) => !q || String(u.name || '').toLowerCase().includes(q))
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allUsers, supervisorSearch]);
 
   const projectsQuery = useQuery<InstallationProject[]>({
     queryKey: ['installation-projects', { status }],
@@ -636,9 +642,9 @@ const supervisorOptions: Option[] = useMemo(() => {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
                         <div style={{ minWidth: 0 }}>
-                            <Typography.Text strong style={{ fontSize: 14 }}>
-                              <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
-                            </Typography.Text>
+                          <Typography.Text strong style={{ fontSize: 14 }}>
+                            <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                          </Typography.Text>
 
                           <div style={{ marginTop: 6 }}>
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -787,18 +793,8 @@ const supervisorOptions: Option[] = useMemo(() => {
         <Form form={form} layout="vertical" initialValues={{ trucksTotal: 1, equipmentsPerDay: 1 }}>
           <div style={gridStyle('1fr 1fr')}>
             <Form.Item
-              label="Técnico / Prestador (obrigatório)"
+              label="Técnico / Prestador"
               name="technicianIds"
-              rules={[
-                { required: true, message: 'Selecione pelo menos um técnico/prestador' },
-                {
-                  validator: async (_, value) => {
-                    if (!Array.isArray(value) || !value.length) {
-                      throw new Error('Selecione pelo menos um técnico/prestador');
-                    }
-                  },
-                },
-              ]}
             >
               <Select
                 mode="multiple"
@@ -811,7 +807,9 @@ const supervisorOptions: Option[] = useMemo(() => {
                 }}
                 loading={usersQuery.isLoading}
                 options={technicianOptions.map((t) => ({ value: t.id, label: t.name }))}
-                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'}
+                notFoundContent={
+                  usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'
+                }
               />
             </Form.Item>
 
@@ -830,7 +828,9 @@ const supervisorOptions: Option[] = useMemo(() => {
                 }}
                 loading={usersQuery.isLoading}
                 options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
-                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'}
+                notFoundContent={
+                  usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'
+                }
               />
             </Form.Item>
 

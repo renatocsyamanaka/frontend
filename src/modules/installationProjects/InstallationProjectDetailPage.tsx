@@ -21,6 +21,7 @@ import {
   Grid,
   Progress,
   Alert,
+  Popconfirm,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -34,6 +35,7 @@ import {
   CalendarOutlined,
   UploadOutlined,
   ExclamationCircleOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -293,6 +295,7 @@ export default function InstallationProjectDetailPage() {
   const [itemOpen, setItemOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressListOpen, setProgressListOpen] = useState(false);
+  const [editingProgress, setEditingProgress] = useState<ProjectProgress | null>(null);
 
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
@@ -301,6 +304,28 @@ export default function InstallationProjectDetailPage() {
   const [waForm] = Form.useForm();
   const [itemForm] = Form.useForm();
   const [progressForm] = Form.useForm();
+
+  const handleExportProgressDayExcel = (progress: ProjectProgress) => {
+    const vehicles = progress?.vehicles || [];
+
+    if (!vehicles.length) {
+      message.warning('Esse dia não possui veículos para exportar.');
+      return;
+    }
+
+    const data = vehicles.map((v) => ({
+      PLACA: v.plate || '',
+      SERIE: v.serial || '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Progresso');
+
+    const dateLabel = dayjs(progress.date).format('DD-MM-YYYY');
+    XLSX.writeFile(workbook, `placas-series-${dateLabel}.xlsx`);
+  };
 
   const [importSummary, setImportSummary] = useState<ImportSummary>({
     loading: false,
@@ -541,7 +566,7 @@ export default function InstallationProjectDetailPage() {
       } else {
         const key = `${plate}__${serial}`;
 
-        if (existingPublishedPlates.has(plate)) {
+        if (existingPublishedPlates.has(plate) && (!editingProgress || !(editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === plate))) {
           alreadyPublishedSet.add(plate);
         }
 
@@ -663,6 +688,7 @@ export default function InstallationProjectDetailPage() {
     onSuccess: async () => {
       message.success('Progresso lançado!');
       setProgressOpen(false);
+      setEditingProgress(null);
       progressForm.resetFields();
       setImportSummary({
         loading: false,
@@ -677,6 +703,49 @@ export default function InstallationProjectDetailPage() {
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao lançar progresso'),
+  });
+
+  const updateProgress = useMutation({
+    mutationFn: async ({
+      progressId,
+      payload,
+    }: {
+      progressId: number;
+      payload: { date: string; notes?: string | null; vehicles: { plate: string; serial: string }[] };
+    }) => {
+      const res = await api.put(`/installation-projects/${projectId}/progress/${progressId}`, payload);
+      return unwrap<ProjectProgress>(res.data);
+    },
+    onSuccess: async () => {
+      message.success('Progresso atualizado!');
+      setProgressOpen(false);
+      setEditingProgress(null);
+      progressForm.resetFields();
+      setImportSummary({
+        loading: false,
+        percent: 0,
+        totalRows: 0,
+        validRows: 0,
+        importedCount: 0,
+        duplicatesInFile: [],
+        alreadyPublished: [],
+        invalidRows: 0,
+      });
+      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar progresso'),
+  });
+
+  const deleteProgress = useMutation({
+    mutationFn: async (progressId: number) => {
+      const res = await api.delete(`/installation-projects/${projectId}/progress/${progressId}`);
+      return res.data;
+    },
+    onSuccess: async () => {
+      message.success('Progresso excluído!');
+      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao excluir progresso'),
   });
 
   const itemsSorted = useMemo(() => {
@@ -784,6 +853,22 @@ export default function InstallationProjectDetailPage() {
         await finishProject.mutateAsync();
       },
     });
+  };
+
+  const handleEditProgress = (progress: ProjectProgress) => {
+    setEditingProgress(progress);
+    progressForm.setFieldsValue({
+      date: dayjs(progress.date),
+      notes: progress.notes || null,
+      vehicles:
+        progress.vehicles?.length
+          ? progress.vehicles.map((v) => ({
+              plate: v.plate || '',
+              serial: v.serial || '',
+            }))
+          : [{ plate: '', serial: '' }],
+    });
+    setProgressOpen(true);
   };
 
   const InfoRow = ({
@@ -1128,7 +1213,14 @@ export default function InstallationProjectDetailPage() {
                 <Button icon={<UnorderedListOutlined />} onClick={() => setProgressListOpen(true)}>
                   Ver mais
                 </Button>
-                <Button icon={<PlusOutlined />} type="primary" onClick={() => setProgressOpen(true)}>
+                <Button
+                  icon={<PlusOutlined />}
+                  type="primary"
+                  onClick={() => {
+                    setEditingProgress(null);
+                    setProgressOpen(true);
+                  }}
+                >
                   Lançar progresso
                 </Button>
               </Space>
@@ -1257,10 +1349,38 @@ export default function InstallationProjectDetailPage() {
           renderItem={(pr) => (
             <List.Item>
               <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
-                <Space wrap>
-                  <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
-                  <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
-                  {pr.author?.name ? <Typography.Text type="secondary">por {pr.author.name}</Typography.Text> : null}
+                <Space
+                  style={{ width: '100%', justifyContent: 'space-between' }}
+                  align="start"
+                  wrap
+                >
+                  <Space wrap>
+                    <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
+                    <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
+                    {pr.author?.name ? <Typography.Text type="secondary">por {pr.author.name}</Typography.Text> : null}
+                  </Space>
+
+                  <Space>
+                    <Button size="small" onClick={() => handleExportProgressDayExcel(pr)}>
+                      Excel
+                    </Button>
+
+                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEditProgress(pr)}>
+                      Editar
+                    </Button>
+
+                    <Popconfirm
+                      title="Excluir este progresso diário?"
+                      description="Essa ação remove o lançamento e recalcula o total do projeto."
+                      okText="Excluir"
+                      cancelText="Cancelar"
+                      onConfirm={() => deleteProgress.mutate(pr.id)}
+                    >
+                      <Button size="small" danger icon={<DeleteOutlined />}>
+                        Excluir
+                      </Button>
+                    </Popconfirm>
+                  </Space>
                 </Space>
 
                 {pr.vehicles?.length ? (
@@ -1377,17 +1497,7 @@ export default function InstallationProjectDetailPage() {
           >
             <Form.Item
               name="technicianIds"
-              label="Técnico / Prestador (obrigatório)"
-              rules={[
-                { required: true, message: 'Selecione pelo menos um técnico/prestador' },
-                {
-                  validator: async (_, value) => {
-                    if (!Array.isArray(value) || !value.length) {
-                      throw new Error('Selecione pelo menos um técnico/prestador');
-                    }
-                  },
-                },
-              ]}
+              label="Técnico / Prestador"
             >
               <Select
                 mode="multiple"
@@ -1623,10 +1733,13 @@ export default function InstallationProjectDetailPage() {
 
       <Modal
         open={progressOpen}
-        title="Lançar progresso"
-        okText="Salvar"
-        confirmLoading={addProgress.isPending}
-        onCancel={() => setProgressOpen(false)}
+        title={editingProgress ? 'Editar progresso' : 'Lançar progresso'}
+        okText={editingProgress ? 'Salvar alterações' : 'Salvar'}
+        confirmLoading={addProgress.isPending || updateProgress.isPending}
+        onCancel={() => {
+          setProgressOpen(false);
+          setEditingProgress(null);
+        }}
         onOk={async () => {
           try {
             const v = await progressForm.validateFields();
@@ -1634,15 +1747,25 @@ export default function InstallationProjectDetailPage() {
               plate: String(x.plate || '').trim().toUpperCase(),
               serial: String(x.serial || '').trim(),
             }));
-            addProgress.mutate({
+
+            const payload = {
               date: (v.date as Dayjs).format('YYYY-MM-DD'),
               notes: v.notes ?? null,
               vehicles,
-            });
+            };
+
+            if (editingProgress?.id) {
+              updateProgress.mutate({
+                progressId: editingProgress.id,
+                payload,
+              });
+            } else {
+              addProgress.mutate(payload);
+            }
           } catch {}
         }}
         afterOpenChange={(o) => {
-          if (o) {
+          if (o && !editingProgress) {
             progressForm.setFieldsValue({
               date: dayjs(),
               vehicles: [{ plate: '', serial: '' }],
@@ -1658,6 +1781,10 @@ export default function InstallationProjectDetailPage() {
               alreadyPublished: [],
               invalidRows: 0,
             });
+          }
+
+          if (!o) {
+            setEditingProgress(null);
           }
         }}
         width={isMobile ? '96vw' : 820}
@@ -1751,7 +1878,13 @@ export default function InstallationProjectDetailPage() {
               <>
                 {fields.map((field, idx) => {
                   const currentPlate = normalizePlate(progressForm.getFieldValue(['vehicles', field.name, 'plate']) || '');
-                  const alreadyExists = currentPlate && existingPublishedPlates.has(currentPlate);
+                  const alreadyExists =
+                    currentPlate &&
+                    existingPublishedPlates.has(currentPlate) &&
+                    !(
+                      editingProgress &&
+                      (editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === currentPlate)
+                    );
 
                   return (
                     <div
