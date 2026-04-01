@@ -524,6 +524,17 @@ export default function InstallationProjectDetailPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao adicionar item'),
   });
+  const deleteItem = useMutation({
+    mutationFn: async (itemId: number) => {
+      const res = await api.delete(`/installation-projects/${projectId}/items/${itemId}`);
+      return res.data;
+    },
+    onSuccess: async () => {
+      message.success('Item excluído!');
+      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao excluir item'),
+  });
   const updateItem = useMutation({
     mutationFn: async ({
       itemId,
@@ -1196,58 +1207,75 @@ export default function InstallationProjectDetailPage() {
             styles={{ body: { padding: isMobile ? 12 : 24 } }}
             style={{ borderRadius: 16 }}
           >
-          <List
-            dataSource={itemsSorted}
-            locale={{ emptyText: 'Nenhum item cadastrado.' }}
-            renderItem={(it) => (
-              <List.Item>
-                <div
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    alignItems: 'flex-start',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <Typography.Text strong style={wrapAny as any}>
-                      {it.equipmentName}
-                    </Typography.Text>
+            <List
+              dataSource={itemsSorted}
+              locale={{ emptyText: 'Nenhum item cadastrado.' }}
+              renderItem={(it) => (
+                <List.Item>
+                  <div
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <Typography.Text strong style={wrapAny as any}>
+                        {it.equipmentName}
+                      </Typography.Text>
 
-                    {it.equipmentCode ? (
-                      <div style={{ marginTop: 2 }}>
-                        <Typography.Text type="secondary" style={wrapAny as any}>
-                          {it.equipmentCode}
-                        </Typography.Text>
-                      </div>
-                    ) : null}
+                      {it.equipmentCode ? (
+                        <div style={{ marginTop: 2 }}>
+                          <Typography.Text type="secondary" style={wrapAny as any}>
+                            {it.equipmentCode}
+                          </Typography.Text>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <Space wrap>
+                      <Tag>{`Qtd: ${it.qty}`}</Tag>
+
+                      <Button
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setEditingItem(it);
+                          itemForm.setFieldsValue({
+                            equipmentName: it.equipmentName,
+                            equipmentCode: it.equipmentCode || null,
+                            qty: it.qty,
+                          });
+                          setItemOpen(true);
+                        }}
+                      >
+                        Editar
+                      </Button>
+
+                      <Popconfirm
+                        title="Excluir este item?"
+                        description="Essa ação não poderá ser desfeita."
+                        okText="Excluir"
+                        cancelText="Cancelar"
+                        onConfirm={() => deleteItem.mutate(it.id)}
+                      >
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          loading={deleteItem.isPending}
+                        >
+                          Excluir
+                        </Button>
+                      </Popconfirm>
+                    </Space>
                   </div>
-
-                  <Space>
-                    <Tag>{`Qtd: ${it.qty}`}</Tag>
-
-                    <Button
-                      size="small"
-                      icon={<EditOutlined />}
-                      onClick={() => {
-                        setEditingItem(it);
-                        itemForm.setFieldsValue({
-                          equipmentName: it.equipmentName,
-                          equipmentCode: it.equipmentCode || null,
-                          qty: it.qty,
-                        });
-                        setItemOpen(true);
-                      }}
-                    >
-                      Editar
-                    </Button>
-                  </Space>
-                </div>
-              </List.Item>
-            )}
-          />
+                </List.Item>
+              )}
+            />
           </Card>
 
           <Card
