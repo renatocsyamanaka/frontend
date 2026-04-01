@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -17,6 +17,7 @@ import {
   Modal,
   Progress,
   Row,
+  Select,
   Space,
   Spin,
   Statistic,
@@ -33,6 +34,7 @@ import {
   ClockCircleOutlined,
   CloseOutlined,
   CopyOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
   FileOutlined,
@@ -185,6 +187,7 @@ type NeedSummary = {
   };
   requiredChecklist: HomologationChecklistItem[];
   additionalDocuments: NeedRegistrationDocument[];
+  internalDocuments: NeedRegistrationDocument[];
   documents: NeedRegistrationDocument[];
   progress: {
     requiredTotal: number;
@@ -295,7 +298,18 @@ export default function NeedHomologationPage() {
   const [reviewNotes, setReviewNotes] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<NeedRegistrationDocument | null>(null);
+
+  const [openInternalUploadModal, setOpenInternalUploadModal] = useState(false);
+  const [internalUploadNotes, setInternalUploadNotes] = useState('');
+  const [pendingInternalFile, setPendingInternalFile] = useState<File | null>(null);
+  const [financeModalOpen, setFinanceModalOpen] = useState(false);
+  const [financeForm] = Form.useForm();
   const [formInvite] = Form.useForm();
+
+  const defaultFinanceEmails = [
+    'renato.yamanaka@omnilink.com.br',
+    'mateus.sou@gmail.com',
+  ];
 
   const { data: summary, isLoading } = useQuery<NeedSummary>({
     queryKey: ['need-homologation', needId],
@@ -405,6 +419,79 @@ export default function NeedHomologationPage() {
     },
   });
 
+  const sendToFinanceMut = useMutation({
+    mutationFn: async (payload: {
+      to: string[];
+      cc?: string[];
+      subject: string;
+      message: string;
+    }) =>
+      (
+        await api.post(
+          `/need-homologation/needs/${needId}/send-finance`,
+          payload
+        )
+      ).data,
+    onSuccess: async () => {
+      message.success('E-mail enviado ao financeiro com sucesso');
+      setFinanceModalOpen(false);
+      financeForm.resetFields();
+      await qc.invalidateQueries({ queryKey: ['need-homologation', needId] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Erro ao enviar e-mail');
+    },
+  });
+
+  const uploadInternalDocument = useMutation({
+    mutationFn: async ({ file, notes }: { file: File; notes?: string }) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (notes) fd.append('notes', notes);
+
+      return (
+        await api.post(`/need-homologation/needs/${needId}/internal-documents`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      ).data;
+    },
+    onMutate: () => {
+      message.loading({
+        content: 'Enviando documento...',
+        key: 'upload-internal-document',
+        duration: 0,
+      });
+    },
+    onSuccess: async () => {
+      message.success({
+        content: 'Documento interno enviado com sucesso',
+        key: 'upload-internal-document',
+      });
+      setOpenInternalUploadModal(false);
+      setInternalUploadNotes('');
+      setPendingInternalFile(null);
+      await qc.refetchQueries({ queryKey: ['need-homologation', needId] });
+    },
+    onError: (e: any) => {
+      message.error({
+        content: e?.response?.data?.error || 'Falha ao enviar documento interno',
+        key: 'upload-internal-document',
+      });
+    },
+  });
+
+  const deleteDocument = useMutation({
+    mutationFn: async (documentId: number) =>
+      (await api.delete(`/need-homologation/documents/${documentId}`)).data,
+    onSuccess: async () => {
+      message.success('Documento excluído');
+      await qc.refetchQueries({ queryKey: ['need-homologation', needId] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao excluir documento');
+    },
+  });
+
   const registration = summary?.need?.registration || null;
 
   const documentsByType = useMemo(() => {
@@ -429,7 +516,12 @@ export default function NeedHomologationPage() {
   const missingDataFields = useMemo(() => {
     const fields = [
       { key: 'fullName', label: 'Nome completo', value: registration?.fullName },
+      { key: 'email', label: 'E-mail', value: registration?.email },
+      { key: 'phone', label: 'Telefone', value: registration?.phone },
+      { key: 'rg', label: 'RG', value: registration?.rg },
       { key: 'cpf', label: 'CPF', value: registration?.cpf },
+      { key: 'company', label: 'Empresa', value: registration?.company },
+      { key: 'cnpj', label: 'CNPJ', value: registration?.cnpj },
       { key: 'birthDate', label: 'Data de nascimento', value: registration?.birthDate },
       { key: 'motherName', label: 'Nome da mãe', value: registration?.motherName },
       { key: 'address', label: 'Endereço', value: registration?.address },
@@ -437,13 +529,18 @@ export default function NeedHomologationPage() {
       { key: 'city', label: 'Cidade', value: registration?.city },
       { key: 'state', label: 'UF', value: registration?.state },
       { key: 'zipCode', label: 'CEP', value: registration?.zipCode },
-      { key: 'phone', label: 'Telefone', value: registration?.phone },
+      { key: 'bankName', label: 'Banco', value: registration?.bankName },
+      { key: 'bankCode', label: 'Código do banco', value: registration?.bankCode },
+      { key: 'agency', label: 'Agência', value: registration?.agency },
+      { key: 'agencyDigit', label: 'Dígito da agência', value: registration?.agencyDigit },
+      { key: 'accountNumber', label: 'Conta', value: registration?.accountNumber },
+      { key: 'accountDigit', label: 'Dígito da conta', value: registration?.accountDigit },
     ];
 
     return fields.filter((f) => !String(f.value || '').trim());
   }, [registration]);
 
-  const totalRequiredFields = 10;
+  const totalRequiredFields = 20;
   const filledRequiredFields = totalRequiredFields - missingDataFields.length;
 
   const dataCompletionPercent = totalRequiredFields
@@ -457,6 +554,42 @@ export default function NeedHomologationPage() {
   const overallProgressPercent = Math.round(
     (dataCompletionPercent + documentsCompletionPercent) / 2
   );
+
+  const canSendToFinance =
+    !!registration &&
+    summary?.need?.homologationStatus === 'APPROVED' &&
+    missingDataFields.length === 0 &&
+    Number(summary?.progress?.requiredTotal || 0) > 0 &&
+    Number(summary?.progress?.requiredSent || 0) ===
+      Number(summary?.progress?.requiredTotal || 0) &&
+    overallProgressPercent === 100;
+
+  useEffect(() => {
+    if (!financeModalOpen || !registration) return;
+
+    financeForm.setFieldsValue({
+      to: defaultFinanceEmails,
+      cc: [],
+      subject: `Prestador aprovado para criação de código - ${
+        registration.fullName ||
+        registration.company ||
+        summary?.need?.requestedName ||
+        'Prestador'
+      }`,
+      message:
+        `Olá,\n\n` +
+        `O prestador abaixo foi homologado com sucesso.\n\n` +
+        `Nome: ${registration.fullName || '—'}\n` +
+        `Empresa: ${registration.company || '—'}\n` +
+        `CPF: ${registration.cpf || '—'}\n` +
+        `CNPJ: ${registration.cnpj || '—'}\n` +
+        `Telefone: ${registration.phone || '—'}\n` +
+        `E-mail: ${registration.email || '—'}\n` +
+        `Cidade/UF: ${registration.city || '—'} / ${registration.state || '—'}\n\n` +
+        `O prestador já se encontra na aba Prestadores Ativos com os dados completos.\n\n` +
+        `Favor seguir com a criação do código do prestador no sistema.`,
+    });
+  }, [financeModalOpen, financeForm, registration, summary?.need?.requestedName]);
 
   const openInviteModal = () => {
     formInvite.setFieldsValue({
@@ -705,6 +838,24 @@ export default function NeedHomologationPage() {
               Atualizar
             </Button>
 
+            <Tooltip
+              title={
+                canSendToFinance
+                  ? 'Enviar alerta ao financeiro para criação do código do prestador'
+                  : 'Disponível somente quando o cadastro estiver aprovado e 100% completo'
+              }
+            >
+              <Button
+                type="primary"
+                icon={<MailOutlined />}
+                disabled={!canSendToFinance}
+                onClick={() => setFinanceModalOpen(true)}
+                style={{ borderRadius: 12 }}
+              >
+                Enviar para o financeiro
+              </Button>
+            </Tooltip>
+
             <Button
               type="primary"
               icon={<LinkOutlined />}
@@ -716,6 +867,16 @@ export default function NeedHomologationPage() {
           </Space>
         </Space>
       </Card>
+
+      {canSendToFinance && (
+        <Alert
+          type="success"
+          showIcon
+          message="Pronto para envio ao financeiro"
+          description="O cadastro está aprovado e 100% completo. Você já pode usar o botão 'Enviar para o financeiro'."
+          style={{ borderRadius: 14 }}
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
@@ -761,7 +922,7 @@ export default function NeedHomologationPage() {
               </Text>
               <br />
               <Text type="secondary">
-                Adicionais: {summary.progress.extraUsed}/{summary.progress.extraLimit}
+                Pendentes: {requiredPending}
               </Text>
             </div>
           </Card>
@@ -1087,85 +1248,186 @@ export default function NeedHomologationPage() {
         )}
       </Card>
 
-      <Card
-        title="Arquivos adicionais"
-        style={sectionCardStyle()}
-        styles={{ body: sectionBodyStyle() }}
-        extra={
-          <Tag color="purple" style={{ borderRadius: 999 }}>
-            {summary.progress.extraUsed}/{summary.progress.extraLimit}
-          </Tag>
-        }
-      >
-        {!summary.additionalDocuments?.length ? (
-          <Empty description="Nenhum arquivo adicional enviado" />
-        ) : (
-          <List
-            itemLayout="horizontal"
-            dataSource={summary.additionalDocuments}
-            renderItem={(doc) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="view"
-                    type="text"
-                    icon={<EyeOutlined />}
-                    onClick={() => handlePreviewDocument(doc)}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={12}>
+          <Card
+            title="Arquivos adicionais"
+            style={sectionCardStyle()}
+            styles={{ body: { ...sectionBodyStyle(), minHeight: 220 } }}
+            extra={
+              <Tag color="purple" style={{ borderRadius: 999 }}>
+                {summary.progress.extraUsed}/{summary.progress.extraLimit}
+              </Tag>
+            }
+          >
+            {!summary.additionalDocuments?.length ? (
+              <Empty description="Nenhum arquivo adicional enviado" />
+            ) : (
+              <List
+                itemLayout="horizontal"
+                dataSource={summary.additionalDocuments}
+                renderItem={(doc) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="view"
+                        type="text"
+                        icon={<EyeOutlined />}
+                        onClick={() => handlePreviewDocument(doc)}
+                      >
+                        Visualizar
+                      </Button>,
+                      <Button
+                        key="download"
+                        type="text"
+                        icon={<DownloadOutlined />}
+                        onClick={() => handleDownloadDocument(doc)}
+                      >
+                        Download
+                      </Button>,
+                      <Button
+                        key="approve"
+                        type="text"
+                        icon={<CheckOutlined />}
+                        onClick={() => askNotesAndReview(doc.id, 'APPROVED')}
+                        loading={reviewDocument.isPending}
+                      >
+                        Aprovar
+                      </Button>,
+                      <Button
+                        key="reject"
+                        danger
+                        type="text"
+                        icon={<CloseOutlined />}
+                        onClick={() => askNotesAndReview(doc.id, 'REJECTED')}
+                        loading={reviewDocument.isPending}
+                      >
+                        Reprovar
+                      </Button>,
+                      <Button
+                        key="delete"
+                        danger
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        onClick={() => deleteDocument.mutate(doc.id)}
+                        loading={deleteDocument.isPending}
+                      >
+                        Excluir
+                      </Button>,
+                    ]}
                   >
-                    Visualizar
-                  </Button>,
-                  <Button
-                    key="download"
-                    type="text"
-                    icon={<DownloadOutlined />}
-                    onClick={() => handleDownloadDocument(doc)}
-                  >
-                    Download
-                  </Button>,
-                  <Button
-                    key="approve"
-                    type="text"
-                    icon={<CheckOutlined />}
-                    onClick={() => askNotesAndReview(doc.id, 'APPROVED')}
-                    loading={reviewDocument.isPending}
-                  >
-                    Aprovar
-                  </Button>,
-                  <Button
-                    key="reject"
-                    danger
-                    type="text"
-                    icon={<CloseOutlined />}
-                    onClick={() => askNotesAndReview(doc.id, 'REJECTED')}
-                    loading={reviewDocument.isPending}
-                  >
-                    Reprovar
-                  </Button>,
-                ]}
-              >
-                <List.Item.Meta
-                  avatar={<FileOutlined style={{ fontSize: 18 }} />}
-                  title={
-                    <Space wrap>
-                      <Text strong>{doc.originalName}</Text>
-                      {getTag(doc.status)}
-                    </Space>
-                  }
-                  description={
-                    <Space direction="vertical" size={2}>
-                      <Text type="secondary">
-                        Enviado em {fmtDateTime(doc.uploadedAt || doc.createdAt)}
-                      </Text>
-                      <Text type="secondary">Tamanho: {fileSize(doc.size)}</Text>
-                      {doc.notes ? <Text type="secondary">Observação: {doc.notes}</Text> : null}
-                    </Space>
-                  }
-                />
-              </List.Item>
+                    <List.Item.Meta
+                      avatar={<FileOutlined style={{ fontSize: 18 }} />}
+                      title={
+                        <Space wrap>
+                          <Text strong>{doc.originalName}</Text>
+                          {getTag(doc.status)}
+                        </Space>
+                      }
+                      description={
+                        <Space direction="vertical" size={2}>
+                          <Text type="secondary">
+                            Enviado em {fmtDateTime(doc.uploadedAt || doc.createdAt)}
+                          </Text>
+                          <Text type="secondary">Tamanho: {fileSize(doc.size)}</Text>
+                          {doc.notes ? <Text type="secondary">Observação: {doc.notes}</Text> : null}
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
             )}
-          />
-        )}
-      </Card>
+          </Card>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Card
+            title="Documentos internos"
+            style={sectionCardStyle()}
+            styles={{ body: { ...sectionBodyStyle(), minHeight: 220 } }}
+            extra={
+              <Upload
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  setPendingInternalFile(file);
+                  setInternalUploadNotes('');
+                  setOpenInternalUploadModal(true);
+                  return false;
+                }}
+              >
+                <Button
+                  type="primary"
+                  icon={<UploadOutlined />}
+                  style={{ borderRadius: 12 }}
+                >
+                  Enviar
+                </Button>
+              </Upload>
+            }
+          >
+            {!summary.internalDocuments?.length ? (
+              <Empty description="Nenhum documento interno" />
+            ) : (
+              <List
+                itemLayout="horizontal"
+                dataSource={summary.internalDocuments}
+                renderItem={(doc) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key="view"
+                        type="text"
+                        icon={<EyeOutlined />}
+                        onClick={() => handlePreviewDocument(doc)}
+                      >
+                        Visualizar
+                      </Button>,
+                      <Button
+                        key="download"
+                        type="text"
+                        icon={<DownloadOutlined />}
+                        onClick={() => handleDownloadDocument(doc)}
+                      >
+                        Download
+                      </Button>,
+                      <Button
+                        key="delete"
+                        danger
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        onClick={() => deleteDocument.mutate(doc.id)}
+                        loading={deleteDocument.isPending}
+                      >
+                        Excluir
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={<FileOutlined style={{ fontSize: 18 }} />}
+                      title={
+                        <Space wrap>
+                          <Text strong>{doc.originalName}</Text>
+                          {getTag(doc.status)}
+                        </Space>
+                      }
+                      description={
+                        <Space direction="vertical" size={2}>
+                          <Text type="secondary">
+                            Enviado em {fmtDateTime(doc.uploadedAt || doc.createdAt)}
+                          </Text>
+                          <Text type="secondary">Tamanho: {fileSize(doc.size)}</Text>
+                          {doc.notes ? <Text type="secondary">Observação: {doc.notes}</Text> : null}
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
+        </Col>
+      </Row>
 
       <Card
         title="Links gerados"
@@ -1279,6 +1541,83 @@ export default function NeedHomologationPage() {
       </Card>
 
       <Modal
+        open={financeModalOpen}
+        onCancel={() => {
+          if (sendToFinanceMut.isPending) return;
+          setFinanceModalOpen(false);
+        }}
+        onOk={() => financeForm.submit()}
+        confirmLoading={sendToFinanceMut.isPending}
+        title="Enviar para o financeiro"
+        width={760}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="O prestador já se encontra na aba Prestadores Ativos"
+          description="Os dados do novo prestador já estão completos no sistema. Este envio serve para alertar o financeiro a criar o código do prestador."
+          style={{ borderRadius: 12, marginBottom: 16 }}
+        />
+
+        <Form
+          layout="vertical"
+          form={financeForm}
+          onFinish={(values) =>
+            sendToFinanceMut.mutate({
+              to: Array.isArray(values.to) ? values.to : [],
+              cc: Array.isArray(values.cc) ? values.cc : [],
+              subject: values.subject,
+              message: values.message,
+            })
+          }
+        >
+          <Form.Item
+            name="to"
+            label="Enviar para"
+            rules={[{ required: true, message: 'Informe ao menos um e-mail' }]}
+            extra="Os e-mails padrão já vêm preenchidos, mas você pode adicionar outros."
+          >
+            <Select
+              mode="tags"
+              tokenSeparators={[',', ';']}
+              placeholder="Digite os e-mails"
+              style={{ width: '100%' }}
+              options={defaultFinanceEmails.map((email) => ({
+                label: email,
+                value: email,
+              }))}
+            />
+          </Form.Item>
+
+          <Form.Item name="cc" label="Com cópia">
+            <Select
+              mode="tags"
+              tokenSeparators={[',', ';']}
+              placeholder="Adicionar cópias"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="subject"
+            label="Assunto"
+            rules={[{ required: true, message: 'Informe o assunto' }]}
+          >
+            <Input style={{ borderRadius: 12 }} />
+          </Form.Item>
+
+          <Form.Item
+            name="message"
+            label="Mensagem"
+            rules={[{ required: true, message: 'Informe a mensagem' }]}
+          >
+            <Input.TextArea rows={8} style={{ borderRadius: 12 }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         open={openInvite}
         onCancel={() => setOpenInvite(false)}
         footer={null}
@@ -1366,6 +1705,78 @@ export default function NeedHomologationPage() {
             </Space>
           </>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={openInternalUploadModal}
+        onCancel={() => {
+          if (uploadInternalDocument.isPending) return;
+          setOpenInternalUploadModal(false);
+          setInternalUploadNotes('');
+          setPendingInternalFile(null);
+        }}
+        title="Enviar documento interno"
+        destroyOnHidden
+        footer={
+          <Space>
+            <Button
+              onClick={() => {
+                setOpenInternalUploadModal(false);
+                setInternalUploadNotes('');
+                setPendingInternalFile(null);
+              }}
+              disabled={uploadInternalDocument.isPending}
+              style={{ borderRadius: 12 }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              loading={uploadInternalDocument.isPending}
+              disabled={!pendingInternalFile}
+              onClick={() => {
+                if (!pendingInternalFile) {
+                  message.warning('Selecione um arquivo');
+                  return;
+                }
+
+                uploadInternalDocument.mutate({
+                  file: pendingInternalFile,
+                  notes: internalUploadNotes,
+                });
+              }}
+              style={{ borderRadius: 12 }}
+            >
+              Enviar documento
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={14} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={pendingInternalFile ? pendingInternalFile.name : 'Nenhum arquivo selecionado'}
+            description={
+              pendingInternalFile
+                ? `Tamanho: ${fileSize(pendingInternalFile.size)}`
+                : 'Selecione um arquivo para continuar.'
+            }
+            style={{ borderRadius: 12 }}
+          />
+
+          <div>
+            <Text strong>Observação (opcional)</Text>
+            <Input.TextArea
+              rows={4}
+              value={internalUploadNotes}
+              onChange={(e) => setInternalUploadNotes(e.target.value)}
+              placeholder="Digite uma observação para este documento"
+              style={{ marginTop: 8, borderRadius: 12 }}
+            />
+          </div>
+        </Space>
       </Modal>
 
       <Modal

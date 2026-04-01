@@ -103,111 +103,180 @@ export function AppLayout() {
     }
   }, [location.pathname, isMobile]);
 
-  const menuConfig = [
-    {
-      key: '/',
-      label: 'Painel',
-      icon: <HomeOutlined />,
-      permission: 'DASHBOARD_VIEW',
-    },
-    {
-      key: '/projetos-instalacao',
-      label: 'Projetos de Instalação',
-      icon: <ProjectOutlined />,
-      permission: 'INSTALLATION_PROJECTS_VIEW',
-    },
-    {
-      key: '/pedidos-pecas',
-      label: 'Pedidos de Peças',
-      icon: <DatabaseOutlined />,
-      permission: 'PART_REQUESTS_VIEW',
-    },
-    {
-      key: '/planejamento-cia',
-      label: 'Planejamento CIA',
-      icon: <ProfileOutlined />,
-      permission: 'DASHBOARD_ACTIVITY_VIEW',
-    },
-    {
-      key: '/relatorios-entrega',
-      label: 'Relatório de Entregas',
-      icon: <DatabaseOutlined />,
-      permission: 'DELIVERY_REPORTS_VIEW',
-    },
-    {
-      key: '/meus-pedidos-pecas',
-      label: 'Meus Pedidos de Peças',
-      icon: <ProfileOutlined />,
-      permission: 'MY_PART_REQUESTS_VIEW',
-    },
-    {
-      key: '/mapa-tecnicos',
-      label: 'Mapa de Técnicos',
-      icon: <ToolOutlined />,
-      permission: 'TECHS_MAP_VIEW',
-    },
-    {
-      key: '/colaboradores',
-      label: 'Colaboradores',
-      icon: <TeamOutlined />,
-      permission: 'USERS_VIEW',
-    },
-    {
-      key: '/organograma',
-      label: 'Organograma',
-      icon: <ClusterOutlined />,
-      permission: 'ORG_VIEW',
-    },
-    {
-      key: '/clientes',
-      label: 'Clientes',
-      icon: <ProfileOutlined />,
-      permission: 'CLIENTS_VIEW',
-    },
-    {
-      key: '/demandas',
-      label: 'Demandas',
-      icon: <ProfileOutlined />,
-      permission: 'TASKS_VIEW',
-    },
-    {
-      key: '/requisicoes',
-      label: 'Prospecções Operação',
-      icon: <DatabaseOutlined />,
-      permission: 'NEEDS_VIEW',
-    },
-    {
-      key: '/requisicoes/mapa',
-      label: 'Mapa de solicitações',
-      icon: <EnvironmentOutlined />,
-      permission: 'NEEDS_MAP_VIEW',
-    },
-    {
-      key: '/agenda',
-      label: 'Agenda',
-      icon: <ScheduleOutlined />,
-      permission: 'ASSIGNMENTS_VIEW',
-    },
-    {
-      key: '/noticias',
-      label: 'Notícias',
-      icon: <NotificationOutlined />,
-      permission: 'NEWS_VIEW',
-    },
-    {
-      key: '/noticias-admin',
-      label: 'Administração de Notícias',
-      icon: <NotificationOutlined />,
-      permission: 'NEWS_ADMIN_VIEW',
-    },
-  ];
+const menuConfig = [
+  {
+    key: 'group-operacoes',
+    label: 'Operações',
+    icon: <DatabaseOutlined />,
+    children: [
+      {
+        key: '/projetos-instalacao',
+        label: 'Projetos de Instalação',
+        icon: <ProjectOutlined />,
+        permission: 'INSTALLATION_PROJECTS_VIEW',
+      },
+      {
+        key: '/pedidos-pecas',
+        label: 'Pedidos de Peças',
+        icon: <DatabaseOutlined />,
+        permission: 'PART_REQUESTS_VIEW',
+      },
+      {
+        key: '/meus-pedidos-pecas',
+        label: 'Meus Pedidos de Peças',
+        icon: <ProfileOutlined />,
+        permission: 'MY_PART_REQUESTS_VIEW',
+      },
+      {
+        key: '/agenda',
+        label: 'Agenda',
+        icon: <ScheduleOutlined />,
+        permission: 'ASSIGNMENTS_VIEW',
+      },
+    ],
+  },
+  {
+    key: 'group-planejamento',
+    label: 'Planejamento',
+    icon: <ProfileOutlined />,
+    children: [
+      {
+        key: '/planejamento-cia',
+        label: 'Planejamento CIA',
+        icon: <ProfileOutlined />,
+        permission: 'DASHBOARD_ACTIVITY_VIEW',
+      },
+      {
+        key: '/demandas',
+        label: 'Demandas',
+        icon: <ProfileOutlined />,
+        permission: 'TASKS_VIEW',
+      },
+    ],
+  },
+  {
+    key: 'group-tecnicos',
+    label: 'Técnicos e Prestadores',
+    icon: <ToolOutlined />,
+    children: [
+      {
+        key: '/mapa-tecnicos',
+        label: 'Mapa de Técnicos',
+        icon: <ToolOutlined />,
+        permission: 'TECHS_MAP_VIEW',
+      },
+      {
+        key: '/requisicoes',
+        label: 'Prospecções Operação',
+        icon: <DatabaseOutlined />,
+        permission: 'NEEDS_VIEW',
+      },
+      {
+        key: '/requisicoes/mapa',
+        label: 'Mapa de solicitações',
+        icon: <EnvironmentOutlined />,
+        permission: 'NEEDS_MAP_VIEW',
+      },
+      {
+        key: '/prestadores-aprovados',
+        label: 'Prestadores Aprovados',
+        icon: <TeamOutlined />,
+        permission: 'PRESTADORES_APROVADOS_VIEW',
+      },
+    ],
+  },
+  {
+    key: 'group-gestao',
+    label: 'Gestão',
+    icon: <TeamOutlined />,
+    children: [
+      {
+        key: '/colaboradores',
+        label: 'Colaboradores',
+        icon: <TeamOutlined />,
+        permission: 'USERS_VIEW',
+      },
+      {
+        key: '/organograma',
+        label: 'Organograma',
+        icon: <ClusterOutlined />,
+        permission: 'ORG_VIEW',
+      },
+      {
+        key: '/clientes',
+        label: 'Clientes',
+        icon: <ProfileOutlined />,
+        permission: 'CLIENTS_VIEW',
+      },
+    ],
+  },
+  {
+    key: 'group-relatorios',
+    label: 'Relatórios e Comunicação',
+    icon: <NotificationOutlined />,
+    children: [
+      {
+        key: '/relatorios-entrega',
+        label: 'Relatório de Entregas',
+        icon: <DatabaseOutlined />,
+        permission: 'DELIVERY_REPORTS_VIEW',
+      },
+      {
+        key: '/noticias',
+        label: 'Notícias',
+        icon: <NotificationOutlined />,
+        permission: 'NEWS_VIEW',
+      },
+      {
+        key: '/noticias-admin',
+        label: 'Administração de Notícias',
+        icon: <NotificationOutlined />,
+        permission: 'NEWS_ADMIN_VIEW',
+      },
+    ],
+  },
+];
 
-  const visibleMenuConfig = useMemo(() => {
-    return menuConfig.filter((item) => hasPermission(user, item.permission));
-  }, [user]);
+const visibleMenuConfig = useMemo(() => {
+  return menuConfig
+    .map((group) => {
+      const visibleChildren = (group.children || []).filter((item) =>
+        hasPermission(user, item.permission)
+      );
 
-  const menuItems = useMemo(() => {
-    return visibleMenuConfig.map((item) => ({
+      return {
+        ...group,
+        children: visibleChildren,
+      };
+    })
+    .filter((group) => group.children && group.children.length > 0);
+}, [user]);
+
+const menuItems = useMemo(() => {
+  const dashboardItem = hasPermission(user, 'DASHBOARD_VIEW')
+    ? [
+        {
+          key: '/',
+          icon: <HomeOutlined />,
+          label: (
+            <Link
+              to="/"
+              onClick={() => {
+                if (isMobile) setDrawerOpen(false);
+              }}
+            >
+              Painel
+            </Link>
+          ),
+        },
+      ]
+    : [];
+
+  const groupedItems = visibleMenuConfig.map((group) => ({
+    key: group.key,
+    icon: group.icon,
+    label: group.label,
+    children: group.children.map((item) => ({
       key: item.key,
       icon: item.icon,
       label: (
@@ -220,8 +289,11 @@ export function AppLayout() {
           {item.label}
         </Link>
       ),
-    }));
-  }, [visibleMenuConfig, isMobile]);
+    })),
+  }));
+
+  return [...dashboardItem, ...groupedItems];
+}, [visibleMenuConfig, isMobile, user]);
 
   const selectedKey = useMemo(() => {
     const pathname = location.pathname;
@@ -263,7 +335,45 @@ export function AppLayout() {
       border-right: 1px solid rgba(255,255,255,0.06);
       overflow: hidden;
     }
+    .brand-menu .ant-menu-submenu {
+      margin: 6px 0 !important;
+    }
 
+    .brand-menu .ant-menu-submenu-title {
+      height: 48px !important;
+      line-height: 48px !important;
+      border-radius: 14px !important;
+      color: ${TEXT_PRIMARY} !important;
+      font-weight: 700;
+      font-size: 15px;
+      padding-inline: 14px !important;
+    }
+
+    .brand-menu .ant-menu-submenu-title:hover {
+      background: ${HOVER_BG} !important;
+      color: #ffffff !important;
+    }
+
+    .brand-menu .ant-menu-sub {
+      background: transparent !important;
+    }
+
+    .brand-menu .ant-menu-sub .ant-menu-item {
+      height: 42px !important;
+      line-height: 42px !important;
+      margin: 4px 0 4px 10px !important;
+      border-radius: 12px !important;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .brand-menu .ant-menu-submenu-arrow {
+      color: ${TEXT_SECONDARY} !important;
+    }
+
+    .brand-menu .ant-menu-submenu-open > .ant-menu-submenu-title {
+      background: rgba(255,255,255,0.05) !important;
+    }
     .brand-scroll {
       flex: 1;
       overflow-y: auto;
@@ -686,17 +796,16 @@ export function AppLayout() {
           </Space>
         </Header>
 
-        <Content
-          ref={contentRef}
-          className="app-layout-content-scroll"
-          style={{
-            margin: isMobile ? 12 : 20,
-            background: 'transparent',
-            overflowY: 'auto',
-          }}
-        >
-          <Outlet />
-        </Content>
+<Content
+  ref={contentRef}
+  className="app-layout-content-scroll"
+  style={{
+    margin: isMobile ? 12 : 20,
+    background: 'transparent',
+  }}
+>
+  <Outlet />
+</Content>
       </Layout>
 
       <ProfileModal

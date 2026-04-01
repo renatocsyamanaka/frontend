@@ -31,6 +31,7 @@ import PartRequestsPage from './modules/PartRequests/PartRequests';
 import MyPartRequestsPage from './modules/PartRequests/MyPartRequestsPage';
 import PublicPartRequestPage from './modules/PartRequests/PublicPartRequestPage';
 import DeliveryReportsPage from './modules/deliveryReports/DeliveryReportsPage';
+import ApprovedProvidersPage from './modules/needs/ApprovedProvidersPage';
 
 export default function App() {
   return (
@@ -81,6 +82,15 @@ export default function App() {
           element={
             <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectsGeolocationAuditPage />
+            </RequireAccess>
+          }
+        />
+
+        <Route
+          path="prestadores-aprovados"
+          element={
+            <RequireAccess permission="PRESTADORES_APROVADOS_VIEW">
+              <ApprovedProvidersPage />
             </RequireAccess>
           }
         />

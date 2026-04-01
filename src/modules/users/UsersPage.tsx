@@ -132,6 +132,7 @@ const getSectorLabel = (sector?: string | null) =>
 
 const PERMISSION_OPTIONS = [
   { value: 'DASHBOARD_VIEW', label: 'Dashboard' },
+  { value: 'PRESTADORES_APROVADOS_VIEW', label: 'Prestadores Aprovados' },
   { value: 'INSTALLATION_PROJECTS_VIEW', label: 'Projetos de Instalação' },
   { value: 'PART_REQUESTS_VIEW', label: 'Pedido de Peças' },
   { value: 'MY_PART_REQUESTS_VIEW', label: 'Meus Pedidos de Peças' },
@@ -157,6 +158,7 @@ const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
   INSTALLATION_PROJECTS_VIEW: <ProjectOutlined />,
   PART_REQUESTS_VIEW: <ShoppingCartOutlined />,
   MY_PART_REQUESTS_VIEW: <FileDoneOutlined />,
+  PRESTADORES_APROVADOS_VIEW: <TeamOutlined />,
   TECHS_MAP_VIEW: <EnvironmentOutlined />,
   USERS_VIEW: <TeamOutlined />,
   ORG_VIEW: <ClusterOutlined />,
