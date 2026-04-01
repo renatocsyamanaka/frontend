@@ -285,7 +285,7 @@ export default function InstallationProjectDetailPage() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const excelInputRef = useRef<HTMLInputElement | null>(null);
-
+  const [editingItem, setEditingItem] = useState<ProjectItem | null>(null);
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
@@ -524,7 +524,26 @@ export default function InstallationProjectDetailPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao adicionar item'),
   });
-
+  const updateItem = useMutation({
+    mutationFn: async ({
+      itemId,
+      payload,
+    }: {
+      itemId: number;
+      payload: { equipmentName: string; equipmentCode?: string | null; qty: number };
+    }) => {
+      const res = await api.put(`/installation-projects/${projectId}/items/${itemId}`, payload);
+      return unwrap<ProjectItem>(res.data);
+    },
+    onSuccess: async () => {
+      message.success('Item atualizado!');
+      setItemOpen(false);
+      setEditingItem(null);
+      itemForm.resetFields();
+      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar item'),
+  });
   async function extractVehiclesFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
       return {
@@ -1177,29 +1196,58 @@ export default function InstallationProjectDetailPage() {
             styles={{ body: { padding: isMobile ? 12 : 24 } }}
             style={{ borderRadius: 16 }}
           >
-            <List
-              dataSource={itemsSorted}
-              locale={{ emptyText: 'Nenhum item cadastrado.' }}
-              renderItem={(it) => (
-                <List.Item>
-                  <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <Typography.Text strong style={wrapAny as any}>
-                        {it.equipmentName}
-                      </Typography.Text>
-                      {it.equipmentCode ? (
-                        <div style={{ marginTop: 2 }}>
-                          <Typography.Text type="secondary" style={wrapAny as any}>
-                            {it.equipmentCode}
-                          </Typography.Text>
-                        </div>
-                      ) : null}
-                    </div>
-                    <Tag>{`Qtd: ${it.qty}`}</Tag>
+          <List
+            dataSource={itemsSorted}
+            locale={{ emptyText: 'Nenhum item cadastrado.' }}
+            renderItem={(it) => (
+              <List.Item>
+                <div
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Typography.Text strong style={wrapAny as any}>
+                      {it.equipmentName}
+                    </Typography.Text>
+
+                    {it.equipmentCode ? (
+                      <div style={{ marginTop: 2 }}>
+                        <Typography.Text type="secondary" style={wrapAny as any}>
+                          {it.equipmentCode}
+                        </Typography.Text>
+                      </div>
+                    ) : null}
                   </div>
-                </List.Item>
-              )}
-            />
+
+                  <Space>
+                    <Tag>{`Qtd: ${it.qty}`}</Tag>
+
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => {
+                        setEditingItem(it);
+                        itemForm.setFieldsValue({
+                          equipmentName: it.equipmentName,
+                          equipmentCode: it.equipmentCode || null,
+                          qty: it.qty,
+                        });
+                        setItemOpen(true);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                  </Space>
+                </div>
+              </List.Item>
+            )}
+          />
           </Card>
 
           <Card
