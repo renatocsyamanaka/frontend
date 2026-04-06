@@ -1,6 +1,9 @@
-import { useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useRef, useState } from "react";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useNavigate, useParams } from "react-router-dom";
+
 import {
   Button,
   Card,
@@ -22,7 +25,8 @@ import {
   Progress,
   Alert,
   Popconfirm,
-} from 'antd';
+} from "antd";
+
 import {
   ArrowLeftOutlined,
   EditOutlined,
@@ -38,12 +42,17 @@ import {
   DeleteOutlined,
   SearchOutlined,
   EnvironmentOutlined,
-} from '@ant-design/icons';
-import dayjs, { Dayjs } from 'dayjs';
-import * as XLSX from 'xlsx';
-import { api } from '../../lib/api';
+} from "@ant-design/icons";
 
-type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
+import dayjs, { Dayjs } from "dayjs";
+
+import * as XLSX from "xlsx";
+
+import { api } from "../../lib/api";
+
+type Status = "A_INICIAR" | "INICIADO" | "FINALIZADO";
+
+type RecordType = "BASE" | "PROJECT";
 
 type Client = { id: number; name: string };
 
@@ -51,9 +60,13 @@ type RoleLite = { id: number; name: string; level: number };
 
 type UserLite = {
   id: number;
+
   name: string;
+
   role?: RoleLite;
+
   roleId?: number;
+
   roleLevel?: number;
 };
 
@@ -61,135 +74,231 @@ type UserOption = { id: number; name: string };
 
 type ClientRow = {
   id: number;
+
   name: string;
+
   cidade?: string | null;
+
   estado?: string | null;
+
   documento?: string | null;
+
   telefone1?: string | null;
 };
 
 type ProjectItem = {
   id: number;
+
   equipmentName: string;
+
   equipmentCode?: string | null;
+
   qty: number;
+
   createdAt?: string;
 };
 
 type ProgressVehicle = {
   id?: number;
+
   plate: string;
+
   serial: string;
 };
 
 type ProjectProgress = {
   id: number;
+
   date: string;
+
   trucksDoneToday: number;
+
   notes?: string | null;
+
   author?: UserLite;
+
   createdAt?: string;
+
   vehicles?: ProgressVehicle[];
 };
 
 type ClientFull = {
   id: number;
+
   idCliente: string;
+
   name: string;
+
   nomeFantasia: string;
+
   documento: string;
+
   tipoCliente: string;
+
   segmentacao: string;
+
   estado: string;
+
   cidade: string;
+
   bairro: string;
+
   logradouro: string;
+
   complemento: string;
+
   cep: string;
+
   latitude: string;
+
   longitude: string;
+
   email1: string;
+
   telefone1: string;
+
   email2: string;
+
   telefone2: string;
 };
 
 type GeoResult = {
   display_name?: string;
+
   lat?: string | number;
+
   lon?: string | number;
+
   address?: {
     city?: string;
+
     town?: string;
+
     village?: string;
+
     state?: string;
+
     postcode?: string;
   };
 };
 
 type InstallationProject = {
   id: number;
+
   title: string;
+
   status: Status;
+
+  recordType?: RecordType;
+
+  saleDate?: string | null;
+
+  importBatch?: string | null;
+
   af?: string | null;
+
   clientId: number | null;
+
   client?: Client | null;
+
   supervisorId?: number | null;
+
   coordinatorId?: number | null;
+
   supervisor?: UserLite | null;
+
   coordinator?: UserLite | null;
 
   technicianId?: number | null;
+
   technicianIds?: number[];
+
   technician?: UserLite | null;
+
   techniciansList?: UserOption[];
+
   technicianNames?: string[];
 
   requestedLocationText?: string | null;
+
   requestedCity?: string | null;
+
   requestedState?: string | null;
+
   requestedCep?: string | null;
+
   requestedLat?: number | null;
+
   requestedLng?: number | null;
 
   contactName?: string | null;
+
   contactEmail?: string | null;
+
   contactEmails?: string[];
 
   contactPhone?: string | null;
+
   notes?: string | null;
+
   startPlannedAt?: string | null;
+
   startAt?: string | null;
+
   endAt?: string | null;
+
   endPlannedAt?: string | null;
+
   trucksTotal: number;
+
   trucksDone: number;
+
   equipmentsTotal: number;
+
   equipmentsPerDay?: number | null;
+
   daysEstimated?: number | null;
+
   whatsappGroupName?: string | null;
+
   whatsappGroupLink?: string | null;
+
   items?: ProjectItem[];
+
   progress?: ProjectProgress[];
 };
 
 type ImportSummary = {
   loading: boolean;
+
   percent: number;
+
   totalRows: number;
+
   validRows: number;
+
   importedCount: number;
+
   duplicatesInFile: string[];
+
   alreadyPublished: string[];
+
   invalidRows: number;
 };
 
 function unwrap<T>(resData: any): T {
-  return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
+  return resData && typeof resData === "object" && "data" in resData
+    ? (resData.data as T)
+    : (resData as T);
 }
+
 function normalizeZip(value?: string | null) {
-  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  const digits = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 8);
+
   if (digits.length <= 5) return digits;
+
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
@@ -229,19 +338,21 @@ function getGeoCep(it: any) {
         it?.postcode ||
         it?.zip ||
         it?.addressZip ||
-        it?.address?.postcode
+        it?.address?.postcode,
     ) || null
   );
 }
 
 function getGeoLat(it: any) {
   const value = it?.lat ?? it?.latitude;
-  return value != null && value !== '' ? Number(value) : null;
+
+  return value != null && value !== "" ? Number(value) : null;
 }
 
 function getGeoLng(it: any) {
   const value = it?.lng ?? it?.lon ?? it?.longitude;
-  return value != null && value !== '' ? Number(value) : null;
+
+  return value != null && value !== "" ? Number(value) : null;
 }
 
 function getGeoLabel(it: any) {
@@ -250,55 +361,74 @@ function getGeoLabel(it: any) {
     it?.displayName ||
     it?.display_name ||
     it?.requestedLocationText ||
-    [
-      it?.address?.road || it?.road || it?.street,
-      getGeoCity(it),
-      getGeoUf(it),
-    ]
+    [it?.address?.road || it?.road || it?.street, getGeoCity(it), getGeoUf(it)]
+
       .filter(Boolean)
-      .join(', ') ||
-    'Localização'
+
+      .join(", ") ||
+    "Localização"
   );
 }
+
 function statusTag(s: Status) {
-  if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
-  if (s === 'INICIADO') return <Tag color="blue">Iniciado</Tag>;
+  if (s === "A_INICIAR") return <Tag>À iniciar</Tag>;
+
+  if (s === "INICIADO") return <Tag color="blue">Iniciado</Tag>;
+
   return <Tag color="green">Finalizado</Tag>;
 }
 
 const ROLE_ID_TECNICO = 1;
+
 const ROLE_ID_SUPERVISOR = 3;
+
 const ROLE_ID_PSO = 8;
+
 const MAX_VEHICLES_PREVIEW = 10;
 
 function getRoleId(u?: UserLite | null) {
   return u?.role?.id ?? u?.roleId;
 }
+
 function getRoleName(u?: UserLite | null) {
   return u?.role?.name;
 }
+
 function getRoleLevel(u?: UserLite | null) {
   return u?.role?.level ?? u?.roleLevel;
 }
 
 function isSupervisor(u: UserLite) {
   const id = getRoleId(u);
+
   const name = getRoleName(u);
+
   const level = getRoleLevel(u);
-  return id === ROLE_ID_SUPERVISOR || name === 'Supervisor' || level === 3;
+
+  return id === ROLE_ID_SUPERVISOR || name === "Supervisor" || level === 3;
 }
 
 function isTechnicianOrPSO(u: UserLite) {
   const id = getRoleId(u);
+
   const name = getRoleName(u);
-  return id === ROLE_ID_TECNICO || id === ROLE_ID_PSO || name === 'Tecnico' || name === 'PSO';
+
+  return (
+    id === ROLE_ID_TECNICO ||
+    id === ROLE_ID_PSO ||
+    name === "Tecnico" ||
+    name === "PSO"
+  );
 }
 
 function safeUrl(value?: string | null) {
-  const v = String(value || '').trim();
+  const v = String(value || "").trim();
+
   if (!v) return null;
+
   try {
     const u = new URL(v);
+
     return u.toString();
   } catch {
     return null;
@@ -307,17 +437,23 @@ function safeUrl(value?: string | null) {
 
 function isWhatsAppGroupLink(value?: string | null) {
   const url = safeUrl(value);
+
   if (!url) return false;
-  return url.includes('chat.whatsapp.com/');
+
+  return url.includes("chat.whatsapp.com/");
 }
 
 function normalizeHeader(value: string) {
-  return String(value || '')
+  return String(value || "")
     .trim()
+
     .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ');
+
+    .normalize("NFD")
+
+    .replace(/[\u0300-\u036f]/g, "")
+
+    .replace(/\s+/g, " ");
 }
 
 function normalizeEmailList(input: unknown): string[] {
@@ -327,7 +463,7 @@ function normalizeEmailList(input: unknown): string[] {
 
   if (Array.isArray(input)) {
     arr = input;
-  } else if (typeof input === 'string') {
+  } else if (typeof input === "string") {
     arr = input.split(/[;,]/);
   } else {
     arr = [input];
@@ -336,138 +472,208 @@ function normalizeEmailList(input: unknown): string[] {
   return [
     ...new Set(
       arr
-        .map((item) => String(item || '').trim().toLowerCase())
+
+        .map((item) =>
+          String(item || "")
+            .trim()
+            .toLowerCase(),
+        )
+
         .filter(Boolean),
     ),
   ];
 }
 
 function isValidEmail(email?: string | null) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 }
 
 function parseDateOnly(value?: string | null) {
   if (!value) return null;
-  return dayjs(String(value).slice(0, 10), 'YYYY-MM-DD');
+
+  return dayjs(String(value).slice(0, 10), "YYYY-MM-DD");
 }
 
 function normalizePlate(raw: string) {
-  const v = String(raw || '')
+  const v = String(raw || "")
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '');
+
+    .replace(/[^A-Z0-9]/g, "");
 
   if (v.length >= 7 && /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v.slice(0, 7))) {
     return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
   }
+
   if (v.length >= 7 && /^[A-Z]{3}[0-9]{4}$/.test(v.slice(0, 7))) {
     return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
   }
+
   if (v.length > 3) return `${v.slice(0, 3)}-${v.slice(3, 7)}`;
+
   return v.slice(0, 3);
 }
 
 function isValidPlate(value?: string) {
-  const v = String(value || '')
+  const v = String(value || "")
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '');
+
+    .replace(/[^A-Z0-9]/g, "");
+
   return /^[A-Z]{3}[0-9]{4}$/.test(v) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v);
 }
 
 function normalizeUF(value?: string | null) {
-  return String(value || '').trim().toUpperCase().slice(0, 2);
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 function normalizeCep(value?: string | null) {
-  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
-  if (!digits) return '';
+  const digits = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 8);
+
+  if (!digits) return "";
+
   if (digits.length <= 5) return digits;
+
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 export default function InstallationProjectDetailPage() {
   const { id } = useParams();
+
   const projectId = Number(id);
+
   const nav = useNavigate();
+
   const qc = useQueryClient();
+
   const excelInputRef = useRef<HTMLInputElement | null>(null);
+
   const [editingItem, setEditingItem] = useState<ProjectItem | null>(null);
+
   const screens = Grid.useBreakpoint();
+
   const isMobile = !screens.md;
 
   const [clientViewOpen, setClientViewOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [waOpen, setWaOpen] = useState(false);
-  const [itemOpen, setItemOpen] = useState(false);
-  const [progressOpen, setProgressOpen] = useState(false);
-  const [progressListOpen, setProgressListOpen] = useState(false);
-  const [editingProgress, setEditingProgress] = useState<ProjectProgress | null>(null);
 
-  const [techSearch, setTechSearch] = useState('');
-  const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+
+  const [waOpen, setWaOpen] = useState(false);
+
+  const [itemOpen, setItemOpen] = useState(false);
+
+  const [progressOpen, setProgressOpen] = useState(false);
+
+  const [progressListOpen, setProgressListOpen] = useState(false);
+
+  const [editingProgress, setEditingProgress] =
+    useState<ProjectProgress | null>(null);
+
+  const [techSearch, setTechSearch] = useState("");
+
+  const [supervisorSearch, setSupervisorSearch] = useState("");
+
   const [geoOpen, setGeoOpen] = useState(false);
+
   const [geoLoading, setGeoLoading] = useState(false);
+
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
-  const [geoQuery, setGeoQuery] = useState('');
+
+  const [geoQuery, setGeoQuery] = useState("");
 
   const [editForm] = Form.useForm();
+
   const [waForm] = Form.useForm();
+
   const [itemForm] = Form.useForm();
+
   const [progressForm] = Form.useForm();
 
   const handleExportProgressDayExcel = (progress: ProjectProgress) => {
     const vehicles = progress?.vehicles || [];
 
     if (!vehicles.length) {
-      message.warning('Esse dia não possui veículos para exportar.');
+      message.warning("Esse dia não possui veículos para exportar.");
+
       return;
     }
 
     const data = vehicles.map((v) => ({
-      PLACA: v.plate || '',
-      SERIE: v.serial || '',
+      PLACA: v.plate || "",
+
+      SERIE: v.serial || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);
+
     const workbook = XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Progresso');
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Progresso");
 
-    const dateLabel = dayjs(progress.date).format('DD-MM-YYYY');
+    const dateLabel = dayjs(progress.date).format("DD-MM-YYYY");
+
     XLSX.writeFile(workbook, `placas-series-${dateLabel}.xlsx`);
   };
 
   const PRODUTOS_FIXOS = [
-    { label: 'OMNISAFE', value: 'OMNISAFE' },
-    { label: 'OMNIDUAL', value: 'OMNIDUAL' },
-    { label: 'OMNIFROTA', value: 'OMNIFROTA' },
-    { label: 'OMNILORA', value: 'OMNILORA' },
-    { label: 'OMNICARRETA', value: 'OMNICARRETA' },
-    { label: 'E.LOCK', value: 'E.LOCK' },
+    { label: "OMNISAFE", value: "OMNISAFE" },
+
+    { label: "OMNIDUAL", value: "OMNIDUAL" },
+
+    { label: "OMNITURBO", value: "OMNITURBO" },
+
+    { label: "OMNIFROTA", value: "OMNIFROTA" },
+
+    { label: "OMNILORA", value: "OMNILORA" },
+
+    { label: "OMNICARRETA", value: "OMNICARRETA" },
+
+    { label: "E.LOCK", value: "E.LOCK" },
   ];
 
   const [importSummary, setImportSummary] = useState<ImportSummary>({
     loading: false,
+
     percent: 0,
+
     totalRows: 0,
+
     validRows: 0,
+
     importedCount: 0,
+
     duplicatesInFile: [],
+
     alreadyPublished: [],
+
     invalidRows: 0,
   });
 
-  const watchedVehicles = Form.useWatch('vehicles', progressForm) as any[] | undefined;
+  const watchedVehicles = Form.useWatch("vehicles", progressForm) as
+    | any[]
+    | undefined;
 
   const usersQuery = useQuery<UserLite[]>({
-    queryKey: ['users', { techSearch, supervisorSearch }],
+    queryKey: ["users", { techSearch, supervisorSearch }],
+
     queryFn: async () => {
-      const q = (techSearch || supervisorSearch || '').trim();
+      const q = (techSearch || supervisorSearch || "").trim();
+
       const params = q ? { q } : {};
-      const res = await api.get('/users', { params });
+
+      const res = await api.get("/users", { params });
+
       return unwrap<UserLite[]>(res.data);
     },
+
     staleTime: 60_000,
+
     retry: false,
+
     refetchOnWindowFocus: false,
   });
 
@@ -475,244 +681,420 @@ export default function InstallationProjectDetailPage() {
 
   const technicianOptions = useMemo(() => {
     return allUsers
+
       .filter(isTechnicianOrPSO)
+
       .map((u) => ({ id: u.id, name: u.name }))
+
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allUsers]);
 
   const supervisorOptions = useMemo(() => {
     return allUsers
+
       .filter(isSupervisor)
+
       .map((u) => ({ id: u.id, name: u.name }))
+
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allUsers]);
 
   const projectQuery = useQuery<InstallationProject>({
-    queryKey: ['installation-project', projectId],
+    queryKey: ["installation-project", projectId],
+
     enabled: Number.isFinite(projectId) && projectId > 0,
+
     queryFn: async () => {
       const res = await api.get(`/installation-projects/${projectId}`);
+
       return unwrap<InstallationProject>(res.data);
     },
+
     retry: false,
+
     refetchOnWindowFocus: false,
+
     staleTime: 15_000,
   });
 
   const p = projectQuery.data;
+
   const currentClientId = projectQuery.data?.clientId ?? null;
 
   const existingPublishedPlates = useMemo(() => {
     const set = new Set<string>();
+
     (p?.progress || []).forEach((prog) => {
       (prog.vehicles || []).forEach((v) => {
-        const normalized = normalizePlate(v.plate || '');
+        const normalized = normalizePlate(v.plate || "");
+
         if (normalized) set.add(normalized);
       });
     });
+
     return set;
   }, [p?.progress]);
 
   const clientsQuery = useQuery<ClientRow[]>({
-    queryKey: ['clients'],
-    queryFn: async () => (await api.get('/clients')).data,
+    queryKey: ["clients"],
+
+    queryFn: async () => (await api.get("/clients")).data,
+
     staleTime: 60_000,
+
     retry: false,
   });
 
   const coordinatorsQuery = useQuery<UserOption[]>({
-    queryKey: ['users', 'coordinators'],
-    queryFn: async () => (await api.get('/users', { params: { minLevel: 4 } })).data,
+    queryKey: ["users", "coordinators"],
+
+    queryFn: async () =>
+      (await api.get("/users", { params: { minLevel: 4 } })).data,
+
     staleTime: 60_000,
+
     retry: false,
+
     refetchOnWindowFocus: false,
   });
 
   const clientDetailQuery = useQuery<ClientFull>({
-    queryKey: ['client-detail', currentClientId],
+    queryKey: ["client-detail", currentClientId],
+
     enabled: !!currentClientId && clientViewOpen,
+
     queryFn: async () => {
       const res = await api.get(`/clients/${currentClientId}`);
+
       return unwrap<ClientFull>(res.data);
     },
+
     retry: false,
   });
 
   const supervisorNameById = (id?: number | null) => {
     if (!id) return null;
+
     const u = supervisorOptions.find((x) => x.id === id);
+
     return u?.name || `#${id}`;
   };
 
   const coordinatorNameById = (id?: number | null) => {
     if (!id) return null;
+
     const u = (coordinatorsQuery.data || []).find((x) => x.id === id);
+
     return u?.name || `#${id}`;
   };
 
   const coordinatorFromSupervisor = useMutation({
     mutationFn: async (supervisorId: number) => {
       const res = await api.get(`/users/${supervisorId}/coordinator`);
-      return unwrap<{ coordinatorId: number | null; coordinatorName?: string | null }>(res.data);
+
+      return unwrap<{
+        coordinatorId: number | null;
+        coordinatorName?: string | null;
+      }>(res.data);
     },
   });
 
   const sendDailyEmail = useMutation({
     mutationFn: async (payload?: { date?: string }) =>
-      (await api.post(`/installation-projects/${projectId}/emails/daily`, payload || {})).data,
-    onSuccess: () => message.success('Reporte diário enviado!'),
+      (
+        await api.post(
+          `/installation-projects/${projectId}/emails/daily`,
+          payload || {},
+        )
+      ).data,
+
+    onSuccess: () => message.success("Reporte diário enviado!"),
+
     onError: (e: any) => {
       const msg =
         e?.response?.data?.message ||
         e?.response?.data?.error ||
         e?.response?.data?.detail ||
         e?.message ||
-        'Falha ao enviar reporte diário';
+        "Falha ao enviar reporte diário";
+
       message.error(msg);
     },
   });
 
   const handleSendDaily = () => {
-    sendDailyEmail.mutate({ date: dayjs().format('YYYY-MM-DD') });
+    sendDailyEmail.mutate({ date: dayjs().format("YYYY-MM-DD") });
   };
 
   const updateProject = useMutation({
     mutationFn: async (payload: Partial<InstallationProject>) => {
-      const res = await api.patch(`/installation-projects/${projectId}`, payload);
+      const res = await api.patch(
+        `/installation-projects/${projectId}`,
+        payload,
+      );
+
       return unwrap<InstallationProject>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Projeto atualizado!');
+      message.success("Projeto atualizado!");
+
       setEditOpen(false);
+
       setGeoOpen(false);
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
-      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+
+      await qc.invalidateQueries({ queryKey: ["installation-projects"] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao atualizar"),
   });
 
   const updateWhatsApp = useMutation({
-    mutationFn: async (payload: { whatsappGroupName?: string | null; whatsappGroupLink?: string | null }) => {
-      const res = await api.patch(`/installation-projects/${projectId}/whatsapp`, payload);
+    mutationFn: async (payload: {
+      whatsappGroupName?: string | null;
+      whatsappGroupLink?: string | null;
+    }) => {
+      const res = await api.patch(
+        `/installation-projects/${projectId}/whatsapp`,
+        payload,
+      );
+
       return unwrap<InstallationProject>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('WhatsApp atualizado!');
+      message.success("WhatsApp atualizado!");
+
       setWaOpen(false);
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar WhatsApp'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao atualizar WhatsApp"),
+  });
+
+  const convertBaseToProject = useMutation({
+    mutationFn: async () => {
+      const res = await api.patch(
+        `/installation-projects/${projectId}/convert-to-project`,
+      );
+
+      return unwrap<InstallationProject>(res.data);
+    },
+
+    onSuccess: async () => {
+      message.success("Registro movido da BASE para Projetos!");
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+
+      await qc.invalidateQueries({ queryKey: ["installation-projects"] });
+    },
+
+    onError: (e: any) =>
+      message.error(
+        e?.response?.data?.error || "Falha ao mover da base para projetos",
+      ),
   });
 
   const startProject = useMutation({
     mutationFn: async () => {
+      if (p?.recordType === "BASE") {
+        throw new Error("Converta a BASE para projeto antes de iniciar.");
+      }
+
       const res = await api.post(`/installation-projects/${projectId}/start`);
+
       return unwrap<InstallationProject>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Projeto iniciado! O cliente foi notificado automaticamente.');
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
-      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+      message.success(
+        "Projeto iniciado! O cliente foi notificado automaticamente.",
+      );
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+
+      await qc.invalidateQueries({ queryKey: ["installation-projects"] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao iniciar'),
+
+    onError: (e: any) =>
+      message.error(
+        e?.response?.data?.error || e?.message || "Falha ao iniciar",
+      ),
   });
 
   const finishProject = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/installation-projects/${projectId}/finish`);
+
       return unwrap<InstallationProject>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Projeto finalizado! O compilado final foi enviado automaticamente.');
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
-      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+      message.success(
+        "Projeto finalizado! O compilado final foi enviado automaticamente.",
+      );
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+
+      await qc.invalidateQueries({ queryKey: ["installation-projects"] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao finalizar'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao finalizar"),
   });
 
   const addItem = useMutation({
-    mutationFn: async (payload: { equipmentName: string; equipmentCode?: string | null; qty: number }) => {
-      const res = await api.post(`/installation-projects/${projectId}/items`, payload);
+    mutationFn: async (payload: {
+      equipmentName: string;
+      equipmentCode?: string | null;
+      qty: number;
+    }) => {
+      const res = await api.post(
+        `/installation-projects/${projectId}/items`,
+        payload,
+      );
+
       return unwrap<ProjectItem>(res.data);
     },
+
     onSuccess: async () => {
-      message.success(editingItem ? 'Item atualizado!' : 'Item adicionado!');
+      message.success(editingItem ? "Item atualizado!" : "Item adicionado!");
+
       setItemOpen(false);
+
       setEditingItem(null);
+
       itemForm.resetFields();
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao adicionar item'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao adicionar item"),
   });
 
   const deleteItem = useMutation({
     mutationFn: async (itemId: number) => {
-      const res = await api.delete(`/installation-projects/${projectId}/items/${itemId}`);
+      const res = await api.delete(
+        `/installation-projects/${projectId}/items/${itemId}`,
+      );
+
       return res.data;
     },
+
     onSuccess: async () => {
-      message.success('Item excluído!');
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+      message.success("Item excluído!");
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao excluir item'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao excluir item"),
   });
 
   const updateItem = useMutation({
     mutationFn: async ({
       itemId,
+
       payload,
     }: {
       itemId: number;
-      payload: { equipmentName: string; equipmentCode?: string | null; qty: number };
+
+      payload: {
+        equipmentName: string;
+        equipmentCode?: string | null;
+        qty: number;
+      };
     }) => {
-      const res = await api.put(`/installation-projects/${projectId}/items/${itemId}`, payload);
+      const res = await api.put(
+        `/installation-projects/${projectId}/items/${itemId}`,
+        payload,
+      );
+
       return unwrap<ProjectItem>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Item atualizado!');
+      message.success("Item atualizado!");
+
       setItemOpen(false);
+
       setEditingItem(null);
+
       itemForm.resetFields();
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar item'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao atualizar item"),
   });
 
   async function extractVehiclesFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
       return {
         vehicles: [] as { plate: string; serial: string }[],
+
         duplicatesInFile: [] as string[],
+
         alreadyPublished: [] as string[],
+
         invalidRows: 0,
       };
     }
 
     const unique = new Map<string, { plate: string; serial: string }>();
+
     const duplicatePlatesInFile = new Set<string>();
+
     const alreadyPublishedSet = new Set<string>();
+
     let invalidRows = 0;
 
     const total = rows.length;
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
+
       const normalizedRow: Record<string, any> = {};
 
       Object.keys(row || {}).forEach((key) => {
         normalizedRow[normalizeHeader(key)] = row[key];
       });
 
-      const plateRaw = normalizedRow['PLACA'] ?? normalizedRow['PLATE'];
-      const serialRaw =
-        normalizedRow['SERIE/ SERIAL'] ??
-        normalizedRow['SERIE/SERIAL'] ??
-        normalizedRow['SERIE'] ??
-        normalizedRow['SERIAL'] ??
-        normalizedRow['N SERIE'];
+      const plateRaw = normalizedRow["PLACA"] ?? normalizedRow["PLATE"];
 
-      const plate = normalizePlate(String(plateRaw || ''));
-      const serial = String(serialRaw || '').trim();
+      const serialRaw =
+        normalizedRow["SERIE/ SERIAL"] ??
+        normalizedRow["SERIE/SERIAL"] ??
+        normalizedRow["SERIE"] ??
+        normalizedRow["SERIAL"] ??
+        normalizedRow["N SERIE"];
+
+      const plate = normalizePlate(String(plateRaw || ""));
+
+      const serial = String(serialRaw || "").trim();
 
       if (!plate || !serial || !isValidPlate(plate)) {
         invalidRows += 1;
@@ -721,7 +1103,10 @@ export default function InstallationProjectDetailPage() {
 
         if (
           existingPublishedPlates.has(plate) &&
-          (!editingProgress || !(editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === plate))
+          (!editingProgress ||
+            !(editingProgress.vehicles || []).some(
+              (v) => normalizePlate(v.plate) === plate,
+            ))
         ) {
           alreadyPublishedSet.add(plate);
         }
@@ -734,10 +1119,14 @@ export default function InstallationProjectDetailPage() {
       }
 
       const percent = Math.min(100, Math.round(((i + 1) / total) * 100));
+
       setImportSummary((prev) => ({
         ...prev,
+
         loading: true,
+
         percent,
+
         totalRows: total,
       }));
 
@@ -748,8 +1137,11 @@ export default function InstallationProjectDetailPage() {
 
     return {
       vehicles: Array.from(unique.values()),
+
       duplicatesInFile: Array.from(duplicatePlatesInFile),
+
       alreadyPublished: Array.from(alreadyPublishedSet),
+
       invalidRows,
     };
   }
@@ -758,53 +1150,76 @@ export default function InstallationProjectDetailPage() {
     try {
       setImportSummary({
         loading: true,
+
         percent: 5,
+
         totalRows: 0,
+
         validRows: 0,
+
         importedCount: 0,
+
         duplicatesInFile: [],
+
         alreadyPublished: [],
+
         invalidRows: 0,
       });
 
       const buffer = await file.arrayBuffer();
+
       setImportSummary((prev) => ({ ...prev, percent: 20 }));
 
-      const workbook = XLSX.read(buffer, { type: 'array' });
+      const workbook = XLSX.read(buffer, { type: "array" });
+
       const firstSheetName = workbook.SheetNames[0];
 
       if (!firstSheetName) {
         setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
-        message.error('Arquivo Excel sem abas.');
+
+        message.error("Arquivo Excel sem abas.");
+
         return;
       }
 
       const worksheet = workbook.Sheets[firstSheetName];
-      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       setImportSummary((prev) => ({
         ...prev,
+
         percent: 35,
+
         totalRows: Array.isArray(rows) ? rows.length : 0,
       }));
 
-      const { vehicles, duplicatesInFile, alreadyPublished, invalidRows } = await extractVehiclesFromExcelRows(rows);
+      const { vehicles, duplicatesInFile, alreadyPublished, invalidRows } =
+        await extractVehiclesFromExcelRows(rows);
 
       if (!vehicles.length) {
         setImportSummary({
           loading: false,
+
           percent: 100,
+
           totalRows: Array.isArray(rows) ? rows.length : 0,
+
           validRows: 0,
+
           importedCount: 0,
+
           duplicatesInFile,
+
           alreadyPublished,
+
           invalidRows,
         });
 
         message.warning(
           'Nenhum veículo válido encontrado. Verifique se o Excel possui as colunas "PLACA" e "SERIE/ SERIAL".',
         );
+
         return;
       }
 
@@ -812,12 +1227,19 @@ export default function InstallationProjectDetailPage() {
 
       setImportSummary({
         loading: false,
+
         percent: 100,
+
         totalRows: Array.isArray(rows) ? rows.length : 0,
+
         validRows: vehicles.length,
+
         importedCount: vehicles.length,
+
         duplicatesInFile,
+
         alreadyPublished,
+
         invalidRows,
       });
 
@@ -830,192 +1252,323 @@ export default function InstallationProjectDetailPage() {
       }
     } catch (error) {
       console.error(error);
+
       setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
-      message.error('Falha ao ler o arquivo Excel.');
+
+      message.error("Falha ao ler o arquivo Excel.");
     }
   };
 
   const addProgress = useMutation({
-    mutationFn: async (payload: { date: string; notes?: string | null; vehicles: { plate: string; serial: string }[] }) => {
-      const res = await api.post(`/installation-projects/${projectId}/progress`, payload);
+    mutationFn: async (payload: {
+      date: string;
+      notes?: string | null;
+      vehicles: { plate: string; serial: string }[];
+    }) => {
+      const res = await api.post(
+        `/installation-projects/${projectId}/progress`,
+        payload,
+      );
+
       return unwrap<ProjectProgress>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Progresso lançado!');
+      message.success("Progresso lançado!");
+
       setProgressOpen(false);
+
       setEditingProgress(null);
+
       progressForm.resetFields();
+
       setImportSummary({
         loading: false,
+
         percent: 0,
+
         totalRows: 0,
+
         validRows: 0,
+
         importedCount: 0,
+
         duplicatesInFile: [],
+
         alreadyPublished: [],
+
         invalidRows: 0,
       });
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao lançar progresso'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao lançar progresso"),
   });
 
   const updateProgress = useMutation({
     mutationFn: async ({
       progressId,
+
       payload,
     }: {
       progressId: number;
-      payload: { date: string; notes?: string | null; vehicles: { plate: string; serial: string }[] };
+
+      payload: {
+        date: string;
+        notes?: string | null;
+        vehicles: { plate: string; serial: string }[];
+      };
     }) => {
-      const res = await api.put(`/installation-projects/${projectId}/progress/${progressId}`, payload);
+      const res = await api.put(
+        `/installation-projects/${projectId}/progress/${progressId}`,
+        payload,
+      );
+
       return unwrap<ProjectProgress>(res.data);
     },
+
     onSuccess: async () => {
-      message.success('Progresso atualizado!');
+      message.success("Progresso atualizado!");
+
       setProgressOpen(false);
+
       setEditingProgress(null);
+
       progressForm.resetFields();
+
       setImportSummary({
         loading: false,
+
         percent: 0,
+
         totalRows: 0,
+
         validRows: 0,
+
         importedCount: 0,
+
         duplicatesInFile: [],
+
         alreadyPublished: [],
+
         invalidRows: 0,
       });
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar progresso'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao atualizar progresso"),
   });
 
   const deleteProgress = useMutation({
     mutationFn: async (progressId: number) => {
-      const res = await api.delete(`/installation-projects/${projectId}/progress/${progressId}`);
+      const res = await api.delete(
+        `/installation-projects/${projectId}/progress/${progressId}`,
+      );
+
       return res.data;
     },
+
     onSuccess: async () => {
-      message.success('Progresso excluído!');
-      await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
+      message.success("Progresso excluído!");
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
     },
-    onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao excluir progresso'),
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao excluir progresso"),
   });
 
   const itemsSorted = useMemo(() => {
     const src = p?.items || [];
+
     return [...src].sort((a, b) => (b.id || 0) - (a.id || 0));
   }, [p?.items]);
 
   const progressSorted = useMemo(() => {
     const src = p?.progress || [];
-    return [...src].sort((a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf());
+
+    return [...src].sort(
+      (a, b) => dayjs(b.date).valueOf() - dayjs(a.date).valueOf(),
+    );
   }, [p?.progress]);
 
   const technicianNames = useMemo(() => {
     if (p?.technicianNames?.length) return p.technicianNames;
+
     if (p?.techniciansList?.length) return p.techniciansList.map((t) => t.name);
+
     if (p?.technician?.name) return [p.technician.name];
+
     return [];
   }, [p]);
 
   const projectEmails = useMemo(() => {
-    const list = normalizeEmailList(p?.contactEmails?.length ? p.contactEmails : p?.contactEmail);
+    const list = normalizeEmailList(
+      p?.contactEmails?.length ? p.contactEmails : p?.contactEmail,
+    );
+
     return list;
   }, [p]);
 
   const hasProjectEmails = projectEmails.length > 0;
 
-  const supervisorLabel = p?.supervisor?.name || supervisorNameById(p?.supervisorId) || '-';
-  const coordinatorLabel = p?.coordinator?.name || coordinatorNameById(p?.coordinatorId) || '-';
-  const technicianLabel = technicianNames.length ? technicianNames.join(', ') : '-';
-  const contactEmailsLabel = projectEmails.length ? projectEmails.join(', ') : '-';
+  const supervisorLabel =
+    p?.supervisor?.name || supervisorNameById(p?.supervisorId) || "-";
+
+  const coordinatorLabel =
+    p?.coordinator?.name || coordinatorNameById(p?.coordinatorId) || "-";
+
+  const technicianLabel = technicianNames.length
+    ? technicianNames.join(", ")
+    : "-";
+
+  const contactEmailsLabel = projectEmails.length
+    ? projectEmails.join(", ")
+    : "-";
+
+  const saleDateLabel = p?.saleDate
+    ? dayjs(p.saleDate).format("DD/MM/YYYY")
+    : "-";
+
+  const recordTypeLabel = p?.recordType || "-";
+
+  const importBatchLabel = p?.importBatch || "-";
+
   const locationLabel = [
     p?.requestedLocationText,
-    [p?.requestedCity, p?.requestedState].filter(Boolean).join(' / '),
-    p?.requestedCep ? `CEP ${p.requestedCep}` : '',
-  ]
-    .filter(Boolean)
-    .join(' • ');
 
-  const wrapAny = { overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const };
+    [p?.requestedCity, p?.requestedState].filter(Boolean).join(" / "),
+
+    p?.requestedCep ? `CEP ${p.requestedCep}` : "",
+  ]
+
+    .filter(Boolean)
+
+    .join(" • ");
+
+  const wrapAny = {
+    overflowWrap: "anywhere" as const,
+    wordBreak: "break-word" as const,
+  };
 
   const progressPercent = useMemo(() => {
     if (!p?.trucksTotal || p.trucksTotal <= 0) return 0;
+
     return Math.min(100, Math.round((p.trucksDone / p.trucksTotal) * 100));
   }, [p?.trucksDone, p?.trucksTotal]);
 
   const pageWrap: React.CSSProperties = {
-    display: 'grid',
+    display: "grid",
+
     gap: isMobile ? 12 : 16,
-    maxWidth: '100%',
-    overflowX: 'hidden',
+
+    maxWidth: "100%",
+
+    overflowX: "hidden",
   };
 
   const actionsWrap: React.CSSProperties = {
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: "flex",
+
+    flexWrap: "wrap",
+
     gap: 8,
-    alignItems: 'center',
-    width: '100%',
+
+    alignItems: "center",
+
+    width: "100%",
   };
 
   const twoCols: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
+    display: "grid",
+
+    gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr",
+
     gap: isMobile ? 12 : 16,
-    alignItems: 'start',
-    maxWidth: '100%',
+
+    alignItems: "start",
+
+    maxWidth: "100%",
   };
 
   const searchGeo = async () => {
     const q = geoQuery.trim();
+
     if (!q) {
-      message.warning('Digite um endereço, cidade ou CEP para buscar.');
+      message.warning("Digite um endereço, cidade ou CEP para buscar.");
+
       return;
     }
 
     setGeoLoading(true);
+
     try {
-      const res = await api.get('/geocode', { params: { q } });
-      const data = Array.isArray(res.data) ? res.data : unwrap<any[]>(res.data) || [];
+      const res = await api.get("/geocode", { params: { q } });
+
+      const data = Array.isArray(res.data)
+        ? res.data
+        : unwrap<any[]>(res.data) || [];
+
       setGeoResults(data);
+
       if (!data.length) {
-        message.warning('Nenhum resultado encontrado.');
+        message.warning("Nenhum resultado encontrado.");
       }
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Falha ao buscar endereço');
+      message.error(e?.response?.data?.error || "Falha ao buscar endereço");
     } finally {
       setGeoLoading(false);
     }
   };
 
   const handleSearchCep = async () => {
-    const cep = normalizeCep(editForm.getFieldValue('requestedCep'));
+    const cep = normalizeCep(editForm.getFieldValue("requestedCep"));
+
     if (!cep || cep.length < 8) {
-      message.warning('Informe um CEP válido.');
+      message.warning("Informe um CEP válido.");
+
       return;
     }
 
     setGeoLoading(true);
+
     try {
-      const res = await api.get('/users/cep', { params: { cep } });
+      const res = await api.get("/users/cep", { params: { cep } });
+
       const data = unwrap<any>(res.data);
 
       editForm.setFieldsValue({
         requestedLocationText:
           data?.logradouro ||
-          editForm.getFieldValue('requestedLocationText') ||
-          '',
-        requestedCity: data?.cidade || data?.localidade || editForm.getFieldValue('requestedCity') || '',
-        requestedState: normalizeUF(data?.estado || data?.uf || editForm.getFieldValue('requestedState')),
+          editForm.getFieldValue("requestedLocationText") ||
+          "",
+
+        requestedCity:
+          data?.cidade ||
+          data?.localidade ||
+          editForm.getFieldValue("requestedCity") ||
+          "",
+
+        requestedState: normalizeUF(
+          data?.estado || data?.uf || editForm.getFieldValue("requestedState"),
+        ),
+
         requestedCep: normalizeCep(cep),
       });
 
-      message.success('Endereço preenchido pelo CEP.');
+      message.success("Endereço preenchido pelo CEP.");
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Falha ao buscar CEP');
+      message.error(e?.response?.data?.error || "Falha ao buscar CEP");
     } finally {
       setGeoLoading(false);
     }
@@ -1024,10 +1577,15 @@ export default function InstallationProjectDetailPage() {
   const applyGeo = (it: any) => {
     editForm.setFieldsValue({
       requestedLocationText: getGeoLabel(it),
+
       requestedCity: getGeoCity(it),
+
       requestedState: getGeoUf(it),
+
       requestedCep: getGeoCep(it),
+
       requestedLat: getGeoLat(it),
+
       requestedLng: getGeoLng(it),
     });
 
@@ -1036,22 +1594,31 @@ export default function InstallationProjectDetailPage() {
 
   const handleConfirmStart = () => {
     Modal.confirm({
-      title: 'Confirmar início do projeto?',
-      icon: <ExclamationCircleOutlined style={{ color: '#faad14' }} />,
+      title: "Confirmar início do projeto?",
+
+      icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
+
       centered: true,
-      okText: 'Sim, iniciar',
-      cancelText: 'Cancelar',
-      okButtonProps: { type: 'primary' },
+
+      okText: "Sim, iniciar",
+
+      cancelText: "Cancelar",
+
+      okButtonProps: { type: "primary" },
+
       content: (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: "grid", gap: 8 }}>
           <Typography.Text>
-            Ao iniciar, o projeto mudará de status e o cliente receberá automaticamente as informações de início.
+            Ao iniciar, o projeto mudará de status e o cliente receberá
+            automaticamente as informações de início.
           </Typography.Text>
+
           <Typography.Text strong type="danger">
             Essa ação não poderá ser desfeita.
           </Typography.Text>
         </div>
       ),
+
       onOk: async () => {
         await startProject.mutateAsync();
       },
@@ -1060,22 +1627,31 @@ export default function InstallationProjectDetailPage() {
 
   const handleConfirmFinish = () => {
     Modal.confirm({
-      title: 'Confirmar finalização do projeto?',
-      icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+      title: "Confirmar finalização do projeto?",
+
+      icon: <ExclamationCircleOutlined style={{ color: "#ff4d4f" }} />,
+
       centered: true,
-      okText: 'Sim, finalizar',
-      cancelText: 'Cancelar',
+
+      okText: "Sim, finalizar",
+
+      cancelText: "Cancelar",
+
       okButtonProps: { danger: true },
+
       content: (
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: "grid", gap: 8 }}>
           <Typography.Text>
-            Ao finalizar, o projeto será encerrado e o compilado final será enviado automaticamente ao cliente.
+            Ao finalizar, o projeto será encerrado e o compilado final será
+            enviado automaticamente ao cliente.
           </Typography.Text>
+
           <Typography.Text strong type="danger">
             Essa ação não poderá ser desfeita.
           </Typography.Text>
         </div>
       ),
+
       onOk: async () => {
         await finishProject.mutateAsync();
       },
@@ -1084,51 +1660,70 @@ export default function InstallationProjectDetailPage() {
 
   const handleEditProgress = (progress: ProjectProgress) => {
     setEditingProgress(progress);
+
     progressForm.setFieldsValue({
       date: dayjs(progress.date),
+
       notes: progress.notes || null,
-      vehicles:
-        progress.vehicles?.length
-          ? progress.vehicles.map((v) => ({
-              plate: v.plate || '',
-              serial: v.serial || '',
-            }))
-          : [{ plate: '', serial: '' }],
+
+      vehicles: progress.vehicles?.length
+        ? progress.vehicles.map((v) => ({
+            plate: v.plate || "",
+
+            serial: v.serial || "",
+          }))
+        : [{ plate: "", serial: "" }],
     });
+
     setProgressOpen(true);
   };
 
   const InfoRow = ({
     label,
+
     value,
+
     action,
   }: {
     label: string;
+
     value?: React.ReactNode;
+
     action?: React.ReactNode;
   }) => (
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        display: "flex",
+
+        justifyContent: "space-between",
+
+        alignItems: "flex-start",
+
         gap: 12,
-        padding: '8px 0',
-        borderBottom: '1px solid #f0f0f0',
-        flexWrap: 'wrap',
+
+        padding: "8px 0",
+
+        borderBottom: "1px solid #f0f0f0",
+
+        flexWrap: "wrap",
       }}
     >
       <Typography.Text type="secondary">{label}</Typography.Text>
+
       <div
         style={{
-          textAlign: 'right',
+          textAlign: "right",
+
           minWidth: 0,
+
           flex: 1,
+
           ...wrapAny,
         }}
       >
-        <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
-          <span>{value ?? '-'}</span>
+        <Space wrap style={{ justifyContent: "flex-end", width: "100%" }}>
+          <span>{value ?? "-"}</span>
+
           {action}
         </Space>
       </div>
@@ -1137,9 +1732,11 @@ export default function InstallationProjectDetailPage() {
 
   const StatCard = ({
     label,
+
     value,
   }: {
     label: string;
+
     value: React.ReactNode;
   }) => (
     <Card
@@ -1152,6 +1749,7 @@ export default function InstallationProjectDetailPage() {
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {label}
       </Typography.Text>
+
       <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
     </Card>
   );
@@ -1161,6 +1759,7 @@ export default function InstallationProjectDetailPage() {
       title={
         <Space size={8}>
           <UnorderedListOutlined />
+
           <span>Resumo do projeto</span>
         </Space>
       }
@@ -1171,25 +1770,43 @@ export default function InstallationProjectDetailPage() {
     >
       <div
         style={{
-          display: 'grid',
+          display: "grid",
+
           gap: 16,
         }}
       >
+        {p?.recordType === "BASE" ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Este registro ainda está na BASE"
+            description="Ajuste os dados necessários e mova para Projetos quando estiver pronto para operar."
+          />
+        ) : null}
+
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: isMobile ? 'flex-start' : 'center',
+            display: "flex",
+
+            justifyContent: "space-between",
+
+            alignItems: isMobile ? "flex-start" : "center",
+
             gap: 12,
-            flexWrap: 'wrap',
+
+            flexWrap: "wrap",
           }}
         >
           <div style={{ minWidth: 0 }}>
             <Typography.Title level={isMobile ? 5 : 4} style={{ margin: 0 }}>
               {p?.title}
             </Typography.Title>
+
             <Typography.Text type="secondary" style={{ ...wrapAny }}>
-              {p?.client?.name || (p?.clientId ? `Cliente #${p.clientId}` : 'Sem cliente vinculado')}
+              {p?.client?.name ||
+                (p?.clientId
+                  ? `Cliente #${p.clientId}`
+                  : "Sem cliente vinculado")}
             </Typography.Text>
           </div>
 
@@ -1198,34 +1815,52 @@ export default function InstallationProjectDetailPage() {
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',
+            display: "grid",
+
+            gridTemplateColumns: isMobile
+              ? "1fr 1fr"
+              : "repeat(4, minmax(0, 1fr))",
+
             gap: 12,
           }}
         >
-          <StatCard label="Caminhões" value={`${p?.trucksDone ?? 0}/${p?.trucksTotal ?? 0}`} />
+          <StatCard
+            label="Caminhões"
+            value={`${p?.trucksDone ?? 0}/${p?.trucksTotal ?? 0}`}
+          />
+
           <StatCard label="Equipamentos" value={p?.equipmentsTotal ?? 0} />
-          <StatCard label="Equip./dia" value={p?.equipmentsPerDay ?? '-'} />
-          <StatCard label="Dias estimados" value={p?.daysEstimated ?? '-'} />
+
+          <StatCard label="Equip./dia" value={p?.equipmentsPerDay ?? "-"} />
+
+          <StatCard label="Dias estimados" value={p?.daysEstimated ?? "-"} />
         </div>
 
         <Card
           size="small"
           styles={{ body: { padding: 14 } }}
-          style={{ borderRadius: 14, background: '#fafafa' }}
+          style={{ borderRadius: 14, background: "#fafafa" }}
         >
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              display: "flex",
+
+              justifyContent: "space-between",
+
+              alignItems: "center",
+
               marginBottom: 8,
+
               gap: 12,
-              flexWrap: 'wrap',
+
+              flexWrap: "wrap",
             }}
           >
             <Typography.Text strong>Andamento geral</Typography.Text>
-            <Typography.Text type="secondary">{progressPercent}%</Typography.Text>
+
+            <Typography.Text type="secondary">
+              {progressPercent}%
+            </Typography.Text>
           </div>
 
           <Progress percent={progressPercent} />
@@ -1233,8 +1868,10 @@ export default function InstallationProjectDetailPage() {
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            display: "grid",
+
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+
             gap: 16,
           }}
         >
@@ -1245,11 +1882,16 @@ export default function InstallationProjectDetailPage() {
             style={{ borderRadius: 14 }}
           >
             <InfoRow label="Técnico / Prestador" value={technicianLabel} />
+
             <InfoRow label="Supervisor" value={supervisorLabel} />
+
             <InfoRow label="Coordenador" value={coordinatorLabel} />
-            <div style={{ paddingTop: 8 }}>
-              <InfoRow label="AF" value={p?.af || '-'} />
-            </div>
+
+            <InfoRow label="AF" value={p?.af || "-"} />
+
+            <InfoRow label="Tipo" value={recordTypeLabel} />
+
+            <InfoRow label="Lote" value={importBatchLabel} />
           </Card>
 
           <Card
@@ -1258,24 +1900,33 @@ export default function InstallationProjectDetailPage() {
             styles={{ body: { padding: 14 } }}
             style={{ borderRadius: 14 }}
           >
+            <InfoRow label="Data da venda" value={saleDateLabel} />
+
             <InfoRow
               label="Prev. início"
-              value={parseDateOnly(p?.startPlannedAt)?.format('DD/MM/YYYY') || '-'}
+              value={
+                parseDateOnly(p?.startPlannedAt)?.format("DD/MM/YYYY") || "-"
+              }
             />
+
             <InfoRow
               label="Prev. fim"
-              value={parseDateOnly(p?.endPlannedAt)?.format('DD/MM/YYYY') || '-'}
+              value={
+                parseDateOnly(p?.endPlannedAt)?.format("DD/MM/YYYY") || "-"
+              }
             />
+
             <InfoRow
               label="Início"
-              value={p?.startAt ? dayjs(p.startAt).format('DD/MM/YYYY HH:mm') : '-'}
+              value={
+                p?.startAt ? dayjs(p.startAt).format("DD/MM/YYYY HH:mm") : "-"
+              }
             />
-            <div style={{ paddingTop: 8 }}>
-              <InfoRow
-                label="Fim"
-                value={p?.endAt ? dayjs(p.endAt).format('DD/MM/YYYY HH:mm') : '-'}
-              />
-            </div>
+
+            <InfoRow
+              label="Fim"
+              value={p?.endAt ? dayjs(p.endAt).format("DD/MM/YYYY HH:mm") : "-"}
+            />
           </Card>
 
           <Card
@@ -1286,9 +1937,13 @@ export default function InstallationProjectDetailPage() {
           >
             <InfoRow
               label="Nome"
-              value={p?.client?.name || (p?.clientId ? `#${p.clientId}` : '-')}
+              value={p?.client?.name || (p?.clientId ? `#${p.clientId}` : "-")}
               action={
-                <Button size="small" onClick={() => setClientViewOpen(true)} disabled={!p?.clientId}>
+                <Button
+                  size="small"
+                  onClick={() => setClientViewOpen(true)}
+                  disabled={!p?.clientId}
+                >
                   Abrir cliente
                 </Button>
               }
@@ -1301,20 +1956,27 @@ export default function InstallationProjectDetailPage() {
             styles={{ body: { padding: 14 } }}
             style={{ borderRadius: 14 }}
           >
-            <InfoRow label="Contato" value={p?.contactName || '-'} />
+            <InfoRow label="Contato" value={p?.contactName || "-"} />
+
             <InfoRow label="E-mails" value={contactEmailsLabel} />
-            <InfoRow label="Telefone" value={p?.contactPhone || '-'} />
+
+            <InfoRow label="Telefone" value={p?.contactPhone || "-"} />
           </Card>
 
           <Card
             size="small"
             title="Localização"
             styles={{ body: { padding: 14 } }}
-            style={{ borderRadius: 14, gridColumn: isMobile ? 'auto' : '1 / -1' }}
+            style={{
+              borderRadius: 14,
+              gridColumn: isMobile ? "auto" : "1 / -1",
+            }}
           >
-            <InfoRow label="Endereço" value={locationLabel || '-'} />
-            <InfoRow label="Latitude" value={p?.requestedLat ?? '-'} />
-            <InfoRow label="Longitude" value={p?.requestedLng ?? '-'} />
+            <InfoRow label="Endereço" value={locationLabel || "-"} />
+
+            <InfoRow label="Latitude" value={p?.requestedLat ?? "-"} />
+
+            <InfoRow label="Longitude" value={p?.requestedLng ?? "-"} />
           </Card>
         </div>
 
@@ -1324,8 +1986,8 @@ export default function InstallationProjectDetailPage() {
           styles={{ body: { padding: 14 } }}
           style={{ borderRadius: 14 }}
         >
-          <Typography.Text style={{ whiteSpace: 'pre-wrap', ...wrapAny }}>
-            {p?.notes || '-'}
+          <Typography.Text style={{ whiteSpace: "pre-wrap", ...wrapAny }}>
+            {p?.notes || "-"}
           </Typography.Text>
         </Card>
       </div>
@@ -1339,9 +2001,13 @@ export default function InstallationProjectDetailPage() {
   if (projectQuery.isError || !p) {
     return (
       <Card>
-        <Typography.Text type="danger">Falha ao carregar projeto.</Typography.Text>
+        <Typography.Text type="danger">
+          Falha ao carregar projeto.
+        </Typography.Text>
+
         <Divider />
-        <Button onClick={() => nav('/projetos-instalacao')}>Voltar</Button>
+
+        <Button onClick={() => nav("/projetos-instalacao")}>Voltar</Button>
       </Card>
     );
   }
@@ -1349,18 +2015,55 @@ export default function InstallationProjectDetailPage() {
   return (
     <div style={pageWrap}>
       <div style={actionsWrap}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => nav('/projetos-instalacao')} block={isMobile}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => nav("/projetos-instalacao")}
+          block={isMobile}
+        >
           Voltar para projetos
         </Button>
 
-        <Button icon={<EditOutlined />} onClick={() => setEditOpen(true)} block={isMobile}>
+        <Button
+          icon={<EditOutlined />}
+          onClick={() => setEditOpen(true)}
+          block={isMobile}
+        >
           Editar
         </Button>
+
+        {p?.recordType === "BASE" ? (
+          <Button
+            onClick={() => {
+              Modal.confirm({
+                title: "Mover da BASE para Projetos?",
+
+                content:
+                  "Esse registro sairá da BASE e passará a aparecer na visão de Projetos.",
+
+                okText: "Mover",
+
+                cancelText: "Cancelar",
+
+                onOk: async () => {
+                  await convertBaseToProject.mutateAsync();
+                },
+              });
+            }}
+            loading={convertBaseToProject.isPending}
+            block={isMobile}
+          >
+            Mover para Projetos
+          </Button>
+        ) : null}
 
         <Button
           icon={<WhatsAppOutlined />}
           onClick={() => setWaOpen(true)}
-          style={{ backgroundColor: '#25D366', borderColor: '#25D366', color: '#fff' }}
+          style={{
+            backgroundColor: "#25D366",
+            borderColor: "#25D366",
+            color: "#fff",
+          }}
           block={isMobile}
         >
           WhatsApp
@@ -1371,7 +2074,7 @@ export default function InstallationProjectDetailPage() {
           loading={sendDailyEmail.isPending}
           onClick={handleSendDaily}
           block={isMobile}
-          disabled={p.status === 'A_INICIAR' || !hasProjectEmails}
+          disabled={p.status === "A_INICIAR" || !hasProjectEmails}
         >
           Enviar reporte diário (hoje)
         </Button>
@@ -1379,7 +2082,7 @@ export default function InstallationProjectDetailPage() {
         <Button
           icon={<PlayCircleOutlined />}
           type="primary"
-          disabled={p.status !== 'A_INICIAR'}
+          disabled={p.status !== "A_INICIAR"}
           loading={startProject.isPending}
           onClick={handleConfirmStart}
           block={isMobile}
@@ -1390,7 +2093,7 @@ export default function InstallationProjectDetailPage() {
         <Button
           icon={<StopOutlined />}
           danger
-          disabled={p.status !== 'INICIADO'}
+          disabled={p.status !== "INICIADO"}
           loading={finishProject.isPending}
           onClick={handleConfirmFinish}
           block={isMobile}
@@ -1404,7 +2107,7 @@ export default function InstallationProjectDetailPage() {
           <SummaryContent />
         </div>
 
-        <div style={{ display: 'grid', gap: isMobile ? 12 : 16, minWidth: 0 }}>
+        <div style={{ display: "grid", gap: isMobile ? 12 : 16, minWidth: 0 }}>
           <Card
             title="Itens / Equipamentos"
             extra={
@@ -1413,8 +2116,11 @@ export default function InstallationProjectDetailPage() {
                 type="primary"
                 onClick={() => {
                   setEditingItem(null);
+
                   itemForm.resetFields();
+
                   itemForm.setFieldsValue({ qty: 1 });
+
                   setItemOpen(true);
                 }}
               >
@@ -1426,17 +2132,22 @@ export default function InstallationProjectDetailPage() {
           >
             <List
               dataSource={itemsSorted}
-              locale={{ emptyText: 'Nenhum item cadastrado.' }}
+              locale={{ emptyText: "Nenhum item cadastrado." }}
               renderItem={(it) => (
                 <List.Item>
                   <div
                     style={{
-                      width: '100%',
-                      display: 'flex',
-                      justifyContent: 'space-between',
+                      width: "100%",
+
+                      display: "flex",
+
+                      justifyContent: "space-between",
+
                       gap: 12,
-                      alignItems: 'flex-start',
-                      flexWrap: 'wrap',
+
+                      alignItems: "flex-start",
+
+                      flexWrap: "wrap",
                     }}
                   >
                     <div style={{ minWidth: 0, flex: 1 }}>
@@ -1446,7 +2157,10 @@ export default function InstallationProjectDetailPage() {
 
                       {it.equipmentCode ? (
                         <div style={{ marginTop: 2 }}>
-                          <Typography.Text type="secondary" style={wrapAny as any}>
+                          <Typography.Text
+                            type="secondary"
+                            style={wrapAny as any}
+                          >
                             {it.equipmentCode}
                           </Typography.Text>
                         </div>
@@ -1461,11 +2175,15 @@ export default function InstallationProjectDetailPage() {
                         icon={<EditOutlined />}
                         onClick={() => {
                           setEditingItem(it);
+
                           itemForm.setFieldsValue({
                             equipmentName: it.equipmentName,
+
                             equipmentCode: it.equipmentCode || null,
+
                             qty: it.qty,
                           });
+
                           setItemOpen(true);
                         }}
                       >
@@ -1503,14 +2221,19 @@ export default function InstallationProjectDetailPage() {
             }
             extra={
               <Space>
-                <Button icon={<UnorderedListOutlined />} onClick={() => setProgressListOpen(true)}>
+                <Button
+                  icon={<UnorderedListOutlined />}
+                  onClick={() => setProgressListOpen(true)}
+                >
                   Ver mais
                 </Button>
+
                 <Button
                   icon={<PlusOutlined />}
                   type="primary"
                   onClick={() => {
                     setEditingProgress(null);
+
                     setProgressOpen(true);
                   }}
                 >
@@ -1523,41 +2246,74 @@ export default function InstallationProjectDetailPage() {
           >
             <List
               dataSource={progressSorted}
-              locale={{ emptyText: 'Nenhum progresso lançado.' }}
+              locale={{ emptyText: "Nenhum progresso lançado." }}
               renderItem={(pr) => (
                 <List.Item>
-                  <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
+                  <div
+                    style={{
+                      width: "100%",
+                      display: "grid",
+                      gap: 6,
+                      maxWidth: "100%",
+                    }}
+                  >
                     <Space wrap>
-                      <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
-                      <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
+                      <Tag>{dayjs(pr.date).format("DD/MM/YYYY")}</Tag>
+
+                      <Typography.Text
+                        strong
+                      >{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
+
                       {pr.author?.name ? (
-                        <Typography.Text type="secondary">por {pr.author.name}</Typography.Text>
+                        <Typography.Text type="secondary">
+                          por {pr.author.name}
+                        </Typography.Text>
                       ) : null}
                     </Space>
 
                     {pr.vehicles?.length ? (
-                      <div style={{ marginTop: 4, display: 'grid', gap: 2, ...wrapAny }}>
-                        {pr.vehicles.slice(0, MAX_VEHICLES_PREVIEW).map((v, idx) => (
-                          <div key={`${v.plate}-${v.serial}-${idx}`} style={wrapAny as any}>
-                            <b>PLACA:</b> {v.plate} <span style={{ marginLeft: 10 }} />
-                            <b>SÉRIE:</b> {v.serial}
-                          </div>
-                        ))}
+                      <div
+                        style={{
+                          marginTop: 4,
+                          display: "grid",
+                          gap: 2,
+                          ...wrapAny,
+                        }}
+                      >
+                        {pr.vehicles
+                          .slice(0, MAX_VEHICLES_PREVIEW)
+                          .map((v, idx) => (
+                            <div
+                              key={`${v.plate}-${v.serial}-${idx}`}
+                              style={wrapAny as any}
+                            >
+                              <b>PLACA:</b> {v.plate}{" "}
+                              <span style={{ marginLeft: 10 }} />
+                              <b>SÉRIE:</b> {v.serial}
+                            </div>
+                          ))}
 
                         {pr.vehicles.length > MAX_VEHICLES_PREVIEW ? (
                           <Button
                             type="link"
-                            style={{ padding: 0, height: 'auto', justifyContent: 'flex-start' }}
+                            style={{
+                              padding: 0,
+                              height: "auto",
+                              justifyContent: "flex-start",
+                            }}
                             onClick={() => setProgressListOpen(true)}
                           >
-                            + {pr.vehicles.length - MAX_VEHICLES_PREVIEW} placa(s). Clique em Ver mais
+                            + {pr.vehicles.length - MAX_VEHICLES_PREVIEW}{" "}
+                            placa(s). Clique em Ver mais
                           </Button>
                         ) : null}
                       </div>
                     ) : null}
 
                     {pr.notes ? (
-                      <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>
+                      <Typography.Text
+                        style={{ whiteSpace: "pre-wrap", ...(wrapAny as any) }}
+                      >
                         {pr.notes}
                       </Typography.Text>
                     ) : null}
@@ -1578,42 +2334,101 @@ export default function InstallationProjectDetailPage() {
             Fechar
           </Button>,
         ]}
-        width={isMobile ? '96vw' : 900}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? "96vw" : 900}
+        style={isMobile ? { maxWidth: "96vw" } : {}}
         centered
       >
         {!currentClientId ? (
-          <Typography.Text type="secondary">Este projeto não tem cliente vinculado.</Typography.Text>
+          <Typography.Text type="secondary">
+            Este projeto não tem cliente vinculado.
+          </Typography.Text>
         ) : clientDetailQuery.isLoading ? (
-          <div style={{ padding: 20, display: 'flex', justifyContent: 'center' }}>
+          <div
+            style={{ padding: 20, display: "flex", justifyContent: "center" }}
+          >
             <Spin />
           </div>
         ) : clientDetailQuery.isError ? (
-          <Typography.Text type="danger">Falha ao carregar o cliente.</Typography.Text>
+          <Typography.Text type="danger">
+            Falha ao carregar o cliente.
+          </Typography.Text>
         ) : (
           <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
-            <Descriptions.Item label="ID_cliente">{clientDetailQuery.data?.idCliente}</Descriptions.Item>
-            <Descriptions.Item label="tipo_cliente">{clientDetailQuery.data?.tipoCliente}</Descriptions.Item>
-            <Descriptions.Item label="cliente">{clientDetailQuery.data?.name}</Descriptions.Item>
-            <Descriptions.Item label="nome_fantasia">{clientDetailQuery.data?.nomeFantasia}</Descriptions.Item>
-            <Descriptions.Item label="cpf/cnpj">{clientDetailQuery.data?.documento}</Descriptions.Item>
-            <Descriptions.Item label="segmentacao">{clientDetailQuery.data?.segmentacao}</Descriptions.Item>
-            <Descriptions.Item label="estado">{clientDetailQuery.data?.estado}</Descriptions.Item>
-            <Descriptions.Item label="cidade">{clientDetailQuery.data?.cidade}</Descriptions.Item>
-            <Descriptions.Item label="bairro">{clientDetailQuery.data?.bairro}</Descriptions.Item>
-            <Descriptions.Item label="cep">{clientDetailQuery.data?.cep}</Descriptions.Item>
+            <Descriptions.Item label="ID_cliente">
+              {clientDetailQuery.data?.idCliente}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="tipo_cliente">
+              {clientDetailQuery.data?.tipoCliente}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="cliente">
+              {clientDetailQuery.data?.name}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="nome_fantasia">
+              {clientDetailQuery.data?.nomeFantasia}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="cpf/cnpj">
+              {clientDetailQuery.data?.documento}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="segmentacao">
+              {clientDetailQuery.data?.segmentacao}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="estado">
+              {clientDetailQuery.data?.estado}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="cidade">
+              {clientDetailQuery.data?.cidade}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="bairro">
+              {clientDetailQuery.data?.bairro}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="cep">
+              {clientDetailQuery.data?.cep}
+            </Descriptions.Item>
+
             <Descriptions.Item label="logradouro" span={isMobile ? 1 : 2}>
-              <span style={wrapAny as any}>{clientDetailQuery.data?.logradouro}</span>
+              <span style={wrapAny as any}>
+                {clientDetailQuery.data?.logradouro}
+              </span>
             </Descriptions.Item>
+
             <Descriptions.Item label="complemento" span={isMobile ? 1 : 2}>
-              <span style={wrapAny as any}>{clientDetailQuery.data?.complemento}</span>
+              <span style={wrapAny as any}>
+                {clientDetailQuery.data?.complemento}
+              </span>
             </Descriptions.Item>
-            <Descriptions.Item label="latitude">{clientDetailQuery.data?.latitude}</Descriptions.Item>
-            <Descriptions.Item label="longitude">{clientDetailQuery.data?.longitude}</Descriptions.Item>
-            <Descriptions.Item label="email1">{clientDetailQuery.data?.email1}</Descriptions.Item>
-            <Descriptions.Item label="telefone1">{clientDetailQuery.data?.telefone1}</Descriptions.Item>
-            <Descriptions.Item label="email2">{clientDetailQuery.data?.email2}</Descriptions.Item>
-            <Descriptions.Item label="telefone2">{clientDetailQuery.data?.telefone2}</Descriptions.Item>
+
+            <Descriptions.Item label="latitude">
+              {clientDetailQuery.data?.latitude}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="longitude">
+              {clientDetailQuery.data?.longitude}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="email1">
+              {clientDetailQuery.data?.email1}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="telefone1">
+              {clientDetailQuery.data?.telefone1}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="email2">
+              {clientDetailQuery.data?.email2}
+            </Descriptions.Item>
+
+            <Descriptions.Item label="telefone2">
+              {clientDetailQuery.data?.telefone2}
+            </Descriptions.Item>
           </Descriptions>
         )}
       </Modal>
@@ -1632,29 +2447,55 @@ export default function InstallationProjectDetailPage() {
             Fechar
           </Button>,
         ]}
-        width={isMobile ? '96vw' : 900}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? "96vw" : 900}
+        style={isMobile ? { maxWidth: "96vw" } : {}}
         centered
       >
         <List
           dataSource={progressSorted}
-          locale={{ emptyText: 'Nenhum progresso lançado.' }}
+          locale={{ emptyText: "Nenhum progresso lançado." }}
           renderItem={(pr) => (
             <List.Item>
-              <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
-                <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start" wrap>
+              <div
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gap: 6,
+                  maxWidth: "100%",
+                }}
+              >
+                <Space
+                  style={{ width: "100%", justifyContent: "space-between" }}
+                  align="start"
+                  wrap
+                >
                   <Space wrap>
-                    <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
-                    <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
-                    {pr.author?.name ? <Typography.Text type="secondary">por {pr.author.name}</Typography.Text> : null}
+                    <Tag>{dayjs(pr.date).format("DD/MM/YYYY")}</Tag>
+
+                    <Typography.Text
+                      strong
+                    >{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
+
+                    {pr.author?.name ? (
+                      <Typography.Text type="secondary">
+                        por {pr.author.name}
+                      </Typography.Text>
+                    ) : null}
                   </Space>
 
                   <Space>
-                    <Button size="small" onClick={() => handleExportProgressDayExcel(pr)}>
+                    <Button
+                      size="small"
+                      onClick={() => handleExportProgressDayExcel(pr)}
+                    >
                       Excel
                     </Button>
 
-                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEditProgress(pr)}>
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => handleEditProgress(pr)}
+                    >
                       Editar
                     </Button>
 
@@ -1673,10 +2514,21 @@ export default function InstallationProjectDetailPage() {
                 </Space>
 
                 {pr.vehicles?.length ? (
-                  <div style={{ marginTop: 4, display: 'grid', gap: 2, ...wrapAny }}>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      display: "grid",
+                      gap: 2,
+                      ...wrapAny,
+                    }}
+                  >
                     {pr.vehicles.map((v, idx) => (
-                      <div key={`${v.plate}-${v.serial}-${idx}`} style={wrapAny as any}>
-                        <b>PLACA:</b> {v.plate} <span style={{ marginLeft: 10 }} />
+                      <div
+                        key={`${v.plate}-${v.serial}-${idx}`}
+                        style={wrapAny as any}
+                      >
+                        <b>PLACA:</b> {v.plate}{" "}
+                        <span style={{ marginLeft: 10 }} />
                         <b>SÉRIE:</b> {v.serial}
                       </div>
                     ))}
@@ -1684,7 +2536,9 @@ export default function InstallationProjectDetailPage() {
                 ) : null}
 
                 {pr.notes ? (
-                  <Typography.Text style={{ whiteSpace: 'pre-wrap', ...(wrapAny as any) }}>
+                  <Typography.Text
+                    style={{ whiteSpace: "pre-wrap", ...(wrapAny as any) }}
+                  >
                     {pr.notes}
                   </Typography.Text>
                 ) : null}
@@ -1701,6 +2555,7 @@ export default function InstallationProjectDetailPage() {
         confirmLoading={updateProject.isPending}
         onCancel={() => {
           setEditOpen(false);
+
           setGeoOpen(false);
         }}
         onOk={async () => {
@@ -1708,82 +2563,155 @@ export default function InstallationProjectDetailPage() {
             const v = await editForm.validateFields();
 
             const contactEmails = normalizeEmailList(v.contactEmails);
+
             const technicianIds = Array.isArray(v.technicianIds)
-              ? [...new Set(v.technicianIds.map((n: any) => Number(n)).filter(Boolean))]
+              ? [
+                  ...new Set(
+                    v.technicianIds.map((n: any) => Number(n)).filter(Boolean),
+                  ),
+                ]
               : [];
 
             updateProject.mutate({
               title: v.title,
+
               af: v.af ?? null,
+
               clientId: v.clientId ?? null,
+
               technicianIds,
+
               technicianId: technicianIds[0] ?? null,
+
               supervisorId: v.supervisorId ? Number(v.supervisorId) : null,
+
               trucksTotal: v.trucksTotal ?? 0,
+
               equipmentsPerDay: v.equipmentsPerDay ?? null,
-              startPlannedAt: v.startPlannedAt ? (v.startPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
-              endPlannedAt: v.endPlannedAt ? (v.endPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
+
+              saleDate: v.saleDate
+                ? (v.saleDate as Dayjs).format("YYYY-MM-DD")
+                : null,
+
+              startPlannedAt: v.startPlannedAt
+                ? (v.startPlannedAt as Dayjs).format("YYYY-MM-DD")
+                : null,
+
+              endPlannedAt: v.endPlannedAt
+                ? (v.endPlannedAt as Dayjs).format("YYYY-MM-DD")
+                : null,
+
               contactName: v.contactName ?? null,
+
               contactEmails,
+
               contactEmail: contactEmails[0] ?? null,
+
               contactPhone: v.contactPhone ?? null,
+
               notes: v.notes ?? null,
+
               requestedLocationText: v.requestedLocationText ?? null,
+
               requestedCity: v.requestedCity ?? null,
+
               requestedState: normalizeUF(v.requestedState),
+
               requestedCep: normalizeCep(v.requestedCep),
-              requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
-              requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
+
+              requestedLat:
+                v.requestedLat != null && v.requestedLat !== ""
+                  ? Number(v.requestedLat)
+                  : null,
+
+              requestedLng:
+                v.requestedLng != null && v.requestedLng !== ""
+                  ? Number(v.requestedLng)
+                  : null,
             });
           } catch {}
         }}
         afterOpenChange={(o) => {
           if (o) {
-            setTechSearch('');
-            setSupervisorSearch('');
-            setGeoQuery('');
+            setTechSearch("");
+
+            setSupervisorSearch("");
+
+            setGeoQuery("");
+
             setGeoResults([]);
 
-            const initialEmails = normalizeEmailList(p.contactEmails?.length ? p.contactEmails : p.contactEmail);
+            const initialEmails = normalizeEmailList(
+              p.contactEmails?.length ? p.contactEmails : p.contactEmail,
+            );
 
-            const initialTechnicianIds = p.technicianIds?.length ? p.technicianIds : p.technicianId ? [p.technicianId] : [];
+            const initialTechnicianIds = p.technicianIds?.length
+              ? p.technicianIds
+              : p.technicianId
+                ? [p.technicianId]
+                : [];
 
             editForm.setFieldsValue({
               title: p.title,
+
               af: p.af ?? null,
+
               clientId: p.clientId ?? null,
+
               technicianIds: initialTechnicianIds,
+
               supervisorId: p.supervisorId ?? null,
+
               coordinatorId: p.coordinatorId ?? null,
+
               trucksTotal: p.trucksTotal ?? 0,
+
               equipmentsPerDay: p.equipmentsPerDay ?? null,
+
+              saleDate: parseDateOnly(p.saleDate),
+
               startPlannedAt: parseDateOnly(p.startPlannedAt),
+
               endPlannedAt: parseDateOnly(p.endPlannedAt),
+
               contactName: p.contactName ?? null,
+
               contactEmails: initialEmails,
+
               contactPhone: p.contactPhone ?? null,
+
               notes: p.notes ?? null,
+
               requestedLocationText: p.requestedLocationText ?? null,
+
               requestedCity: p.requestedCity ?? null,
+
               requestedState: p.requestedState ?? null,
+
               requestedCep: p.requestedCep ?? null,
+
               requestedLat: p.requestedLat ?? null,
+
               requestedLng: p.requestedLng ?? null,
             });
           } else {
             setGeoOpen(false);
-            setGeoQuery('');
+
+            setGeoQuery("");
+
             setGeoResults([]);
           }
         }}
-        width={isMobile ? '96vw' : 1120}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? "96vw" : 1120}
+        style={isMobile ? { maxWidth: "96vw" } : {}}
         centered
         styles={{
           body: {
             padding: isMobile ? 12 : 20,
-            maxHeight: '80vh',
-            overflowY: 'auto',
+
+            maxHeight: "80vh",
+
+            overflowY: "auto",
           },
         }}
       >
@@ -1793,58 +2721,103 @@ export default function InstallationProjectDetailPage() {
           onValuesChange={async (changed) => {
             if (changed?.supervisorId) {
               const supervisorId = Number(changed.supervisorId);
+
               if (!Number.isFinite(supervisorId) || supervisorId <= 0) return;
 
               try {
-                const r = await coordinatorFromSupervisor.mutateAsync(supervisorId);
-                editForm.setFieldValue('coordinatorId', r?.coordinatorId ?? null);
+                const r =
+                  await coordinatorFromSupervisor.mutateAsync(supervisorId);
+
+                editForm.setFieldValue(
+                  "coordinatorId",
+                  r?.coordinatorId ?? null,
+                );
               } catch {}
             }
           }}
         >
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.8fr',
+              display: "grid",
+
+              gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr",
+
               gap: 16,
-              width: '100%',
+
+              width: "100%",
             }}
           >
-            <div style={{ minWidth: 0, display: 'grid', gap: 12 }}>
-              <Card title="Dados do projeto" size="small" style={{ borderRadius: 14, width: '100%' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <div style={{ minWidth: 0, display: "grid", gap: 12 }}>
+              <Card
+                title="Dados do projeto"
+                size="small"
+                style={{ borderRadius: 14, width: "100%" }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
                   <Form.Item name="technicianIds" label="Técnico / Prestador">
                     <Select
                       mode="multiple"
                       showSearch
-                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
+                      placeholder={
+                        usersQuery.isLoading
+                          ? "Carregando..."
+                          : "Selecione um ou mais"
+                      }
                       loading={usersQuery.isLoading}
                       filterOption={false}
                       onSearch={(v) => setTechSearch(v)}
                       onDropdownVisibleChange={(isOpen) => {
-                        if (isOpen) setTechSearch('');
+                        if (isOpen) setTechSearch("");
                       }}
-                      options={technicianOptions.map((t) => ({ label: t.name, value: t.id }))}
-                      notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'}
+                      options={technicianOptions.map((t) => ({
+                        label: t.name,
+                        value: t.id,
+                      }))}
+                      notFoundContent={
+                        usersQuery.isLoading ? (
+                          <Spin size="small" />
+                        ) : (
+                          "Nenhum técnico/prestador encontrado"
+                        )
+                      }
                     />
                   </Form.Item>
 
                   <Form.Item
                     name="supervisorId"
                     label="Supervisor (obrigatório)"
-                    rules={[{ required: true, message: 'Selecione o supervisor' }]}
+                    rules={[
+                      { required: true, message: "Selecione o supervisor" },
+                    ]}
                   >
                     <Select
                       showSearch
-                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                      placeholder={
+                        usersQuery.isLoading ? "Carregando..." : "Selecione"
+                      }
                       loading={usersQuery.isLoading}
                       filterOption={false}
                       onSearch={(v) => setSupervisorSearch(v)}
                       onDropdownVisibleChange={(isOpen) => {
-                        if (isOpen) setSupervisorSearch('');
+                        if (isOpen) setSupervisorSearch("");
                       }}
-                      options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
-                      notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'}
+                      options={supervisorOptions.map((u) => ({
+                        value: u.id,
+                        label: u.name,
+                      }))}
+                      notFoundContent={
+                        usersQuery.isLoading ? (
+                          <Spin size="small" />
+                        ) : (
+                          "Nenhum supervisor encontrado"
+                        )
+                      }
                     />
                   </Form.Item>
 
@@ -1852,22 +2825,40 @@ export default function InstallationProjectDetailPage() {
                     name="coordinatorId"
                     label="Coordenador (auto)"
                     tooltip="Preenchido automaticamente pelo supervisor"
-                    style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
+                    style={{ gridColumn: isMobile ? "auto" : "1 / -1" }}
                   >
                     <Select
                       disabled
-                      loading={coordinatorsQuery.isLoading || coordinatorFromSupervisor.isPending}
-                      placeholder={coordinatorFromSupervisor.isPending ? 'Buscando...' : 'Automático'}
-                      options={(coordinatorsQuery.data || []).map((u) => ({ value: u.id, label: u.name }))}
+                      loading={
+                        coordinatorsQuery.isLoading ||
+                        coordinatorFromSupervisor.isPending
+                      }
+                      placeholder={
+                        coordinatorFromSupervisor.isPending
+                          ? "Buscando..."
+                          : "Automático"
+                      }
+                      options={(coordinatorsQuery.data || []).map((u) => ({
+                        value: u.id,
+                        label: u.name,
+                      }))}
                     />
                   </Form.Item>
                 </div>
 
-                <Form.Item name="title" label="Nome do Projeto" rules={[{ required: true, message: 'Informe o nome' }]}>
+                <Form.Item
+                  name="title"
+                  label="Nome do Projeto"
+                  rules={[{ required: true, message: "Informe o nome" }]}
+                >
                   <Input />
                 </Form.Item>
 
-                <Form.Item name="af" label="AF" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
+                <Form.Item
+                  name="af"
+                  label="AF"
+                  rules={[{ max: 50, message: "Máximo 50 caracteres" }]}
+                >
                   <Input placeholder="Ex: AF-2026-000123" />
                 </Form.Item>
 
@@ -1878,35 +2869,89 @@ export default function InstallationProjectDetailPage() {
                     placeholder="Selecione um cliente"
                     loading={clientsQuery.isLoading}
                     optionFilterProp="label"
-                    filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
+                    filterOption={(input, option) =>
+                      String(option?.label || "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
                     options={(clientsQuery.data || []).map((c) => {
-                      const loc = [c.cidade, c.estado].filter(Boolean).join(' / ');
-                      const doc = c.documento ? ` • ${c.documento}` : '';
-                      const tel = c.telefone1 ? ` • ${c.telefone1}` : '';
+                      const loc = [c.cidade, c.estado]
+                        .filter(Boolean)
+                        .join(" / ");
+
+                      const doc = c.documento ? ` • ${c.documento}` : "";
+
+                      const tel = c.telefone1 ? ` • ${c.telefone1}` : "";
+
                       return {
                         value: c.id,
-                        label: `${c.name}${loc ? ` — ${loc}` : ''}${doc}${tel}`,
+
+                        label: `${c.name}${loc ? ` — ${loc}` : ""}${doc}${tel}`,
                       };
                     })}
                   />
                 </Form.Item>
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                  <Form.Item name="trucksTotal" label="Qtd. veículos (total)" rules={[{ required: true, message: 'Informe' }]}>
-                    <InputNumber min={0} style={{ width: '100%' }} />
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
+                  <Form.Item
+                    name="trucksTotal"
+                    label="Qtd. veículos (total)"
+                    rules={[{ required: true, message: "Informe" }]}
+                  >
+                    <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
-                  <Form.Item name="equipmentsPerDay" label="Previsão de instalação por dia">
-                    <InputNumber min={1} style={{ width: '100%' }} />
+
+                  <Form.Item
+                    name="equipmentsPerDay"
+                    label="Previsão de instalação por dia"
+                  >
+                    <InputNumber min={1} style={{ width: "100%" }} />
                   </Form.Item>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                  <Form.Item name="startPlannedAt" label="Data prevista de início">
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                <div
+                  style={{
+                    display: "grid",
+
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
+
+                    gap: 12,
+                  }}
+                >
+                  <Form.Item name="saleDate" label="Data da venda">
+                    <DatePicker
+                      style={{ width: "100%" }}
+                      format="DD/MM/YYYY"
+                      inputReadOnly
+                    />
                   </Form.Item>
 
-                  <Form.Item name="endPlannedAt" label="Data prevista de término">
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                  <Form.Item
+                    name="startPlannedAt"
+                    label="Data prevista de início"
+                  >
+                    <DatePicker
+                      style={{ width: "100%" }}
+                      format="DD/MM/YYYY"
+                      inputReadOnly
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="endPlannedAt"
+                    label="Data prevista de término"
+                  >
+                    <DatePicker
+                      style={{ width: "100%" }}
+                      format="DD/MM/YYYY"
+                      inputReadOnly
+                    />
                   </Form.Item>
                 </div>
 
@@ -1916,7 +2961,7 @@ export default function InstallationProjectDetailPage() {
               </Card>
             </div>
 
-            <div style={{ minWidth: 0, display: 'grid', gap: 12 }}>
+            <div style={{ minWidth: 0, display: "grid", gap: 12 }}>
               <Card
                 title={
                   <Space>
@@ -1925,17 +2970,25 @@ export default function InstallationProjectDetailPage() {
                   </Space>
                 }
                 size="small"
-                style={{ borderRadius: 14, width: '100%' }}
+                style={{ borderRadius: 14, width: "100%" }}
                 extra={
                   <Button
                     size="small"
                     icon={<SearchOutlined />}
                     onClick={() => {
                       setGeoOpen(true);
+
                       const current =
-                        editForm.getFieldValue('requestedLocationText') ||
-                        [editForm.getFieldValue('requestedCity'), editForm.getFieldValue('requestedState')].filter(Boolean).join(', ');
-                      setGeoQuery(current || '');
+                        editForm.getFieldValue("requestedLocationText") ||
+                        [
+                          editForm.getFieldValue("requestedCity"),
+                          editForm.getFieldValue("requestedState"),
+                        ]
+                          .filter(Boolean)
+                          .join(", ");
+
+                      setGeoQuery(current || "");
+
                       setGeoResults([]);
                     }}
                   >
@@ -1943,11 +2996,20 @@ export default function InstallationProjectDetailPage() {
                   </Button>
                 }
               >
-                <Form.Item name="requestedLocationText" label="Endereço / localização">
+                <Form.Item
+                  name="requestedLocationText"
+                  label="Endereço / localização"
+                >
                   <Input placeholder="Ex: Rua X, Centro, Campinas - SP" />
                 </Form.Item>
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.7fr', gap: 12 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.7fr",
+                    gap: 12,
+                  }}
+                >
                   <Form.Item name="requestedCity" label="Cidade">
                     <Input placeholder="Cidade da instalação" />
                   </Form.Item>
@@ -1959,7 +3021,9 @@ export default function InstallationProjectDetailPage() {
                       {
                         validator: async (_, value) => {
                           if (!value) return;
-                          if (normalizeUF(value).length !== 2) throw new Error('Informe a UF com 2 letras');
+
+                          if (normalizeUF(value).length !== 2)
+                            throw new Error("Informe a UF com 2 letras");
                         },
                       },
                     ]}
@@ -1967,16 +3031,37 @@ export default function InstallationProjectDetailPage() {
                     <Input
                       maxLength={2}
                       placeholder="SP"
-                      onChange={(e) => editForm.setFieldValue('requestedState', normalizeUF(e.target.value))}
+                      onChange={(e) =>
+                        editForm.setFieldValue(
+                          "requestedState",
+                          normalizeUF(e.target.value),
+                        )
+                      }
                     />
                   </Form.Item>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: 12, alignItems: 'end' }}>
-                  <Form.Item name="requestedCep" label="CEP" style={{ marginBottom: 0 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
+                    gap: 12,
+                    alignItems: "end",
+                  }}
+                >
+                  <Form.Item
+                    name="requestedCep"
+                    label="CEP"
+                    style={{ marginBottom: 0 }}
+                  >
                     <Input
                       placeholder="00000-000"
-                      onChange={(e) => editForm.setFieldValue('requestedCep', normalizeCep(e.target.value))}
+                      onChange={(e) =>
+                        editForm.setFieldValue(
+                          "requestedCep",
+                          normalizeCep(e.target.value),
+                        )
+                      }
                     />
                   </Form.Item>
 
@@ -1985,17 +3070,29 @@ export default function InstallationProjectDetailPage() {
                   </Button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                    gap: 12,
+                    marginTop: 12,
+                  }}
+                >
                   <Form.Item name="requestedLat" label="Latitude">
-                    <InputNumber style={{ width: '100%' }} />
+                    <InputNumber style={{ width: "100%" }} />
                   </Form.Item>
+
                   <Form.Item name="requestedLng" label="Longitude">
-                    <InputNumber style={{ width: '100%' }} />
+                    <InputNumber style={{ width: "100%" }} />
                   </Form.Item>
                 </div>
               </Card>
 
-              <Card title="Dados de contato" size="small" style={{ borderRadius: 14, width: '100%' }}>
+              <Card
+                title="Dados de contato"
+                size="small"
+                style={{ borderRadius: 14, width: "100%" }}
+              >
                 <Form.Item name="contactName" label="Contato">
                   <Input />
                 </Form.Item>
@@ -2004,14 +3101,20 @@ export default function InstallationProjectDetailPage() {
                   name="contactEmails"
                   label="E-mails"
                   rules={[
-                    { required: true, message: 'Informe pelo menos um e-mail' },
+                    { required: true, message: "Informe pelo menos um e-mail" },
+
                     {
                       validator: async (_, value) => {
                         const emails = normalizeEmailList(value);
+
                         if (!emails.length) {
-                          throw new Error('Informe pelo menos um e-mail');
+                          throw new Error("Informe pelo menos um e-mail");
                         }
-                        const invalid = emails.find((email) => !isValidEmail(email));
+
+                        const invalid = emails.find(
+                          (email) => !isValidEmail(email),
+                        );
+
                         if (invalid) {
                           throw new Error(`E-mail inválido: ${invalid}`);
                         }
@@ -2019,7 +3122,11 @@ export default function InstallationProjectDetailPage() {
                     },
                   ]}
                 >
-                  <Select mode="tags" tokenSeparators={[',', ';', ' ']} placeholder="Digite um ou mais e-mails" />
+                  <Select
+                    mode="tags"
+                    tokenSeparators={[",", ";", " "]}
+                    placeholder="Digite um ou mais e-mails"
+                  />
                 </Form.Item>
 
                 <Form.Item name="contactPhone" label="Telefone (opcional)">
@@ -2036,52 +3143,71 @@ export default function InstallationProjectDetailPage() {
         title="Buscar coordenadas"
         onCancel={() => setGeoOpen(false)}
         footer={null}
-        width={isMobile ? '96vw' : 840}
+        width={isMobile ? "96vw" : 840}
         centered
       >
-        <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
+        <Space.Compact style={{ width: "100%", marginBottom: 12 }}>
           <Input
             value={geoQuery}
             placeholder="Digite endereço, cidade, bairro ou CEP"
             onChange={(e) => setGeoQuery(e.target.value)}
             onPressEnter={searchGeo}
           />
-          <Button type="primary" icon={<SearchOutlined />} loading={geoLoading} onClick={searchGeo}>
+
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            loading={geoLoading}
+            onClick={searchGeo}
+          >
             Buscar
           </Button>
         </Space.Compact>
 
-      <List
-        bordered
-        locale={{ emptyText: 'Nenhum resultado' }}
-        dataSource={geoResults}
-        renderItem={(item: any) => {
-          const city = getGeoCity(item);
-          const uf = getGeoUf(item);
-          const cep = getGeoCep(item);
-          const lat = getGeoLat(item);
-          const lng = getGeoLng(item);
-          const label = getGeoLabel(item);
+        <List
+          bordered
+          locale={{ emptyText: "Nenhum resultado" }}
+          dataSource={geoResults}
+          renderItem={(item: any) => {
+            const city = getGeoCity(item);
 
-          return (
-            <List.Item actions={[<Button type="primary" onClick={() => applyGeo(item)}>Usar</Button>]}>
-              <List.Item.Meta
-                title={label}
-                description={
-                  <>
-                    <div>
-                      <b>Cidade:</b> {city || '-'} {uf ? `- ${uf}` : ''}
-                    </div>
-                    <div>
-                      <b>CEP:</b> {cep || '-'} • <b>Lat:</b> {lat ?? '-'} • <b>Lng:</b> {lng ?? '-'}
-                    </div>
-                  </>
-                }
-              />
-            </List.Item>
-          );
-        }}
-      />
+            const uf = getGeoUf(item);
+
+            const cep = getGeoCep(item);
+
+            const lat = getGeoLat(item);
+
+            const lng = getGeoLng(item);
+
+            const label = getGeoLabel(item);
+
+            return (
+              <List.Item
+                actions={[
+                  <Button type="primary" onClick={() => applyGeo(item)}>
+                    Usar
+                  </Button>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={label}
+                  description={
+                    <>
+                      <div>
+                        <b>Cidade:</b> {city || "-"} {uf ? `- ${uf}` : ""}
+                      </div>
+
+                      <div>
+                        <b>CEP:</b> {cep || "-"} • <b>Lat:</b> {lat ?? "-"} •{" "}
+                        <b>Lng:</b> {lng ?? "-"}
+                      </div>
+                    </>
+                  }
+                />
+              </List.Item>
+            );
+          }}
+        />
       </Modal>
 
       <Modal
@@ -2093,8 +3219,10 @@ export default function InstallationProjectDetailPage() {
         onOk={async () => {
           try {
             const v = await waForm.validateFields();
+
             updateWhatsApp.mutate({
               whatsappGroupName: v.whatsappGroupName ?? null,
+
               whatsappGroupLink: v.whatsappGroupLink ?? null,
             });
           } catch {}
@@ -2103,12 +3231,13 @@ export default function InstallationProjectDetailPage() {
           if (o) {
             waForm.setFieldsValue({
               whatsappGroupName: p.whatsappGroupName ?? null,
+
               whatsappGroupLink: p.whatsappGroupLink ?? null,
             });
           }
         }}
-        width={isMobile ? '96vw' : 520}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? "96vw" : 520}
+        style={isMobile ? { maxWidth: "96vw" } : {}}
         centered
       >
         <Form form={waForm} layout="vertical">
@@ -2123,8 +3252,11 @@ export default function InstallationProjectDetailPage() {
               {
                 validator: async (_, value) => {
                   if (!value) return;
+
                   if (!isWhatsAppGroupLink(value)) {
-                    throw new Error('Informe um link válido de grupo do WhatsApp (ex: https://chat.whatsapp.com/...)');
+                    throw new Error(
+                      "Informe um link válido de grupo do WhatsApp (ex: https://chat.whatsapp.com/...)",
+                    );
                   }
                 },
               },
@@ -2136,11 +3268,18 @@ export default function InstallationProjectDetailPage() {
                 <Button
                   type="text"
                   aria-label="Abrir link do grupo no WhatsApp"
-                  icon={<WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} />}
-                  disabled={!safeUrl(waForm.getFieldValue('whatsappGroupLink'))}
+                  icon={
+                    <WhatsAppOutlined
+                      style={{ color: "#25D366", fontSize: 18 }}
+                    />
+                  }
+                  disabled={!safeUrl(waForm.getFieldValue("whatsappGroupLink"))}
                   onClick={() => {
-                    const link = safeUrl(waForm.getFieldValue('whatsappGroupLink'));
-                    if (link) window.open(link, '_blank');
+                    const link = safeUrl(
+                      waForm.getFieldValue("whatsappGroupLink"),
+                    );
+
+                    if (link) window.open(link, "_blank");
                   }}
                 />
               }
@@ -2151,11 +3290,12 @@ export default function InstallationProjectDetailPage() {
 
       <Modal
         open={itemOpen}
-        title={editingItem ? 'Editar item' : 'Adicionar item'}
-        okText={editingItem ? 'Salvar' : 'Adicionar'}
+        title={editingItem ? "Editar item" : "Adicionar item"}
+        okText={editingItem ? "Salvar" : "Adicionar"}
         confirmLoading={addItem.isPending || updateItem.isPending}
         onCancel={() => {
           setItemOpen(false);
+
           setEditingItem(null);
         }}
         onOk={async () => {
@@ -2165,67 +3305,81 @@ export default function InstallationProjectDetailPage() {
             if (editingItem?.id) {
               updateItem.mutate({
                 itemId: editingItem.id,
+
                 payload: {
                   equipmentName: v.equipmentName,
+
                   qty: v.qty ?? 1,
                 },
               });
             } else {
               addItem.mutate({
                 equipmentName: v.equipmentName,
+
                 qty: v.qty ?? 1,
               });
             }
           } catch {}
         }}
-        width={isMobile ? '96vw' : 520}
+        width={isMobile ? "96vw" : 520}
         centered
       >
         <Form form={itemForm} layout="vertical" initialValues={{ qty: 1 }}>
           <Form.Item
             name="equipmentName"
             label="Produto"
-            rules={[{ required: true, message: 'Selecione o produto' }]}
+            rules={[{ required: true, message: "Selecione o produto" }]}
           >
-            <Select options={PRODUTOS_FIXOS} placeholder="Selecione o produto" />
+            <Select
+              options={PRODUTOS_FIXOS}
+              placeholder="Selecione o produto"
+            />
           </Form.Item>
 
           <Form.Item
             name="qty"
             label="Quantidade"
-            rules={[{ required: true, message: 'Informe a quantidade' }]}
+            rules={[{ required: true, message: "Informe a quantidade" }]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} />
+            <InputNumber min={1} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
         open={progressOpen}
-        title={editingProgress ? 'Editar progresso' : 'Lançar progresso'}
-        okText={editingProgress ? 'Salvar alterações' : 'Salvar'}
+        title={editingProgress ? "Editar progresso" : "Lançar progresso"}
+        okText={editingProgress ? "Salvar alterações" : "Salvar"}
         confirmLoading={addProgress.isPending || updateProgress.isPending}
         onCancel={() => {
           setProgressOpen(false);
+
           setEditingProgress(null);
         }}
         onOk={async () => {
           try {
             const v = await progressForm.validateFields();
+
             const vehicles = (v.vehicles || []).map((x: any) => ({
-              plate: String(x.plate || '').trim().toUpperCase(),
-              serial: String(x.serial || '').trim(),
+              plate: String(x.plate || "")
+                .trim()
+                .toUpperCase(),
+
+              serial: String(x.serial || "").trim(),
             }));
 
             const payload = {
-              date: (v.date as Dayjs).format('YYYY-MM-DD'),
+              date: (v.date as Dayjs).format("YYYY-MM-DD"),
+
               notes: v.notes ?? null,
+
               vehicles,
             };
 
             if (editingProgress?.id) {
               updateProgress.mutate({
                 progressId: editingProgress.id,
+
                 payload,
               });
             } else {
@@ -2237,17 +3391,27 @@ export default function InstallationProjectDetailPage() {
           if (o && !editingProgress) {
             progressForm.setFieldsValue({
               date: dayjs(),
-              vehicles: [{ plate: '', serial: '' }],
+
+              vehicles: [{ plate: "", serial: "" }],
+
               notes: null,
             });
+
             setImportSummary({
               loading: false,
+
               percent: 0,
+
               totalRows: 0,
+
               validRows: 0,
+
               importedCount: 0,
+
               duplicatesInFile: [],
+
               alreadyPublished: [],
+
               invalidRows: 0,
             });
           }
@@ -2256,23 +3420,36 @@ export default function InstallationProjectDetailPage() {
             setEditingProgress(null);
           }
         }}
-        width={isMobile ? '96vw' : 820}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? "96vw" : 820}
+        style={isMobile ? { maxWidth: "96vw" } : {}}
         centered
       >
         <Form form={progressForm} layout="vertical">
-          <Form.Item name="date" label="Data" rules={[{ required: true, message: 'Selecione a data' }]}>
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+          <Form.Item
+            name="date"
+            label="Data"
+            rules={[{ required: true, message: "Selecione a data" }]}
+          >
+            <DatePicker
+              style={{ width: "100%" }}
+              format="DD/MM/YYYY"
+              inputReadOnly
+            />
           </Form.Item>
 
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              display: "flex",
+
+              justifyContent: "space-between",
+
+              alignItems: "center",
+
               gap: 12,
+
               marginBottom: 12,
-              flexWrap: 'wrap',
+
+              flexWrap: "wrap",
             }}
           >
             <Typography.Text strong>Importar via Excel</Typography.Text>
@@ -2281,55 +3458,79 @@ export default function InstallationProjectDetailPage() {
               ref={excelInputRef}
               type="file"
               accept=".xlsx,.xls"
-              style={{ display: 'none' }}
+              style={{ display: "none" }}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
+
                 if (!file) return;
 
                 await importVehiclesFromExcel(file);
-                e.currentTarget.value = '';
+
+                e.currentTarget.value = "";
               }}
             />
 
-            <Button icon={<UploadOutlined />} onClick={() => excelInputRef.current?.click()}>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => excelInputRef.current?.click()}
+            >
               Importar Excel
             </Button>
           </div>
 
           {(importSummary.loading || importSummary.totalRows > 0) && (
-            <Card size="small" styles={{ body: { padding: 12, marginBottom: 12 } }}>
-              <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                <Progress percent={importSummary.percent} status={importSummary.loading ? 'active' : 'normal'} />
+            <Card
+              size="small"
+              styles={{ body: { padding: 12, marginBottom: 12 } }}
+            >
+              <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                <Progress
+                  percent={importSummary.percent}
+                  status={importSummary.loading ? "active" : "normal"}
+                />
+
                 <Typography.Text type="secondary">
-                  Linhas lidas: {importSummary.totalRows} • Válidas: {importSummary.importedCount} • Inválidas:{' '}
+                  Linhas lidas: {importSummary.totalRows} • Válidas:{" "}
+                  {importSummary.importedCount} • Inválidas:{" "}
                   {importSummary.invalidRows}
                 </Typography.Text>
 
-                {!importSummary.loading && importSummary.alreadyPublished.length > 0 && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message={`${importSummary.alreadyPublished.length} placa(s) já estavam publicadas anteriormente`}
-                    description={importSummary.alreadyPublished.join(', ')}
-                  />
-                )}
+                {!importSummary.loading &&
+                  importSummary.alreadyPublished.length > 0 && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={`${importSummary.alreadyPublished.length} placa(s) já estavam publicadas anteriormente`}
+                      description={importSummary.alreadyPublished.join(", ")}
+                    />
+                  )}
 
-                {!importSummary.loading && importSummary.duplicatesInFile.length > 0 && (
-                  <Alert
-                    type="info"
-                    showIcon
-                    message={`${importSummary.duplicatesInFile.length} placa(s) duplicadas no próprio Excel`}
-                    description={importSummary.duplicatesInFile.join(', ')}
-                  />
-                )}
+                {!importSummary.loading &&
+                  importSummary.duplicatesInFile.length > 0 && (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={`${importSummary.duplicatesInFile.length} placa(s) duplicadas no próprio Excel`}
+                      description={importSummary.duplicatesInFile.join(", ")}
+                    />
+                  )}
               </Space>
             </Card>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
             <Typography.Text strong>Veículos instalados no dia</Typography.Text>
+
             <Typography.Text type="secondary">
-              Total do dia: {Array.isArray(watchedVehicles) ? watchedVehicles.length : 0}
+              Total do dia:{" "}
+              {Array.isArray(watchedVehicles) ? watchedVehicles.length : 0}
             </Typography.Text>
           </div>
 
@@ -2338,7 +3539,8 @@ export default function InstallationProjectDetailPage() {
             rules={[
               {
                 validator: async (_, list) => {
-                  if (!list || list.length < 1) throw new Error('Adicione pelo menos 1 veículo');
+                  if (!list || list.length < 1)
+                    throw new Error("Adicione pelo menos 1 veículo");
                 },
               },
             ]}
@@ -2346,36 +3548,54 @@ export default function InstallationProjectDetailPage() {
             {(fields, { add, remove }, { errors }) => (
               <>
                 {fields.map((field, idx) => {
-                  const currentPlate = normalizePlate(progressForm.getFieldValue(['vehicles', field.name, 'plate']) || '');
+                  const currentPlate = normalizePlate(
+                    progressForm.getFieldValue([
+                      "vehicles",
+                      field.name,
+                      "plate",
+                    ]) || "",
+                  );
+
                   const alreadyExists =
                     currentPlate &&
                     existingPublishedPlates.has(currentPlate) &&
                     !(
                       editingProgress &&
-                      (editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === currentPlate)
+                      (editingProgress.vehicles || []).some(
+                        (v) => normalizePlate(v.plate) === currentPlate,
+                      )
                     );
 
                   return (
                     <div
                       key={field.key}
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                        display: "grid",
+
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr auto",
+
                         gap: 8,
+
                         marginBottom: 8,
-                        alignItems: 'start',
+
+                        alignItems: "start",
                       }}
                     >
                       <div>
                         <Form.Item
-                          label={idx === 0 ? 'Placa' : ''}
-                          name={[field.name, 'plate']}
+                          label={idx === 0 ? "Placa" : ""}
+                          name={[field.name, "plate"]}
                           rules={[
-                            { required: true, message: 'Informe a placa' },
+                            { required: true, message: "Informe a placa" },
+
                             {
                               validator: async (_, value) => {
                                 if (!value) return;
-                                if (!isValidPlate(value)) throw new Error('Placa inválida (ex: ABC-1234 ou ABC-1E34)');
+
+                                if (!isValidPlate(value))
+                                  throw new Error(
+                                    "Placa inválida (ex: ABC-1234 ou ABC-1E34)",
+                                  );
                               },
                             },
                           ]}
@@ -2385,27 +3605,47 @@ export default function InstallationProjectDetailPage() {
                             maxLength={8}
                             onChange={(e) => {
                               const formatted = normalizePlate(e.target.value);
-                              progressForm.setFieldValue(['vehicles', field.name, 'plate'], formatted);
+
+                              progressForm.setFieldValue(
+                                ["vehicles", field.name, "plate"],
+                                formatted,
+                              );
                             }}
                           />
                         </Form.Item>
-                        {alreadyExists ? <Tag color="warning">Placa já publicada anteriormente</Tag> : null}
+
+                        {alreadyExists ? (
+                          <Tag color="warning">
+                            Placa já publicada anteriormente
+                          </Tag>
+                        ) : null}
                       </div>
 
                       <Form.Item
-                        label={idx === 0 ? 'Série / Serial' : ''}
-                        name={[field.name, 'serial']}
+                        label={idx === 0 ? "Série / Serial" : ""}
+                        name={[field.name, "serial"]}
                         rules={[
-                          { required: true, message: 'Informe a série' },
-                          { min: 3, message: 'Série muito curta' },
-                          { max: 60, message: 'Série muito longa' },
+                          { required: true, message: "Informe a série" },
+
+                          { min: 3, message: "Série muito curta" },
+
+                          { max: 60, message: "Série muito longa" },
                         ]}
                       >
                         <Input placeholder="Ex: 112334" />
                       </Form.Item>
 
-                      <div style={{ paddingTop: isMobile ? 0 : idx === 0 ? 30 : 0 }}>
-                        <Button danger onClick={() => remove(field.name)} disabled={fields.length === 1} block={isMobile}>
+                      <div
+                        style={{
+                          paddingTop: isMobile ? 0 : idx === 0 ? 30 : 0,
+                        }}
+                      >
+                        <Button
+                          danger
+                          onClick={() => remove(field.name)}
+                          disabled={fields.length === 1}
+                          block={isMobile}
+                        >
                           Remover
                         </Button>
                       </div>
@@ -2414,7 +3654,11 @@ export default function InstallationProjectDetailPage() {
                 })}
 
                 <Form.ErrorList errors={errors} />
-                <Button onClick={() => add({ plate: '', serial: '' })} block={isMobile}>
+
+                <Button
+                  onClick={() => add({ plate: "", serial: "" })}
+                  block={isMobile}
+                >
                   + Adicionar veículo
                 </Button>
               </>

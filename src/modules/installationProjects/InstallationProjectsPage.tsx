@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -6,36 +6,44 @@ import {
   Card,
   DatePicker,
   Form,
+  Grid,
   Input,
   InputNumber,
+  List,
   Modal,
-  Segmented,
   Select,
   Space,
+  Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
+  Upload,
   message,
-  Spin,
-  Grid,
-  Pagination,
-  List,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { UploadFile } from 'antd/es/upload/interface';
 import {
+  BarChartOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
+  EnvironmentOutlined,
+  InboxOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
-  BarChartOutlined,
-  EnvironmentOutlined,
+  SwapOutlined,
+  UploadOutlined,
+  AppstoreOutlined,
+  ProjectOutlined,
 } from '@ant-design/icons';
-import { Resizable } from 'react-resizable';
-import 'react-resizable/css/styles.css';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../../lib/api';
 
 type Client = { id: number; name: string };
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
+type RecordType = 'BASE' | 'PROJECT';
 type RoleLite = { id: number; name: string; level: number };
 
 type UserLite = {
@@ -49,20 +57,24 @@ type UserLite = {
 
 type Option = { id: number; name: string };
 
+type InstallationProjectItem = {
+  id?: number;
+  equipmentName: string;
+  equipmentCode?: string | null;
+  qty: number;
+};
+
 type InstallationProject = {
   id: number;
   title: string;
   af?: string | null;
   status: Status;
+  recordType?: RecordType;
+  importBatch?: string | null;
+  saleDate?: string | null;
 
   clientId: number | null;
   client?: { id: number; name: string } | null;
-  requestedLocationText?: string | null;
-  requestedCity?: string | null;
-  requestedState?: string | null;
-  requestedCep?: string | null;
-  requestedLat?: number | null;
-  requestedLng?: number | null;
 
   technicianId?: number | null;
   technicianIds?: number[];
@@ -70,19 +82,20 @@ type InstallationProject = {
   techniciansList?: { id: number; name: string }[];
   technicianNames?: string[];
 
-  supervisorId: number;
+  supervisorId?: number | null;
   supervisor?: { id: number; name: string } | null;
 
   coordinatorId?: number | null;
   coordinator?: { id: number; name: string } | null;
 
-  startPlannedAt: string;
+  startPlannedAt?: string | null;
   endPlannedAt?: string | null;
 
   trucksTotal: number;
   trucksDone: number;
 
-  equipmentsPerDay: number;
+  equipmentsTotal?: number;
+  equipmentsPerDay?: number | null;
   daysEstimated?: number | null;
 
   contactName?: string | null;
@@ -97,48 +110,33 @@ type InstallationProject = {
   requestedCep?: string | null;
   requestedLat?: number | null;
   requestedLng?: number | null;
+
+  items?: InstallationProjectItem[];
 };
 
 type CreateDTO = {
   title: string;
   clientId: number | null;
-
   technicianIds: number[];
   technicianId?: number | null;
-  supervisorId: number;
-
-  startPlannedAt: string;
+  supervisorId: number | null;
+  startPlannedAt: string | null;
+  saleDate?: string | null;
   equipmentsPerDay: number;
   trucksTotal: number;
-
   af?: string | null;
-
   contactName?: string | null;
   contactEmails: string[];
   contactEmail?: string | null;
   contactPhone?: string | null;
-
   notes?: string | null;
-
   requestedLocationText?: string | null;
   requestedCity?: string | null;
   requestedState?: string | null;
   requestedCep?: string | null;
   requestedLat?: number | null;
   requestedLng?: number | null;
-};
-
-type ResizableTitleProps = React.HTMLAttributes<HTMLTableCellElement> & {
-  onResize?: (
-    e: React.SyntheticEvent<Element>,
-    data: { size: { width: number; height: number } }
-  ) => void;
-  width?: number;
-};
-
-type ColumnResizeItem = {
-  key: string;
-  widthPct: number;
+  recordType?: RecordType;
 };
 
 type GeocodeResult = {
@@ -182,7 +180,6 @@ function getRoleId(u: UserLite) {
 const ROLE_ID_TECNICO = 1;
 const ROLE_ID_SUPERVISOR = 3;
 const ROLE_ID_PSO = 8;
-const MIN_COL_PCT = 6;
 
 function isSupervisor(u: UserLite) {
   const level = getRoleLevel(u);
@@ -225,20 +222,6 @@ function isValidEmail(email?: string | null) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
-function isValidLatLng(lat?: unknown, lng?: unknown) {
-  const latNum = Number(lat);
-  const lngNum = Number(lng);
-  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
-  return latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180;
-}
-
-
-function statusTag(s: Status) {
-  if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
-  if (s === 'INICIADO') return <Tag color="blue">Iniciado</Tag>;
-  return <Tag color="green">Finalizado</Tag>;
-}
-
 function normalizeUF(value?: string | null) {
   return String(value || '').trim().toUpperCase().slice(0, 2);
 }
@@ -249,156 +232,114 @@ function normalizeCep(value?: string | null) {
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
-const ResizableTitle = (props: ResizableTitleProps) => {
-  const { onResize, width, ...restProps } = props;
+function isValidLatLng(lat?: unknown, lng?: unknown) {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
+  return latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180;
+}
 
-  if (!width) {
-    return <th {...restProps} />;
-  }
+function statusTag(s: Status) {
+  if (s === 'A_INICIAR') return <Tag style={{ borderRadius: 999 }}>À iniciar</Tag>;
+  if (s === 'INICIADO') return <Tag color="blue" style={{ borderRadius: 999 }}>Iniciado</Tag>;
+  return <Tag color="green" style={{ borderRadius: 999 }}>Finalizado</Tag>;
+}
 
+function recordTypeTag(type?: RecordType) {
+  if (type === 'BASE') return <Tag color="gold" style={{ borderRadius: 999 }}>BASE</Tag>;
+  return <Tag color="purple" style={{ borderRadius: 999 }}>PROJETO</Tag>;
+}
+
+function formatDate(value?: string | null) {
+  return value ? dayjs(value).format('DD/MM/YYYY') : '-';
+}
+
+function getTechnicianLabel(r: InstallationProject) {
+  if (r.technicianNames?.length) return r.technicianNames.join(', ');
+  if (r.techniciansList?.length) return r.techniciansList.map((t) => t.name).join(', ');
+  return r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
+}
+
+function SummaryCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  bg,
+  iconBg,
+}: {
+  title: string;
+  value: number | string;
+  subtitle: string;
+  icon: React.ReactNode;
+  bg: string;
+  iconBg: string;
+}) {
   return (
-    <Resizable
-      width={width}
-      height={0}
-      handle={
-        <span
-          className="react-resizable-handle"
-          onClick={(e) => e.stopPropagation()}
-        />
-      }
-      onResize={onResize}
-      draggableOpts={{ enableUserSelectHack: false }}
+    <Card
+      bordered={false}
+      style={{
+        borderRadius: 24,
+        background: bg,
+        height: '100%',
+        boxShadow: '0 14px 28px rgba(15,23,42,0.08)',
+      }}
+      styles={{ body: { padding: 18 } }}
     >
-      <th {...restProps} />
-    </Resizable>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{title}</div>
+          <div style={{ marginTop: 8, fontSize: 30, fontWeight: 900, lineHeight: 1.05, color: '#0f172a' }}>
+            {value}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>{subtitle}</div>
+        </div>
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 18,
+            background: iconBg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: 22,
+            flexShrink: 0,
+            boxShadow: '0 10px 24px rgba(15,23,42,0.12)',
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+    </Card>
   );
-};
+}
 
 export default function InstallationProjectsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-
-  const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<Status | 'TODOS'>('TODOS');
-  const [search, setSearch] = useState('');
-  const [form] = Form.useForm();
-
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
-  const [techSearch, setTechSearch] = useState('');
-  const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [open, setOpen] = useState(false);
   const [geoOpen, setGeoOpen] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoResults, setGeoResults] = useState<GeocodeResult[]>([]);
   const [geoQuery, setGeoQuery] = useState('');
-
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
-
-  const tableWrapRef = useRef<HTMLDivElement | null>(null);
-  const [tableWidth, setTableWidth] = useState(1200);
-
-  const [columnSizes, setColumnSizes] = useState<ColumnResizeItem[]>([
-    { key: 'title', widthPct: 16 },
-    { key: 'af', widthPct: 10 },
-    { key: 'client', widthPct: 18 },
-    { key: 'technician', widthPct: 18 },
-    { key: 'coordinator', widthPct: 14 },
-    { key: 'trucks', widthPct: 8 },
-    { key: 'start', widthPct: 6 },
-    { key: 'end', widthPct: 6 },
-    { key: 'status', widthPct: 4 },
-  ]);
-
+  const [activeTab, setActiveTab] = useState<RecordType>('PROJECT');
+  const [status, setStatus] = useState<Status | 'TODOS'>('TODOS');
+  const [search, setSearch] = useState('');
+  const [saleDateRange, setSaleDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [techSearch, setTechSearch] = useState('');
+  const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [form] = Form.useForm();
+  const [visibleCount, setVisibleCount] = useState(6);
   const watchedTrucksTotal = Form.useWatch('trucksTotal', form);
   const watchedEquipmentsPerDay = Form.useWatch('equipmentsPerDay', form);
   const watchedStartPlannedAt = Form.useWatch('startPlannedAt', form);
-
-  useEffect(() => {
-    const el = tableWrapRef.current;
-    if (!el) return;
-
-    const updateWidth = () => {
-      const nextWidth = el.offsetWidth || 1200;
-      setTableWidth(nextWidth);
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(() => updateWidth());
-    observer.observe(el);
-
-    window.addEventListener('resize', updateWidth);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateWidth);
-    };
-  }, []);
-
-  const onChangeStatus = (v: any) => {
-    setStatus(v);
-    setPage(1);
-  };
-
-  const handleSearchChange = (value: string) => {
-    setSearch(value);
-    setPage(1);
-  };
-
-  const getColumnWidthPct = (key: string, fallbackPct: number) =>
-    columnSizes.find((c) => c.key === key)?.widthPct ?? fallbackPct;
-
-  const getColumnWidthPx = (key: string, fallbackPct: number) => {
-    const pct = getColumnWidthPct(key, fallbackPct);
-    return Math.max(80, Math.round((tableWidth * pct) / 100));
-  };
-
-  const handleResize =
-    (key: string) =>
-    (_: React.SyntheticEvent<Element>, { size }: { size: { width: number; height: number } }) => {
-      setColumnSizes((prev) => {
-        const currentIndex = prev.findIndex((c) => c.key === key);
-        if (currentIndex === -1) return prev;
-
-        const nextIndex = currentIndex + 1;
-        if (nextIndex >= prev.length) return prev;
-
-        const current = prev[currentIndex];
-        const next = prev[nextIndex];
-
-        const newPct = (size.width / Math.max(tableWidth, 1)) * 100;
-        const delta = newPct - current.widthPct;
-
-        if (Math.abs(delta) < 0.2) return prev;
-
-        let currentWidthPct = current.widthPct + delta;
-        let nextWidthPct = next.widthPct - delta;
-
-        if (currentWidthPct < MIN_COL_PCT) {
-          const diff = MIN_COL_PCT - currentWidthPct;
-          currentWidthPct = MIN_COL_PCT;
-          nextWidthPct -= diff;
-        }
-
-        if (nextWidthPct < MIN_COL_PCT) {
-          const diff = MIN_COL_PCT - nextWidthPct;
-          nextWidthPct = MIN_COL_PCT;
-          currentWidthPct -= diff;
-        }
-
-        if (currentWidthPct < MIN_COL_PCT || nextWidthPct < MIN_COL_PCT) {
-          return prev;
-        }
-
-        const updated = [...prev];
-        updated[currentIndex] = { ...current, widthPct: Number(currentWidthPct.toFixed(2)) };
-        updated[nextIndex] = { ...next, widthPct: Number(nextWidthPct.toFixed(2)) };
-
-        return updated;
-      });
-    };
 
   const clientsQuery = useQuery<Client[]>({
     queryKey: ['clients'],
@@ -441,24 +382,36 @@ export default function InstallationProjectsPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allUsers, supervisorSearch]);
 
-  const projectsQuery = useQuery<InstallationProject[]>({
-    queryKey: ['installation-projects', { status }],
-    queryFn: async () => {
-      const params: any = {};
-      if (status !== 'TODOS') params.status = status;
-      const res = await api.get('/installation-projects', { params });
-      return unwrap<InstallationProject[]>(res.data);
-    },
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 20_000,
-  });
+ const projectsQuery = useQuery<InstallationProject[]>({
+  queryKey: [
+    'installation-projects',
+    activeTab,
+    status,
+    saleDateRange?.[0]?.format('YYYY-MM-DD') || null,
+    saleDateRange?.[1]?.format('YYYY-MM-DD') || null,
+  ],
+  queryFn: async () => {
+    const params: any = {
+      recordType: activeTab, // PROJECT ou BASE
+    };
+
+    if (status !== 'TODOS') params.status = status;
+    if (saleDateRange?.[0]) params.saleDateFrom = saleDateRange[0].format('YYYY-MM-DD');
+    if (saleDateRange?.[1]) params.saleDateTo = saleDateRange[1].format('YYYY-MM-DD');
+
+    const res = await api.get('/installation-projects', { params });
+    return unwrap<InstallationProject[]>(res.data);
+  },
+  retry: false,
+  refetchOnWindowFocus: false,
+  staleTime: 20_000,
+});
 
   const createProject = useMutation({
     mutationFn: async (payload: CreateDTO) =>
       (await api.post('/installation-projects', payload)).data,
     onSuccess: async () => {
-      message.success('Projeto criado!');
+      message.success('Projeto criado com sucesso!');
       setOpen(false);
       form.resetFields();
       await qc.invalidateQueries({ queryKey: ['installation-projects'] });
@@ -468,25 +421,63 @@ export default function InstallationProjectsPage() {
     },
   });
 
+  const convertBase = useMutation({
+    mutationFn: async (id: number) =>
+      (await api.patch(`/installation-projects/${id}/convert-to-project`)).data,
+    onSuccess: async () => {
+      message.success('Registro movido para Projetos!');
+      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao converter base');
+    },
+  });
+
+  const importBase = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/installation-projects/import-base', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap<any>(res.data);
+    },
+    onSuccess: async (data) => {
+      message.success(
+        `Importação concluída. Novos: ${data?.importedCount ?? 0} | Atualizados: ${data?.updatedCount ?? 0}`
+      );
+      setImportOpen(false);
+      setFileList([]);
+      setActiveTab('BASE');
+      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao importar Excel');
+    },
+  });
+
   const rows = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
 
-    return rows.filter((r) => {
-      const technicianText = r.technicianNames?.length
-        ? r.technicianNames.join(' ')
-        : r.techniciansList?.length
-          ? r.techniciansList.map((t) => t.name).join(' ')
-          : r.technician?.name || '';
+    const rowsByTab = rows.filter((r) => {
+      const type = r.recordType || 'PROJECT';
+      return activeTab === 'PROJECT' ? type === 'PROJECT' : type === 'BASE';
+    });
 
+    if (!q) return rowsByTab;
+
+    return rowsByTab.filter((r) => {
       const haystack = [
         r.title,
         r.af,
         r.client?.name,
-        technicianText,
+        getTechnicianLabel(r),
         r.coordinator?.name,
+        r.contactEmail,
+        r.importBatch,
+        r.items?.map((i) => i.equipmentName).join(' '),
       ]
         .filter(Boolean)
         .join(' ')
@@ -494,15 +485,35 @@ export default function InstallationProjectsPage() {
 
       return haystack.includes(q);
     });
-  }, [rows, search]);
+  }, [rows, search, activeTab]);
 
-  const total = filteredRows.length;
+  const totals = useMemo(() => {
+    const totalProjects = rows.filter((r) => (r.recordType || 'PROJECT') === 'PROJECT').length;
+    const totalBase = rows.filter((r) => r.recordType === 'BASE').length;
+    const totalIniciado = rows.filter((r) => r.status === 'INICIADO').length;
+    const totalFinalizado = rows.filter((r) => r.status === 'FINALIZADO').length;
+    const totalAIniciar = rows.filter((r) => r.status === 'A_INICIAR').length;
+
+    return {
+      totalGeral: rows.length,
+      totalProjects,
+      totalBase,
+      totalIniciado,
+      totalFinalizado,
+      totalAIniciar,
+    };
+  }, [rows]);
 
   const pagedRows = useMemo(() => {
     if (!isMobile) return filteredRows;
-    const start = (page - 1) * pageSize;
-    return filteredRows.slice(start, start + pageSize);
-  }, [filteredRows, isMobile, page, pageSize]);
+    return filteredRows.slice(0, visibleCount);
+  }, [filteredRows, isMobile, visibleCount]);
+
+  const hasMoreRows = isMobile && filteredRows.length > visibleCount;
+
+  useEffect(() => {
+    setVisibleCount(6);
+  }, [activeTab, status, search, saleDateRange]);
 
   const endPreview = useMemo(() => {
     const trucksTotal = Number(watchedTrucksTotal ?? 0);
@@ -516,89 +527,6 @@ export default function InstallationProjectsPage() {
   }, [open, watchedTrucksTotal, watchedEquipmentsPerDay, watchedStartPlannedAt]);
 
   const coordinatorPreviewText = 'Será definido automaticamente a partir do supervisor';
-
-  const gridStyle = (desktopCols: string) => ({
-    display: 'grid',
-    gridTemplateColumns: isMobile ? '1fr' : desktopCols,
-    gap: 12,
-    maxWidth: '100%',
-  });
-
-  const line = { fontSize: 12, margin: 0, overflowWrap: 'anywhere' as const };
-
-  const desktopColumns: ColumnsType<InstallationProject> = [
-    {
-      title: 'Projeto',
-      dataIndex: 'title',
-      key: 'title',
-      width: getColumnWidthPx('title', 16),
-      ellipsis: true,
-      render: (v, r) => <Link to={`/projetos-instalacao/${r.id}`}>{v}</Link>,
-    },
-    {
-      title: 'AF',
-      dataIndex: 'af',
-      key: 'af',
-      width: getColumnWidthPx('af', 10),
-      ellipsis: true,
-      render: (v) => v || '-',
-    },
-    {
-      title: 'Cliente',
-      key: 'client',
-      width: getColumnWidthPx('client', 18),
-      ellipsis: true,
-      render: (_, r) => r.client?.name || (r.clientId ? `#${r.clientId}` : '-'),
-    },
-    {
-      title: 'Técnico / Prestador',
-      key: 'technician',
-      width: getColumnWidthPx('technician', 18),
-      ellipsis: true,
-      render: (_, r) => {
-        if (r.technicianNames?.length) return r.technicianNames.join(', ');
-        if (r.techniciansList?.length) return r.techniciansList.map((t) => t.name).join(', ');
-        return r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
-      },
-    },
-    {
-      title: 'Coordenador',
-      key: 'coordinator',
-      width: getColumnWidthPx('coordinator', 14),
-      ellipsis: true,
-      render: (_, r) => r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-'),
-    },
-    {
-      title: 'Início',
-      key: 'start',
-      width: getColumnWidthPx('start', 6),
-      align: 'center',
-      render: (_, r) => (r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'),
-    },
-    {
-      title: 'Fim',
-      key: 'end',
-      width: getColumnWidthPx('end', 6),
-      align: 'center',
-      render: (_, r) => (r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: getColumnWidthPx('status', 4),
-      align: 'center',
-      render: (s: Status) => statusTag(s),
-    },
-  ];
-
-  const mergedColumns = desktopColumns.map((col) => ({
-    ...col,
-    onHeaderCell: () => ({
-      width: typeof col.width === 'number' ? col.width : undefined,
-      onResize: handleResize(String(col.key)),
-    }),
-  }));
 
   const searchGeo = async () => {
     if (!geoQuery.trim()) {
@@ -649,11 +577,7 @@ export default function InstallationProjectsPage() {
       undefined;
 
     const state = normalizeUF(
-      it.uf ||
-      it.state ||
-      it.address?.state_code ||
-      it.address?.state ||
-      undefined
+      it.uf || it.state || it.address?.state_code || it.address?.state || undefined
     );
 
     const zip = normalizeCep(it.cep || it.postcode || it.address?.postcode || undefined) || undefined;
@@ -677,227 +601,643 @@ export default function InstallationProjectsPage() {
     message.success('Localização aplicada com sucesso.');
   };
 
-  const handleQuickGeoByCity = async () => {
-    const city = String(form.getFieldValue('requestedCity') || '').trim();
-    const uf = normalizeUF(form.getFieldValue('requestedState'));
-
-    if (!city || !uf) {
-      message.warning('Informe cidade e UF para buscar.');
-      return;
-    }
-
-    setGeoQuery(`${city}, ${uf}`);
-    setGeoOpen(true);
-    setGeoLoading(true);
+  const handleCreate = async () => {
     try {
-      const items = (await api.get('/geocode', { params: { q: `${city}, ${uf}` } })).data as GeocodeResult[];
-      setGeoResults(Array.isArray(items) ? items : []);
-      if (Array.isArray(items) && items.length === 1) {
-        applyGeo(items[0]);
+      const v = await form.validateFields();
+
+      const technicianIds = Array.isArray(v.technicianIds)
+        ? [...new Set(v.technicianIds.map((n: any) => Number(n)).filter(Boolean))]
+        : [];
+
+      const contactEmails = normalizeEmailList(v.contactEmails);
+
+      const payload: CreateDTO = {
+        title: v.title,
+        af: v.af ?? null,
+        clientId: v.clientId ?? null,
+        technicianIds,
+        technicianId: technicianIds[0] ?? null,
+        supervisorId: v.supervisorId ? Number(v.supervisorId) : null,
+        trucksTotal: Number(v.trucksTotal),
+        equipmentsPerDay: Number(v.equipmentsPerDay),
+        startPlannedAt: v.startPlannedAt ? (v.startPlannedAt as Dayjs).format('YYYY-MM-DD') : null,
+        saleDate: v.saleDate ? (v.saleDate as Dayjs).format('YYYY-MM-DD') : null,
+        contactName: v.contactName ?? null,
+        contactEmails,
+        contactEmail: contactEmails[0] ?? null,
+        contactPhone: v.contactPhone ?? null,
+        notes: v.notes ?? null,
+        requestedLocationText: v.requestedLocationText ?? null,
+        requestedCity: v.requestedCity ? String(v.requestedCity).trim() : null,
+        requestedState: v.requestedState ? String(v.requestedState).trim().toUpperCase() : null,
+        requestedCep: v.requestedCep ?? null,
+        requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
+        requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
+        recordType: 'PROJECT',
+      };
+
+      if (
+        (payload.requestedLat != null || payload.requestedLng != null) &&
+        !isValidLatLng(payload.requestedLat, payload.requestedLng)
+      ) {
+        message.error('Latitude/Longitude inválidas.');
         return;
       }
-      if (!items || !items.length) {
-        message.warning('Nenhum resultado encontrado para essa cidade/UF.');
-      }
-    } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Falha na busca geográfica');
-    } finally {
-      setGeoLoading(false);
+
+      createProject.mutate(payload);
+    } catch {
+      //
     }
   };
 
-  return (
-    <div style={{ display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: isMobile ? 'flex-start' : 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          flexDirection: isMobile ? 'column' : 'row',
-          maxWidth: '100%',
-        }}
-      >
-        <Typography.Title level={2} style={{ margin: 0 }}>
-          Projetos de Instalação
-        </Typography.Title>
+  const handleImport = async () => {
+    const raw = fileList[0]?.originFileObj;
+    if (!raw) {
+      message.warning('Selecione um arquivo Excel.');
+      return;
+    }
+    importBase.mutate(raw as File);
+  };
 
-        <Space
-          wrap
-          style={{
-            width: isMobile ? '100%' : 'auto',
-            justifyContent: isMobile ? 'flex-end' : 'initial',
-          }}
-        >
-          <Button onClick={() => navigate('/projetos-instalacao/geolocalizacao')}>
-            Geolocalização
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => projectsQuery.refetch()} block={isMobile}>
-            Atualizar
+  const commonColumns: ColumnsType<InstallationProject> = [
+    {
+      title: 'Tipo',
+      dataIndex: 'recordType',
+      key: 'recordType',
+      width: 100,
+      render: (_, r) => recordTypeTag(r.recordType),
+    },
+    {
+      title: 'Projeto / Cliente',
+      dataIndex: 'title',
+      key: 'title',
+      width: 280,
+      render: (_, r) => (
+        <div style={{ minWidth: 0 }}>
+          <div>
+            <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+          </div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {r.client?.name || '-'}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: 'AF',
+      dataIndex: 'af',
+      key: 'af',
+      width: 130,
+      render: (v) => v || '-',
+    },
+    {
+      title: 'Venda',
+      dataIndex: 'saleDate',
+      key: 'saleDate',
+      width: 120,
+      render: (v) => formatDate(v),
+    },
+    {
+      title: 'Produtos',
+      key: 'items',
+      width: 260,
+      render: (_, r) =>
+        r.items?.length ? (
+          <div style={{ display: 'grid', gap: 4 }}>
+            {r.items.map((item, idx) => (
+              <Typography.Text key={`${r.id}-${idx}`} style={{ fontSize: 12 }}>
+                {item.equipmentName} • {item.qty}
+              </Typography.Text>
+            ))}
+          </div>
+        ) : (
+          '-'
+        ),
+    },
+    {
+      title: 'Equip.',
+      key: 'equipmentsTotal',
+      width: 90,
+      align: 'center',
+      render: (_, r) => r.equipmentsTotal ?? r.trucksTotal ?? '-',
+    },
+    {
+      title: 'Técnico / Prestador',
+      key: 'technician',
+      width: 220,
+      render: (_, r) => getTechnicianLabel(r),
+    },
+    {
+      title: 'Supervisor',
+      key: 'supervisor',
+      width: 170,
+      render: (_, r) => r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-'),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (s: Status) => statusTag(s),
+    },
+  ];
+
+  const projectColumns: ColumnsType<InstallationProject> = [
+    ...commonColumns,
+    {
+      title: 'Início',
+      key: 'start',
+      width: 120,
+      render: (_, r) => formatDate(r.startPlannedAt),
+    },
+    {
+      title: 'Fim',
+      key: 'end',
+      width: 120,
+      render: (_, r) => formatDate(r.endPlannedAt),
+    },
+  ];
+
+  const baseColumns: ColumnsType<InstallationProject> = [
+    ...commonColumns,
+    {
+      title: 'Lote',
+      dataIndex: 'importBatch',
+      key: 'importBatch',
+      width: 170,
+      render: (v) => v || '-',
+    },
+    {
+      title: 'Ações',
+      key: 'actions',
+      width: 180,
+      fixed: isMobile ? undefined : 'right',
+      render: (_, r) => (
+        <Space wrap>
+          <Button size="small" onClick={() => navigate(`/projetos-instalacao/${r.id}`)}>
+            Abrir
           </Button>
           <Button
-            icon={<BarChartOutlined />}
-            onClick={() => navigate('/projetos-instalacao/dashboard')}
+            size="small"
+            type="primary"
+            icon={<SwapOutlined />}
+            loading={convertBase.isPending}
+            onClick={() => {
+              Modal.confirm({
+                title: 'Mover para Projetos?',
+                content: `A AF ${r.af || r.title} deixará a BASE e passará para a visão de Projetos.`,
+                okText: 'Mover',
+                cancelText: 'Cancelar',
+                onOk: async () => {
+                  await convertBase.mutateAsync(r.id);
+                },
+              });
+            }}
           >
-            Dashboard
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} block={isMobile}>
-            Novo Projeto
+            Mover
           </Button>
         </Space>
+      ),
+    },
+  ];
+
+const tabItems = [
+  {
+    key: 'PROJECT',
+    label: <span style={{ fontWeight: 700 }}>Projetos</span>,
+    children: isMobile ? (
+      <div style={{ display: 'grid', gap: 12 }}>
+        {projectsQuery.isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+            <Spin />
+          </div>
+        ) : filteredRows.length ? (
+          <>
+            {pagedRows.map((r) => (
+              <Card
+                key={r.id}
+                size="small"
+                style={{
+                  borderRadius: 18,
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <Typography.Text strong>
+                      <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                    </Typography.Text>
+                    <div style={{ marginTop: 8 }}>
+                      <Space size={[6, 6]} wrap>
+                        {recordTypeTag(r.recordType)}
+                        {statusTag(r.status)}
+                      </Space>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>AF:</b> {r.af || '-'}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Cliente:</b> {r.client?.name || '-'}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Venda:</b> {formatDate(r.saleDate)}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Técnico:</b> {getTechnicianLabel(r)}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Início:</b> {formatDate(r.startPlannedAt)} {' • '}
+                    <b>Fim:</b> {formatDate(r.endPlannedAt)}
+                  </Typography.Text>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <Button
+                    block
+                    type="primary"
+                    onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                    style={{ borderRadius: 12 }}
+                  >
+                    Abrir projeto
+                  </Button>
+                </div>
+              </Card>
+            ))}
+
+            {hasMoreRows && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+                <Button
+                  onClick={() => setVisibleCount((prev) => prev + 6)}
+                  style={{ borderRadius: 12 }}
+                >
+                  Carregar mais
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <Typography.Text type="secondary">Nenhum projeto encontrado.</Typography.Text>
+        )}
+      </div>
+    ) : (
+      <Table
+        rowKey="id"
+        loading={projectsQuery.isLoading}
+        dataSource={filteredRows}
+        columns={projectColumns}
+        scroll={{ x: 1600 }}
+        pagination={{ pageSize: 10 }}
+      />
+    ),
+  },
+  {
+    key: 'BASE',
+    label: <span style={{ fontWeight: 700 }}>Base</span>,
+    children: isMobile ? (
+      <div style={{ display: 'grid', gap: 12 }}>
+        {projectsQuery.isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+            <Spin />
+          </div>
+        ) : filteredRows.length ? (
+          <>
+            {pagedRows.map((r) => (
+              <Card
+                key={r.id}
+                size="small"
+                style={{
+                  borderRadius: 18,
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <Typography.Text strong>
+                      <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                    </Typography.Text>
+                    <div style={{ marginTop: 8 }}>
+                      <Space size={[6, 6]} wrap>
+                        {recordTypeTag(r.recordType)}
+                        {statusTag(r.status)}
+                      </Space>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>AF:</b> {r.af || '-'}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Venda:</b> {formatDate(r.saleDate)}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Lote:</b> {r.importBatch || '-'}
+                  </Typography.Text>
+                  <Typography.Text style={{ fontSize: 12 }}>
+                    <b>Produtos:</b>{' '}
+                    {r.items?.length
+                      ? r.items.map((item) => `${item.equipmentName} (${item.qty})`).join(', ')
+                      : '-'}
+                  </Typography.Text>
+                </div>
+
+                <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                  <Button
+                    style={{ borderRadius: 12 }}
+                    onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                  >
+                    Abrir
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<SwapOutlined />}
+                    loading={convertBase.isPending}
+                    style={{ borderRadius: 12 }}
+                    onClick={() => convertBase.mutate(r.id)}
+                  >
+                    Mover para Projetos
+                  </Button>
+                </div>
+              </Card>
+            ))}
+
+            {hasMoreRows && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+                <Button
+                  onClick={() => setVisibleCount((prev) => prev + 6)}
+                  style={{ borderRadius: 12 }}
+                >
+                  Carregar mais
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <Typography.Text type="secondary">Nenhum registro de base encontrado.</Typography.Text>
+        )}
+      </div>
+    ) : (
+      <Table
+        rowKey="id"
+        loading={projectsQuery.isLoading}
+        dataSource={filteredRows}
+        columns={baseColumns}
+        scroll={{ x: 1850 }}
+        pagination={{ pageSize: 10 }}
+      />
+    ),
+  },
+];
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: isMobile ? 12 : 16,
+        maxWidth: '100%',
+        overflowX: 'hidden',
+        padding: isMobile ? 0 : 4,
+      }}
+    >
+      <Card
+        bordered={false}
+        style={{
+          borderRadius: 28,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1d4ed8 58%, #3b82f6 100%)',
+          boxShadow: '0 20px 40px rgba(15,23,42,0.16)',
+          overflow: 'hidden',
+        }}
+        styles={{ body: { padding: isMobile ? 18 : 26 } }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexDirection: isMobile ? 'column' : 'row',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.16)',
+                color: '#dbeafe',
+                fontSize: 12,
+                fontWeight: 800,
+                marginBottom: 12,
+              }}
+            >
+              <ProjectOutlined />
+              Gestão operacional
+            </div>
+
+            <Typography.Title level={2} style={{ margin: 0, color: '#fff' }}>
+              Projetos de Instalação
+            </Typography.Title>
+
+            <Typography.Paragraph
+              style={{
+                margin: '10px 0 0',
+                color: 'rgba(255,255,255,0.82)',
+                maxWidth: 760,
+              }}
+            >
+              Visualize a base importada, acompanhe projetos ativos e mova registros da base para projetos com mais clareza.
+            </Typography.Paragraph>
+          </div>
+
+          <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
+            <Button
+              onClick={() => navigate('/projetos-instalacao/geolocalizacao')}
+              style={{ borderRadius: 14 }}
+            >
+              Geolocalização
+            </Button>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => projectsQuery.refetch()}
+              style={{ borderRadius: 14 }}
+            >
+              Atualizar
+            </Button>
+            <Button
+              icon={<BarChartOutlined />}
+              onClick={() => navigate('/projetos-instalacao/dashboard')}
+              style={{ borderRadius: 14 }}
+            >
+              Dashboard
+            </Button>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportOpen(true)}
+              style={{ borderRadius: 14 }}
+            >
+              Importar BASE
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpen(true)}
+              style={{ borderRadius: 14, fontWeight: 700 }}
+            >
+              Novo Projeto
+            </Button>
+          </Space>
+        </div>
+      </Card>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, minmax(0, 1fr))',
+          gap: 14,
+        }}
+      >
+        {activeTab === 'PROJECT' && (
+          <>
+            <SummaryCard
+              title="Total projetos"
+              value={totals.totalProjects}
+              subtitle="Itens da aba de projetos"
+              icon={<ProjectOutlined />}
+              bg="linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)"
+              iconBg="linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)"
+            />
+
+            <SummaryCard
+              title="Iniciados"
+              value={totals.totalIniciado}
+              subtitle="Projetos em andamento"
+              icon={<ClockCircleOutlined />}
+              bg="linear-gradient(180deg, #eef6ff 0%, #ffffff 100%)"
+              iconBg="linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)"
+            />
+
+            <SummaryCard
+              title="Finalizados"
+              value={totals.totalFinalizado}
+              subtitle="Projetos concluídos"
+              icon={<CheckCircleOutlined />}
+              bg="linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)"
+              iconBg="linear-gradient(135deg, #16a34a 0%, #4ade80 100%)"
+            />
+          </>
+        )}
+        {activeTab === 'BASE' && (
+          <SummaryCard
+            title="Total base"
+            value={totals.totalBase}
+            subtitle="Itens importados na base"
+            icon={<DatabaseOutlined />}
+            bg="linear-gradient(180deg, #fff8e6 0%, #ffffff 100%)"
+            iconBg="linear-gradient(135deg, #d97706 0%, #f59e0b 100%)"
+          />
+        )}
       </div>
 
       <Card
-        title="Lista"
-        style={{ maxWidth: '100%' }}
-        extra={
-          isMobile ? (
-            <Select
-              value={status}
-              onChange={onChangeStatus}
-              style={{ width: 160 }}
-              options={[
-                { label: 'Todos', value: 'TODOS' },
-                { label: 'À iniciar', value: 'A_INICIAR' },
-                { label: 'Iniciado', value: 'INICIADO' },
-                { label: 'Finalizado', value: 'FINALIZADO' },
-              ]}
-            />
-          ) : (
-            <Segmented
-              value={status}
-              onChange={(v) => onChangeStatus(v)}
-              options={[
-                { label: 'Todos', value: 'TODOS' },
-                { label: 'À iniciar', value: 'A_INICIAR' },
-                { label: 'Iniciado', value: 'INICIADO' },
-                { label: 'Finalizado', value: 'FINALIZADO' },
-              ]}
-            />
-          )
+        bordered={false}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 14,
+                background: 'linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+              }}
+            >
+              <SearchOutlined />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: '#0f172a' }}>Gestão de projetos</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Pesquise, filtre e acompanhe base e projetos com melhor leitura
+              </div>
+            </div>
+          </div>
         }
-        styles={{ body: { padding: isMobile ? 12 : 24, maxWidth: '100%' } }}
+        style={{
+          borderRadius: 24,
+          boxShadow: '0 14px 32px rgba(15,23,42,0.06)',
+        }}
+        styles={{ body: { padding: isMobile ? 12 : 20 } }}
       >
-        <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1.15fr 0.7fr 320px',
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="Pesquisar por nome do projeto, AF, cliente ou técnico"
+            placeholder="Pesquisar por projeto, AF, cliente, produto, técnico, lote..."
             value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setVisibleCount(6);
+            }}
+            size="large"
+            style={{ borderRadius: 14 }}
+          />
+
+          <Select
+            value={status}
+            size="large"
+            onChange={(v) => {
+              setStatus(v);
+              setVisibleCount(6);
+            }}
+            style={{ width: '100%' }}
+            options={[
+              { label: 'Todos os status', value: 'TODOS' },
+              { label: 'À iniciar', value: 'A_INICIAR' },
+              { label: 'Iniciado', value: 'INICIADO' },
+              { label: 'Finalizado', value: 'FINALIZADO' },
+            ]}
+          />
+
+          <DatePicker.RangePicker
+            size="large"
+            style={{ width: '100%' }}
+            format="DD/MM/YYYY"
+            value={saleDateRange}
+            onChange={(dates) => {
+              setSaleDateRange((dates as [Dayjs | null, Dayjs | null]) || null);
+              setVisibleCount(6);
+            }}
+            placeholder={['Venda de', 'Venda até']}
           />
         </div>
 
-        {isMobile ? (
-          <div style={{ display: 'grid', gap: 12, maxWidth: '100%' }}>
-            {projectsQuery.isLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
-                <Spin />
-              </div>
-            ) : total ? (
-              <>
-                {pagedRows.map((r) => {
-                  const technicianLabel = r.technicianNames?.length
-                    ? r.technicianNames.join(', ')
-                    : r.techniciansList?.length
-                      ? r.techniciansList.map((t) => t.name).join(', ')
-                      : r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
-
-                  return (
-                    <Card
-                      key={r.id}
-                      size="small"
-                      style={{ borderRadius: 12, maxWidth: '100%' }}
-                      styles={{ body: { padding: 12 } }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, maxWidth: '100%' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <Typography.Text strong style={{ fontSize: 14 }}>
-                            <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
-                          </Typography.Text>
-
-                          <div style={{ marginTop: 6 }}>
-                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                              AF: {r.af || '-'}
-                            </Typography.Text>
-                          </div>
-                        </div>
-
-                        <div style={{ flexShrink: 0 }}>{statusTag(r.status)}</div>
-                      </div>
-
-                      <div style={{ marginTop: 10, display: 'grid', gap: 6, maxWidth: '100%' }}>
-                        <p style={line}>
-                          <b>Cliente:</b> {r.client?.name || (r.clientId ? `#${r.clientId}` : '-')}
-                        </p>
-                        <p style={line}>
-                          <b>Técnico:</b> {technicianLabel}
-                        </p>
-                        <p style={line}>
-                          <b>Coordenador:</b> {r.coordinator?.name || (r.coordinatorId ? `#${r.coordinatorId}` : '-')}
-                        </p>
-                        <p style={line}>
-                          <b>Caminhões:</b> {r.trucksDone}/{r.trucksTotal}
-                        </p>
-                        <p style={line}>
-                          <b>Início:</b> {r.startPlannedAt ? dayjs(r.startPlannedAt).format('DD/MM/YYYY') : '-'}
-                          {'  '}•{'  '}
-                          <b>Fim:</b> {r.endPlannedAt ? dayjs(r.endPlannedAt).format('DD/MM/YYYY') : '-'}
-                        </p>
-                      </div>
-
-                      <div style={{ marginTop: 12 }}>
-                        <Button
-                          block
-                          type="primary"
-                          onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
-                        >
-                          Abrir projeto
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
-
-                {total > pageSize && (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-                    <Pagination
-                      current={page}
-                      pageSize={pageSize}
-                      total={total}
-                      size="small"
-                      showSizeChanger
-                      pageSizeOptions={['5', '10', '20']}
-                      onChange={(p, ps) => {
-                        setPage(p);
-                        setPageSize(ps);
-                      }}
-                    />
-                  </div>
-                )}
-              </>
-            ) : (
-              <Typography.Text type="secondary">Nenhum projeto encontrado.</Typography.Text>
-            )}
-          </div>
-        ) : (
-          <div ref={tableWrapRef} style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
-            <Table
-              rowKey="id"
-              loading={projectsQuery.isLoading}
-              dataSource={filteredRows}
-              pagination={{ pageSize: 10 }}
-              size="middle"
-              tableLayout="fixed"
-              components={{
-                header: {
-                  cell: ResizableTitle,
-                },
-              }}
-              columns={mergedColumns as any}
-            />
-          </div>
-        )}
+        <Tabs
+          activeKey={activeTab}
+          onChange={(key) => {
+            setActiveTab(key as RecordType);
+            setVisibleCount(6);
+          }}
+          items={tabItems}
+        />
       </Card>
 
       <Modal
@@ -906,18 +1246,19 @@ export default function InstallationProjectsPage() {
         title="Novo Projeto"
         okText="Criar"
         confirmLoading={createProject.isPending}
-        width={isMobile ? '100%' : 1300}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
+        width={isMobile ? '100%' : 1280}
         centered
-        styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}
-        afterOpenChange={(o) => {
-          if (o) {
+        destroyOnHidden
+        onOk={handleCreate}
+        afterOpenChange={(isOpen) => {
+          if (isOpen) {
             setTechSearch('');
             setSupervisorSearch('');
             form.setFieldsValue({
               trucksTotal: 1,
               equipmentsPerDay: 1,
               startPlannedAt: dayjs(),
+              saleDate: dayjs(),
               clientId: null,
               af: null,
               contactName: null,
@@ -935,50 +1276,6 @@ export default function InstallationProjectsPage() {
             });
           }
         }}
-        onOk={async () => {
-          try {
-            const v = await form.validateFields();
-
-            const technicianIds = Array.isArray(v.technicianIds)
-              ? [...new Set(v.technicianIds.map((n: any) => Number(n)).filter(Boolean))]
-              : [];
-
-            const contactEmails = normalizeEmailList(v.contactEmails);
-
-            const payload: CreateDTO = {
-              title: v.title,
-              af: v.af ?? null,
-              clientId: v.clientId ?? null,
-              technicianIds,
-              technicianId: technicianIds[0] ?? null,
-              supervisorId: Number(v.supervisorId),
-              trucksTotal: Number(v.trucksTotal),
-              equipmentsPerDay: Number(v.equipmentsPerDay),
-              startPlannedAt: (v.startPlannedAt as Dayjs).format('YYYY-MM-DD'),
-              contactName: v.contactName ?? null,
-              contactEmails,
-              contactEmail: contactEmails[0] ?? null,
-              contactPhone: v.contactPhone ?? null,
-              notes: v.notes ?? null,
-              requestedLocationText: v.requestedLocationText ?? null,
-              requestedCity: v.requestedCity ? String(v.requestedCity).trim() : null,
-              requestedState: v.requestedState ? String(v.requestedState).trim().toUpperCase() : null,
-              requestedCep: v.requestedCep ?? null,
-              requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
-              requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
-            };
-
-            if (
-              (payload.requestedLat != null || payload.requestedLng != null) &&
-              !isValidLatLng(payload.requestedLat, payload.requestedLng)
-            ) {
-              message.error('Latitude/Longitude inválidas.');
-              return;
-            }
-
-            createProject.mutate(payload);
-          } catch {}
-        }}
       >
         <Form form={form} layout="vertical" initialValues={{ trucksTotal: 1, equipmentsPerDay: 1 }}>
           <div
@@ -990,13 +1287,14 @@ export default function InstallationProjectsPage() {
             }}
           >
             <div style={{ display: 'grid', gap: 12 }}>
-              <Card
-                size="small"
-                title="Dados do projeto"
-                styles={{ body: { padding: 14 } }}
-                style={{ borderRadius: 14 }}
-              >
-                <div style={gridStyle('1fr 1fr')}>
+              <Card size="small" title="Dados do projeto" style={{ borderRadius: 16 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   <Form.Item label="Técnico / Prestador" name="technicianIds">
                     <Select
                       mode="multiple"
@@ -1004,9 +1302,7 @@ export default function InstallationProjectsPage() {
                       placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
                       filterOption={false}
                       onSearch={(v) => setTechSearch(v)}
-                      onOpenChange={(isOpen) => {
-                        if (isOpen) setTechSearch('');
-                      }}
+                      onOpenChange={(isOpen) => isOpen && setTechSearch('')}
                       loading={usersQuery.isLoading}
                       options={technicianOptions.map((t) => ({ value: t.id, label: t.name }))}
                       notFoundContent={
@@ -1016,7 +1312,7 @@ export default function InstallationProjectsPage() {
                   </Form.Item>
 
                   <Form.Item
-                    label="Supervisor (obrigatório)"
+                    label="Supervisor"
                     name="supervisorId"
                     rules={[{ required: true, message: 'Selecione um supervisor' }]}
                   >
@@ -1025,9 +1321,7 @@ export default function InstallationProjectsPage() {
                       placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
                       filterOption={false}
                       onSearch={(v) => setSupervisorSearch(v)}
-                      onOpenChange={(isOpen) => {
-                        if (isOpen) setSupervisorSearch('');
-                      }}
+                      onOpenChange={(isOpen) => isOpen && setSupervisorSearch('')}
                       loading={usersQuery.isLoading}
                       options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
                       notFoundContent={
@@ -1045,17 +1339,23 @@ export default function InstallationProjectsPage() {
                   </Form.Item>
                 </div>
 
-                <div style={gridStyle('2fr 1fr')}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   <Form.Item
                     label="Nome do Projeto"
                     name="title"
                     rules={[{ required: true, message: 'Informe o nome do projeto' }]}
                   >
-                    <Input placeholder="Ex: Instalação cliente X" />
+                    <Input placeholder="Ex: Implantação cliente X" />
                   </Form.Item>
 
                   <Form.Item label="AF" name="af" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
-                    <Input placeholder="Ex: AF-2026-000123" />
+                    <Input placeholder="Ex: G-001234" />
                   </Form.Item>
                 </div>
 
@@ -1072,21 +1372,31 @@ export default function InstallationProjectsPage() {
                   />
                 </Form.Item>
 
-                <div style={gridStyle('1fr 1fr 1fr')}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   <Form.Item
                     label="Qtd. Veículos (total)"
                     name="trucksTotal"
-                    rules={[{ required: true, message: 'Informe a quantidade total de veículos' }]}
+                    rules={[{ required: true, message: 'Informe a quantidade total' }]}
                   >
                     <InputNumber min={1} style={{ width: '100%' }} />
                   </Form.Item>
 
                   <Form.Item
-                    label="Prev. de instalação por dia"
+                    label="Instalações por dia"
                     name="equipmentsPerDay"
                     rules={[{ required: true, message: 'Informe a previsão por dia' }]}
                   >
                     <InputNumber min={1} style={{ width: '100%' }} />
+                  </Form.Item>
+
+                  <Form.Item label="Data da venda" name="saleDate">
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                   </Form.Item>
 
                   <Form.Item
@@ -1094,7 +1404,7 @@ export default function InstallationProjectsPage() {
                     name="startPlannedAt"
                     rules={[{ required: true, message: 'Selecione a data de início' }]}
                   >
-                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                   </Form.Item>
                 </div>
 
@@ -1104,7 +1414,7 @@ export default function InstallationProjectsPage() {
                   </Typography.Text>
                 )}
 
-                <Form.Item label="Observações (opcional)" name="notes" style={{ marginTop: 12, marginBottom: 0 }}>
+                <Form.Item label="Observações" name="notes" style={{ marginTop: 12, marginBottom: 0 }}>
                   <Input.TextArea rows={4} placeholder="Anotações iniciais..." />
                 </Form.Item>
               </Card>
@@ -1119,8 +1429,7 @@ export default function InstallationProjectsPage() {
                     Localização
                   </Space>
                 }
-                styles={{ body: { padding: 14 } }}
-                style={{ borderRadius: 14 }}
+                style={{ borderRadius: 16 }}
               >
                 <Form.Item label="Endereço / localização" name="requestedLocationText">
                   <Input
@@ -1146,7 +1455,13 @@ export default function InstallationProjectsPage() {
                   />
                 </Form.Item>
 
-                <div style={gridStyle('1.2fr 0.7fr 0.9fr')}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.7fr 0.9fr',
+                    gap: 12,
+                  }}
+                >
                   <Form.Item label="Cidade" name="requestedCity">
                     <Input placeholder="Cidade da instalação" />
                   </Form.Item>
@@ -1171,7 +1486,13 @@ export default function InstallationProjectsPage() {
                   </Form.Item>
                 </div>
 
-                <div style={gridStyle('1fr 1fr')}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                    gap: 12,
+                  }}
+                >
                   <Form.Item
                     label="Latitude"
                     name="requestedLat"
@@ -1210,22 +1531,17 @@ export default function InstallationProjectsPage() {
                 </div>
 
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  A geolocalização do projeto agora usa estes dados, e não mais a localização do cliente.
+                  A geolocalização do projeto usa os dados informados aqui.
                 </Typography.Text>
               </Card>
 
-              <Card
-                size="small"
-                title="Dados de contato"
-                styles={{ body: { padding: 14 } }}
-                style={{ borderRadius: 14 }}
-              >
-                <Form.Item label="Contato (opcional)" name="contactName">
+              <Card size="small" title="Dados de contato" style={{ borderRadius: 16 }}>
+                <Form.Item label="Contato" name="contactName">
                   <Input placeholder="Nome do contato" />
                 </Form.Item>
 
                 <Form.Item
-                  label="E-mails (obrigatório)"
+                  label="E-mails"
                   name="contactEmails"
                   rules={[
                     { required: true, message: 'Informe pelo menos um e-mail' },
@@ -1246,7 +1562,7 @@ export default function InstallationProjectsPage() {
                   />
                 </Form.Item>
 
-                <Form.Item label="Telefone (opcional)" name="contactPhone" style={{ marginBottom: 0 }}>
+                <Form.Item label="Telefone" name="contactPhone" style={{ marginBottom: 0 }}>
                   <Input placeholder="(11) 99999-9999" />
                 </Form.Item>
               </Card>
@@ -1256,13 +1572,48 @@ export default function InstallationProjectsPage() {
       </Modal>
 
       <Modal
+        title="Importar Excel para BASE"
+        open={importOpen}
+        onCancel={() => {
+          if (!importBase.isPending) {
+            setImportOpen(false);
+            setFileList([]);
+          }
+        }}
+        onOk={handleImport}
+        okText="Importar"
+        confirmLoading={importBase.isPending}
+        destroyOnHidden
+      >
+        <div style={{ display: 'grid', gap: 16 }}>
+          <Typography.Text type="secondary">
+            Envie um arquivo Excel com colunas como AF, DATA, CLIENTE, PRODUTO, QUANTIDADE_PRODUTO e TOTAL_EQUIPAMENTOS_AF.
+          </Typography.Text>
+
+          <Upload.Dragger
+            multiple={false}
+            accept=".xlsx,.xls"
+            maxCount={1}
+            beforeUpload={() => false}
+            fileList={fileList}
+            onChange={({ fileList: next }) => setFileList(next)}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">Clique ou arraste o Excel aqui</p>
+            <p className="ant-upload-hint">A importação vai alimentar a aba BASE.</p>
+          </Upload.Dragger>
+        </div>
+      </Modal>
+
+      <Modal
         title="Buscar coordenadas"
         open={geoOpen}
         onCancel={() => setGeoOpen(false)}
         footer={null}
         destroyOnHidden
         width={isMobile ? '100%' : 900}
-        style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
         <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
           <Input
@@ -1290,9 +1641,11 @@ export default function InstallationProjectsPage() {
                       <b>lat/lng:</b> {item.lat ?? '—'}, {item.lng ?? '—'}
                     </div>
                     <div>
-                      <b>cidade:</b> {item.city || item.address?.city || item.address?.town || item.address?.village || '—'}
+                      <b>cidade:</b>{' '}
+                      {item.city || item.address?.city || item.address?.town || item.address?.village || '—'}
                       {' • '}
-                      <b>UF:</b> {normalizeUF(item.uf || item.state || item.address?.state_code || item.address?.state) || '—'}
+                      <b>UF:</b>{' '}
+                      {normalizeUF(item.uf || item.state || item.address?.state_code || item.address?.state) || '—'}
                     </div>
                     <div>
                       <b>CEP:</b> {normalizeCep(item.cep || item.postcode || item.address?.postcode) || '—'}

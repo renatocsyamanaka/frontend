@@ -15,7 +15,6 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Table,
   Typography,
 } from 'antd';
@@ -36,6 +35,10 @@ import {
   ToolOutlined,
   TrophyOutlined,
   WarningOutlined,
+  BarChartOutlined,
+  DatabaseOutlined,
+  DownOutlined,
+  UpOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs, { Dayjs } from 'dayjs';
@@ -107,6 +110,7 @@ type ByClientRow = {
 };
 
 type ByStatusRow = { status: string; total: number };
+
 type ByCoordinatorRow = {
   coordinatorId: number;
   coordinatorName: string;
@@ -243,8 +247,10 @@ function buildParams(filters: {
   status?: string | null;
   q?: string;
   delayed?: boolean;
+  recordType?: 'BASE' | 'PROJECT' | null;
 }) {
   const params: Record<string, any> = {};
+
   if (filters.range?.[0]) params.startDate = filters.range[0].format('YYYY-MM-DD');
   if (filters.range?.[1]) params.endDate = filters.range[1].format('YYYY-MM-DD');
   if (filters.clientId) params.clientId = filters.clientId;
@@ -256,6 +262,10 @@ function buildParams(filters: {
   if (filters.status) params.status = filters.status;
   if (filters.q?.trim()) params.q = filters.q.trim();
   if (filters.delayed) params.delayed = true;
+
+  // força somente projetos reais
+  params.recordType = 'PROJECT';
+
   return params;
 }
 
@@ -264,9 +274,9 @@ function sectionTitle(icon: React.ReactNode, title: string, subtitle?: string) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <div
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 12,
+          width: 40,
+          height: 40,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -279,7 +289,7 @@ function sectionTitle(icon: React.ReactNode, title: string, subtitle?: string) {
         {icon}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: '#0f172a' }}>{title}</div>
+        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: 16 }}>{title}</div>
         {subtitle ? <div style={{ fontSize: 12, color: '#64748b' }}>{subtitle}</div> : null}
       </div>
     </div>
@@ -308,7 +318,7 @@ function KpiCard({
         borderRadius: 24,
         background: colors.bg,
         border: `1px solid ${colors.border}`,
-        boxShadow: '0 12px 30px rgba(15,23,42,0.06)',
+        boxShadow: '0 16px 32px rgba(15,23,42,0.08)',
         overflow: 'hidden',
         height: '100%',
       }}
@@ -316,8 +326,8 @@ function KpiCard({
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>{title}</div>
-          <div style={{ marginTop: 8, fontSize: 28, lineHeight: 1.1, fontWeight: 800, color: '#0f172a' }}>
+          <div style={{ fontSize: 13, color: '#334155', fontWeight: 700 }}>{title}</div>
+          <div style={{ marginTop: 8, fontSize: 30, lineHeight: 1.1, fontWeight: 900, color: '#0f172a' }}>
             {value}
             {suffix ? <span style={{ fontSize: 16, marginLeft: 4 }}>{suffix}</span> : null}
           </div>
@@ -325,16 +335,69 @@ function KpiCard({
         </div>
         <div
           style={{
-            width: 50,
-            height: 50,
-            borderRadius: 16,
+            width: 54,
+            height: 54,
+            borderRadius: 18,
             background: colors.iconBg,
             color: colors.iconColor,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 22,
-            boxShadow: '0 10px 24px rgba(15,23,42,0.08)',
+            fontSize: 24,
+            boxShadow: '0 10px 24px rgba(15,23,42,0.10)',
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function HighlightCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  gradient,
+}: {
+  title: string;
+  value: number | string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  gradient: string;
+}) {
+  return (
+    <Card
+      bordered={false}
+      style={{
+        borderRadius: 26,
+        background: gradient,
+        color: '#fff',
+        height: '100%',
+        boxShadow: '0 18px 40px rgba(15,23,42,0.18)',
+        overflow: 'hidden',
+      }}
+      styles={{ body: { padding: 22 } }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.88 }}>{title}</div>
+          <div style={{ fontSize: 38, fontWeight: 900, lineHeight: 1.05, marginTop: 10 }}>{value}</div>
+          {subtitle ? <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82 }}>{subtitle}</div> : null}
+        </div>
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 18,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255,255,255,0.18)',
+            backdropFilter: 'blur(6px)',
+            fontSize: 24,
             flexShrink: 0,
           }}
         >
@@ -358,7 +421,10 @@ function SimpleBars({
   maxItems?: number;
   color?: string;
 }) {
-  const rows = useMemo(() => [...data].sort((a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0)).slice(0, maxItems), [data, valueKey, maxItems]);
+  const rows = useMemo(
+    () => [...data].sort((a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0)).slice(0, maxItems),
+    [data, valueKey, maxItems]
+  );
   const max = Math.max(...rows.map((r) => Number(r[valueKey] || 0)), 0);
 
   if (!rows.length) return <Empty description="Sem dados" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
@@ -372,15 +438,25 @@ function SimpleBars({
         return (
           <div
             key={`${row[labelKey]}_${index}`}
-            style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 16, background: '#f8fafc', border: '1px solid #eef2f7' }}
+            style={{ display: 'grid', gap: 8, padding: 14, borderRadius: 18, background: '#f8fafc', border: '1px solid #e5edf7' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: '#0f172a' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>{String(row[labelKey] || '-')}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                {String(row[labelKey] || '-')}
+              </span>
               <b>{value}</b>
             </div>
 
             <div style={{ width: '100%', height: 12, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
-              <div style={{ width: `${percent}%`, height: '100%', background: color, borderRadius: 999, boxShadow: '0 8px 20px rgba(22,119,255,0.22)' }} />
+              <div
+                style={{
+                  width: `${percent}%`,
+                  height: '100%',
+                  background: color,
+                  borderRadius: 999,
+                  boxShadow: '0 8px 20px rgba(22,119,255,0.22)',
+                }}
+              />
             </div>
           </div>
         );
@@ -402,7 +478,17 @@ function StatusSummaryCards({ data }: { data: StatusCardRow[] }) {
             style={{ padding: 16, borderRadius: 18, background: '#f8fafc', border: '1px solid #e2e8f0', display: 'grid', gap: 10 }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <span style={{ padding: '4px 10px', borderRadius: 10, background: theme.bg, border: `1px solid ${theme.border}`, color: theme.color, fontSize: 13, fontWeight: 600 }}>
+              <span
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 10,
+                  background: theme.bg,
+                  border: `1px solid ${theme.border}`,
+                  color: theme.color,
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
                 {statusLabel(row.status)}
               </span>
               <b style={{ fontSize: 18, color: '#0f172a' }}>{row.total}</b>
@@ -412,11 +498,12 @@ function StatusSummaryCards({ data }: { data: StatusCardRow[] }) {
                 style={{
                   width: `${row.percent}%`,
                   height: '100%',
-                  background: row.status === 'FINALIZADO' || row.status === 'CONCLUIDO'
-                    ? 'linear-gradient(90deg, #16a34a, #4ade80)'
-                    : row.status === 'INICIADO' || row.status === 'EM_ANDAMENTO'
-                      ? 'linear-gradient(90deg, #1677ff, #69b1ff)'
-                      : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                  background:
+                    row.status === 'FINALIZADO' || row.status === 'CONCLUIDO'
+                      ? 'linear-gradient(90deg, #16a34a, #4ade80)'
+                      : row.status === 'INICIADO' || row.status === 'EM_ANDAMENTO'
+                        ? 'linear-gradient(90deg, #1677ff, #69b1ff)'
+                        : 'linear-gradient(90deg, #f59e0b, #fbbf24)',
                   borderRadius: 999,
                 }}
               />
@@ -446,12 +533,29 @@ function buildDonutGradient(data: DonutItem[]) {
   return `conic-gradient(${segments.join(', ')})`;
 }
 
-function DonutChart({ data, centerValue, centerLabel }: { data: DonutItem[]; centerValue: string | number; centerLabel: string }) {
+function DonutChart({
+  data,
+  centerValue,
+  centerLabel,
+}: {
+  data: DonutItem[];
+  centerValue: string | number;
+  centerLabel: string;
+}) {
   const gradient = buildDonutGradient(data);
 
   return (
     <div style={{ display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: 240, height: 240, borderRadius: '50%', background: gradient, position: 'relative', boxShadow: '0 18px 42px rgba(15,23,42,0.10)' }}>
+      <div
+        style={{
+          width: 240,
+          height: 240,
+          borderRadius: '50%',
+          background: gradient,
+          position: 'relative',
+          boxShadow: '0 18px 42px rgba(15,23,42,0.10)',
+        }}
+      >
         <div
           style={{
             position: 'absolute',
@@ -485,11 +589,25 @@ function DonutLegend({ data }: { data: DonutItem[] }) {
         const percent = total ? ((item.value / total) * 100).toFixed(1) : '0.0';
 
         return (
-          <div key={`${item.name}-${index}`} style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 14, background: '#f8fafc', border: '1px solid #eef2f7' }}>
+          <div
+            key={`${item.name}-${index}`}
+            style={{ display: 'grid', gap: 8, padding: 12, borderRadius: 14, background: '#f8fafc', border: '1px solid #eef2f7' }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {item.name}
+                </span>
               </div>
               <b style={{ color: '#0f172a' }}>{item.value}</b>
             </div>
@@ -501,19 +619,39 @@ function DonutLegend({ data }: { data: DonutItem[] }) {
   );
 }
 
-function PieAndDetailsCard({ title, subtitle, data, centerValue, centerLabel }: { title: string; subtitle?: string; data: DonutItem[]; centerValue: string | number; centerLabel: string }) {
+function PieAndDetailsCard({
+  title,
+  subtitle,
+  data,
+  centerValue,
+  centerLabel,
+}: {
+  title: string;
+  subtitle?: string;
+  data: DonutItem[];
+  centerValue: string | number;
+  centerLabel: string;
+}) {
   return (
-    <Card bordered={false} style={{ borderRadius: 20, border: '1px solid #eef2f7', boxShadow: '0 10px 24px rgba(15,23,42,0.05)', height: '100%' }} styles={{ body: { padding: 18 } }}>
+    <Card
+      bordered={false}
+      style={{ borderRadius: 20, border: '1px solid #eef2f7', boxShadow: '0 10px 24px rgba(15,23,42,0.05)', height: '100%' }}
+      styles={{ body: { padding: 18 } }}
+    >
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, color: '#0f172a' }}>{title}</div>
+        <div style={{ fontWeight: 800, color: '#0f172a' }}>{title}</div>
         {subtitle ? <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{subtitle}</div> : null}
       </div>
       {!data.length ? (
         <Empty description="Sem dados" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} lg={12}><DonutChart data={data} centerValue={centerValue} centerLabel={centerLabel} /></Col>
-          <Col xs={24} lg={12}><DonutLegend data={data} /></Col>
+          <Col xs={24} lg={12}>
+            <DonutChart data={data} centerValue={centerValue} centerLabel={centerLabel} />
+          </Col>
+          <Col xs={24} lg={12}>
+            <DonutLegend data={data} />
+          </Col>
         </Row>
       )}
     </Card>
@@ -522,9 +660,19 @@ function PieAndDetailsCard({ title, subtitle, data, centerValue, centerLabel }: 
 
 function DetailMetricBox({ label, value, bg }: { label: string; value: string | number; bg: string }) {
   return (
-    <div style={{ borderRadius: 18, background: bg, border: '1px solid #e5e7eb', padding: 16, minHeight: 92, display: 'grid', alignContent: 'center' }}>
+    <div
+      style={{
+        borderRadius: 18,
+        background: bg,
+        border: '1px solid #e5e7eb',
+        padding: 16,
+        minHeight: 92,
+        display: 'grid',
+        alignContent: 'center',
+      }}
+    >
       <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{value}</div>
+      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{value}</div>
     </div>
   );
 }
@@ -534,7 +682,11 @@ export default function InstallationProjectsDashboardPage() {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
-  const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>([
+    dayjs('2026-01-01'),
+    dayjs('2026-12-31'),
+  ]);
+
   const [clientId, setClientId] = useState<number | null>(null);
   const [coordinatorId, setCoordinatorId] = useState<number | null>(null);
   const [supervisorId, setSupervisorId] = useState<number | null>(null);
@@ -543,6 +695,7 @@ export default function InstallationProjectsDashboardPage() {
   const [product, setProduct] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const [openDayModal, setOpenDayModal] = useState(false);
   const [openWeekModal, setOpenWeekModal] = useState(false);
@@ -553,7 +706,18 @@ export default function InstallationProjectsDashboardPage() {
   const [modalMapKey, setModalMapKey] = useState(0);
 
   const filters = useMemo(
-    () => ({ range, clientId, coordinatorId, supervisorId, region, uf, product, status, q }),
+    () => ({
+      range,
+      clientId,
+      coordinatorId,
+      supervisorId,
+      region,
+      uf,
+      product,
+      status,
+      q,
+      recordType: 'PROJECT' as const,
+    }),
     [range, clientId, coordinatorId, supervisorId, region, uf, product, status, q]
   );
 
@@ -576,12 +740,11 @@ export default function InstallationProjectsDashboardPage() {
   const dashboardQuery = useQuery<DashboardResponse>({
     queryKey: ['installation-projects-dashboard', filters],
     queryFn: async () =>
-      unwrap<DashboardResponse>((await api.get('/installation-projects/dashboard/overview', { params: buildParams(filters) })).data),
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 20000,
+      unwrap<DashboardResponse>(
+        (await api.get('/installation-projects/dashboard/overview', { params: buildParams(filters) })).data
+      ),
   });
-
+  
   const delayedProjectsQuery = useQuery<{ filters: Record<string, any>; data: DelayedProjectRow[] }>({
     queryKey: ['installation-projects-delayed', filters],
     queryFn: async () =>
@@ -593,18 +756,22 @@ export default function InstallationProjectsDashboardPage() {
     staleTime: 20000,
   });
 
-  const delayedProjects = useMemo(
-    () => delayedProjectsQuery.data?.data || [],
-    [delayedProjectsQuery.data]
-  );
+  const delayedProjects = useMemo(() => delayedProjectsQuery.data?.data || [], [delayedProjectsQuery.data]);
+
   const coordinators = useMemo(() => {
     const rows = usersQuery.data || [];
-    return rows.filter((u) => (u.role?.level || 0) >= 4).map((u) => ({ value: u.id, label: u.name })).sort((a, b) => a.label.localeCompare(b.label));
+    return rows
+      .filter((u) => (u.role?.level || 0) >= 4)
+      .map((u) => ({ value: u.id, label: u.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [usersQuery.data]);
 
   const supervisors = useMemo(() => {
     const rows = usersQuery.data || [];
-    return rows.filter((u) => (u.role?.level || 0) === 3).map((u) => ({ value: u.id, label: u.name })).sort((a, b) => a.label.localeCompare(b.label));
+    return rows
+      .filter((u) => (u.role?.level || 0) === 3)
+      .map((u) => ({ value: u.id, label: u.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [usersQuery.data]);
 
   const rawOverview = dashboardQuery.data?.overview;
@@ -623,6 +790,7 @@ export default function InstallationProjectsDashboardPage() {
   const byDayNoFuture = useMemo(() => {
     const start = range?.[0]?.startOf('day');
     const end = range?.[1]?.endOf('day');
+
     return (rawProductivity?.byDay || [])
       .filter((item) => dayjs(item.date).isValid() && !dayjs(item.date).isAfter(today))
       .filter((item) => {
@@ -630,13 +798,18 @@ export default function InstallationProjectsDashboardPage() {
         const d = dayjs(item.date);
         return d.isSame(start, 'day') || d.isSame(end, 'day') || (d.isAfter(start) && d.isBefore(end));
       })
-      .map((item) => ({ label: dayjs(item.date).format('DD/MM'), valor: Number(item.installed || 0), rawDate: item.date }))
+      .map((item) => ({
+        label: dayjs(item.date).format('DD/MM'),
+        valor: Number(item.installed || 0),
+        rawDate: item.date,
+      }))
       .sort((a, b) => b.valor - a.valor);
   }, [rawProductivity?.byDay, today, range]);
 
   const byWeekNoFuture = useMemo(() => {
     const start = range?.[0]?.startOf('day');
     const end = range?.[1]?.endOf('day');
+
     return (rawProductivity?.byWeek || [])
       .filter((item) => dayjs(item.weekStart).isValid() && !dayjs(item.weekStart).isAfter(today))
       .filter((item) => {
@@ -644,7 +817,11 @@ export default function InstallationProjectsDashboardPage() {
         const d = dayjs(item.weekStart);
         return d.isSame(start, 'day') || d.isSame(end, 'day') || (d.isAfter(start) && d.isBefore(end));
       })
-      .map((item) => ({ label: `Sem. ${dayjs(item.weekStart).format('DD/MM')}`, valor: Number(item.installed || 0), rawWeek: item.weekStart }))
+      .map((item) => ({
+        label: `Sem. ${dayjs(item.weekStart).format('DD/MM')}`,
+        valor: Number(item.installed || 0),
+        rawWeek: item.weekStart,
+      }))
       .sort((a, b) => b.valor - a.valor);
   }, [rawProductivity?.byWeek, today, range]);
 
@@ -654,15 +831,53 @@ export default function InstallationProjectsDashboardPage() {
   }, [range, byDayNoFuture.length, byWeekNoFuture.length]);
 
   const overview = useMemo<DashboardOverview>(() => {
-    if (noDataInPeriod) return { totalProjects: 0, planned: 0, done: 0, pending: 0, delayedProjects: 0, percentDone: 0 };
-    return rawOverview || { totalProjects: 0, planned: 0, done: 0, pending: 0, delayedProjects: 0, percentDone: 0 };
+    if (noDataInPeriod) {
+      return {
+        totalProjects: 0,
+        planned: 0,
+        done: 0,
+        pending: 0,
+        delayedProjects: 0,
+        percentDone: 0,
+      };
+    }
+
+    return rawOverview || {
+      totalProjects: 0,
+      planned: 0,
+      done: 0,
+      pending: 0,
+      delayedProjects: 0,
+      percentDone: 0,
+    };
   }, [rawOverview, noDataInPeriod]);
 
   const productivity = useMemo<DashboardProductivity>(() => {
     if (noDataInPeriod) {
-      return { totalInstalled: 0, averageDaily: 0, averageWeekly: 0, targetDaily: 0, targetWeekly: 0, compareDailyPct: 0, compareWeeklyPct: 0, byDay: [], byWeek: [] };
+      return {
+        totalInstalled: 0,
+        averageDaily: 0,
+        averageWeekly: 0,
+        targetDaily: 0,
+        targetWeekly: 0,
+        compareDailyPct: 0,
+        compareWeeklyPct: 0,
+        byDay: [],
+        byWeek: [],
+      };
     }
-    return rawProductivity || { totalInstalled: 0, averageDaily: 0, averageWeekly: 0, targetDaily: 0, targetWeekly: 0, compareDailyPct: 0, compareWeeklyPct: 0, byDay: [], byWeek: [] };
+
+    return rawProductivity || {
+      totalInstalled: 0,
+      averageDaily: 0,
+      averageWeekly: 0,
+      targetDaily: 0,
+      targetWeekly: 0,
+      compareDailyPct: 0,
+      compareWeeklyPct: 0,
+      byDay: [],
+      byWeek: [],
+    };
   }, [rawProductivity, noDataInPeriod]);
 
   const byClient = noDataInPeriod ? [] : rawByClient;
@@ -673,6 +888,8 @@ export default function InstallationProjectsDashboardPage() {
   const byProduct = noDataInPeriod ? [] : rawByProduct;
   const endingSoon = noDataInPeriod ? [] : rawEndingSoon;
 
+  const totalBase = Number(overview.planned || 0);
+
   const successSummary = useMemo(() => {
     const totalProjects = Number(overview.totalProjects || 0);
     const delayedProjects = Number(overview.delayedProjects || 0);
@@ -681,11 +898,24 @@ export default function InstallationProjectsDashboardPage() {
     return { totalProjects, delayedProjects, onTimeProjects, successRate };
   }, [overview]);
 
-  const byStatusFiltered = useMemo(() => byStatus.filter((s) => !['CANCELADO', 'REAGENDADO', 'NAO_INFORMADO', 'Não informado'].includes(s.status)), [byStatus]);
+  const byStatusFiltered = useMemo(
+    () => byStatus.filter((s) => !['CANCELADO', 'REAGENDADO', 'NAO_INFORMADO', 'Não informado'].includes(s.status)),
+    [byStatus]
+  );
 
-  const totalStatus = useMemo(() => byStatusFiltered.reduce((acc, s) => acc + Number(s.total || 0), 0), [byStatusFiltered]);
+  const totalStatus = useMemo(
+    () => byStatusFiltered.reduce((acc, s) => acc + Number(s.total || 0), 0),
+    [byStatusFiltered]
+  );
 
-  const statusCardsData = useMemo<StatusCardRow[]>(() => byStatusFiltered.map((item) => ({ ...item, percent: totalStatus ? Math.round((Number(item.total || 0) / totalStatus) * 100) : 0 })), [byStatusFiltered, totalStatus]);
+  const statusCardsData = useMemo<StatusCardRow[]>(
+    () =>
+      byStatusFiltered.map((item) => ({
+        ...item,
+        percent: totalStatus ? Math.round((Number(item.total || 0) / totalStatus) * 100) : 0,
+      })),
+    [byStatusFiltered, totalStatus]
+  );
 
   const successDonutData = useMemo<DonutItem[]>(() => {
     if (!successSummary.totalProjects) return [];
@@ -725,11 +955,19 @@ export default function InstallationProjectsDashboardPage() {
     color: DONUT_COLORS[index % DONUT_COLORS.length],
   })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [byProduct]);
 
-  const productDoneDonut = useMemo<DonutItem[]>(() => byProduct.map((item, index) => ({
-    name: item.product,
-    value: Number(item.done || 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [byProduct]);
+  const productDoneDonut = useMemo<DonutItem[]>(
+    () =>
+      byProduct
+        .map((item, index) => ({
+          name: item.product,
+          value: Number(item.done || 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [byProduct]
+  );
 
   const clearFilters = () => {
     setRange(null);
@@ -747,7 +985,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Cliente', dataIndex: 'clientName', key: 'clientName' },
     { title: 'Projetos', dataIndex: 'totalProjects', key: 'totalProjects', width: 100, align: 'center' },
     { title: 'Concluídos', dataIndex: 'completedProjects', key: 'completedProjects', width: 110, align: 'center' },
-    { title: 'Planejado', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
     { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center' },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 110, align: 'center' },
     { title: '% Conclusão', dataIndex: 'percentDone', key: 'percentDone', width: 140, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
@@ -756,7 +994,7 @@ export default function InstallationProjectsDashboardPage() {
   const coordinatorColumns: ColumnsType<ByCoordinatorRow> = [
     { title: 'Coordenador', dataIndex: 'coordinatorName', key: 'coordinatorName' },
     { title: 'Projetos', key: 'projects', width: 90, align: 'center', render: (_, row) => Number(row.totalProjects ?? row.projects ?? 0) },
-    { title: 'Planejado', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
     { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
@@ -767,7 +1005,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Supervisor', dataIndex: 'supervisorName', key: 'supervisorName' },
     { title: 'Projetos', dataIndex: 'totalProjects', key: 'totalProjects', width: 90, align: 'center' },
     { title: 'Concluídos', dataIndex: 'completedProjects', key: 'completedProjects', width: 100, align: 'center' },
-    { title: 'Planejado', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
     { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
@@ -779,7 +1017,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'UF', dataIndex: 'uf', key: 'uf', width: 70, align: 'center' },
     { title: 'Cidade', dataIndex: 'city', key: 'city' },
     { title: 'Projetos', dataIndex: 'projects', key: 'projects', width: 90, align: 'center' },
-    { title: 'Planejado', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
     { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
@@ -788,7 +1026,7 @@ export default function InstallationProjectsDashboardPage() {
   const productColumns: ColumnsType<ByProductRow> = [
     { title: 'Produto / Equipamento', dataIndex: 'product', key: 'product' },
     { title: 'Código', dataIndex: 'code', key: 'code', width: 140, render: (v) => v || '-' },
-    { title: 'Planejado', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
     { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center' },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 110, align: 'center' },
     { title: '%', dataIndex: 'percentDone', key: 'percentDone', width: 120, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
@@ -809,7 +1047,7 @@ export default function InstallationProjectsDashboardPage() {
       align: 'center',
       render: (v) => {
         const theme = statusPill(v);
-        return <span style={{ padding: '4px 10px', borderRadius: 10, background: theme.bg, border: `1px solid ${theme.border}`, color: theme.color, fontSize: 12, fontWeight: 600 }}>{statusLabel(v)}</span>;
+        return <span style={{ padding: '4px 10px', borderRadius: 10, background: theme.bg, border: `1px solid ${theme.border}`, color: theme.color, fontSize: 12, fontWeight: 700 }}>{statusLabel(v)}</span>;
       },
     },
   ];
@@ -821,7 +1059,7 @@ export default function InstallationProjectsDashboardPage() {
       key: 'title',
       render: (_, row) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{row.title}</div>
+          <div style={{ fontWeight: 800 }}>{row.title}</div>
           <div style={{ fontSize: 12, color: '#64748b' }}>{row.clientName || '-'} • {row.supervisorName || 'Sem supervisor'}</div>
         </div>
       ),
@@ -833,74 +1071,358 @@ export default function InstallationProjectsDashboardPage() {
       render: (value) => <div style={{ fontSize: 12, whiteSpace: 'normal', lineHeight: 1.4 }}>{value || '-'}</div>,
     },
     { title: 'Prazo', dataIndex: 'endPlannedAt', key: 'endPlannedAt', width: 120, align: 'center', render: (value) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-    { title: 'Dias atraso', dataIndex: 'daysLate', key: 'daysLate', width: 110, align: 'center', render: (value) => <span style={{ color: '#cf1322', fontWeight: 700 }}>{value}</span> },
+    { title: 'Dias atraso', dataIndex: 'daysLate', key: 'daysLate', width: 110, align: 'center', render: (value) => <span style={{ color: '#cf1322', fontWeight: 800 }}>{value}</span> },
     { title: 'Carros restantes', dataIndex: 'pending', key: 'pending', width: 130, align: 'center', render: (value) => <b>{value}</b> },
     { title: 'Ações', key: 'open', width: 150, align: 'center', render: (_, row) => <Button type="link" onClick={() => navigate(row.projectUrl)}>Abrir projeto</Button> },
   ];
 
   return (
-    <div style={{ display: 'grid', gap: 18, background: 'linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%)', padding: isMobile ? 10 : 4, borderRadius: 24 }}>
+    <div style={{ display: 'grid', gap: 18, background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4fb 100%)', padding: isMobile ? 10 : 6, borderRadius: 28 }}>
       <Card
-        bordered={false}
-        style={{ borderRadius: 28, background: 'linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%)', boxShadow: '0 18px 42px rgba(15,23,42,0.18)', overflow: 'hidden' }}
-        styles={{ body: { padding: isMobile ? 18 : 26 } }}
+        variant="outlined"
+        style={{
+          borderRadius: 30,
+          background: '#ffffff',
+          boxShadow: '0 12px 32px rgba(15,23,42,0.08)',
+          overflow: 'hidden',
+          border: '1px solid #e2e8f0'
+        }}
+        styles={{ body: { padding: isMobile ? 18 : 28 } }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', gap: 16, flexDirection: isMobile ? 'column' : 'row' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            gap: 16,
+            flexDirection: isMobile ? 'column' : 'row'
+          }}
+        >
           <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.14)', color: '#dbeafe', fontSize: 12, fontWeight: 700, marginBottom: 14 }}>
-              <FundOutlined />
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 999,
+                background: '#eff6ff',
+                color: '#2563eb',
+                fontSize: 12,
+                fontWeight: 800,
+                marginBottom: 14
+              }}
+            >
+              <BarChartOutlined />
               Visão administrativa
             </div>
-            <Typography.Title level={2} style={{ margin: 0, color: '#fff' }}>Dashboard de Instalação</Typography.Title>
-            <Typography.Paragraph style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.78)', maxWidth: 760 }}>
-              Acompanhe produção, pendências, prazo, coordenadores, supervisores, produtos e regiões com visão executiva.
+
+            <Typography.Title level={2} style={{ margin: 0, color: '#0f172a' }}>
+              Dashboard de Instalação
+            </Typography.Title>
+
+            <Typography.Paragraph
+              style={{
+                margin: '10px 0 0',
+                color: '#475569',
+                maxWidth: 760
+              }}
+            >
+              Acompanhe projetos, base, produção, pendências, prazo, coordenadores,
+              supervisores, produtos e regiões com uma visão mais clara e mais forte visualmente.
             </Typography.Paragraph>
           </div>
 
           <Space wrap>
-            <Button size="large" icon={<ArrowLeftOutlined />} onClick={() => navigate('/projetos-instalacao')} style={{ borderRadius: 14, borderColor: 'rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.08)', color: '#fff' }}>Voltar</Button>
-            <Button size="large" icon={<EnvironmentOutlined />} onClick={() => navigate('/projetos-instalacao/geolocalizacao')} style={{ borderRadius: 14, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.4)', color: '#0f172a', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>Validar geolocalização</Button>
-            <Button size="large" icon={<FilterOutlined />} onClick={clearFilters} style={{ borderRadius: 14, background: '#ffffff', color: '#0f172a', borderColor: '#dbeafe', fontWeight: 600 }}>Limpar filtros</Button>
-            <Button size="large" type="primary" icon={<ReloadOutlined />} onClick={() => { dashboardQuery.refetch(); delayedProjectsQuery.refetch(); }} style={{ borderRadius: 14, background: '#fff', color: '#1d4ed8', borderColor: '#fff', fontWeight: 700 }}>Atualizar</Button>
+            <Button
+              size="large"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/projetos-instalacao')}
+              style={{
+                borderRadius: 14,
+                borderColor: '#e2e8f0',
+                background: '#fff',
+                color: '#0f172a'
+              }}
+            >
+              Voltar
+            </Button>
+
+            <Button
+              size="large"
+              icon={<EnvironmentOutlined />}
+              onClick={() => navigate('/projetos-instalacao/geolocalizacao')}
+              style={{
+                borderRadius: 14,
+                background: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
+                fontWeight: 600
+              }}
+            >
+              Validar geolocalização
+            </Button>
+
+            <Button
+              size="large"
+              icon={<FilterOutlined />}
+              onClick={clearFilters}
+              style={{
+                borderRadius: 14,
+                background: '#ffffff',
+                color: '#0f172a',
+                borderColor: '#cbd5f5',
+                fontWeight: 600
+              }}
+            >
+              Limpar filtros
+            </Button>
+
+            <Button
+              size="large"
+              type="primary"
+              icon={<ReloadOutlined />}
+              onClick={() => {
+                dashboardQuery.refetch();
+                delayedProjectsQuery.refetch();
+              }}
+              style={{
+                borderRadius: 14,
+                background: '#2563eb',
+                borderColor: '#2563eb',
+                fontWeight: 700
+              }}
+            >
+              Atualizar
+            </Button>
           </Space>
+        </div>
+
+        <div style={{ marginTop: 22 }}>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12} xl={6}>
+              <HighlightCard
+                title="Total projetos"
+                value={overview.totalProjects}
+                subtitle="Quantidade total de projetos no período"
+                icon={<TeamOutlined />}
+                gradient="linear-gradient(135deg, #334155 0%, #64748b 100%)"
+              />
+            </Col>
+
+            <Col xs={24} md={12} xl={6}>
+              <HighlightCard
+                title="Total base"
+                value={totalBase}
+                subtitle="Base total prevista para instalação"
+                icon={<DatabaseOutlined />}
+                gradient="linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)"
+              />
+            </Col>
+
+            <Col xs={24} md={12} xl={6}>
+              <HighlightCard
+                title="Total realizado"
+                value={overview.done}
+                subtitle="Instalações concluídas"
+                icon={<CheckCircleOutlined />}
+                gradient="linear-gradient(135deg, #16a34a 0%, #4ade80 100%)"
+              />
+            </Col>
+
+            <Col xs={24} md={12} xl={6}>
+              <HighlightCard
+                title="Total pendente"
+                value={overview.pending}
+                subtitle="Volume ainda não concluído"
+                icon={<ClockCircleOutlined />}
+                gradient="linear-gradient(135deg, #f97316 0%, #fb923c 100%)"
+              />
+            </Col>
+          </Row>
         </div>
       </Card>
 
       <Card
-        bordered={false}
-        style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
-        title={sectionTitle(<CalendarOutlined />, 'Filtros do dashboard', 'Refine a análise por período, cliente, região, equipe e produto')}
+        variant="outlined"
+        style={{
+          borderRadius: 24,
+          boxShadow: '0 14px 32px rgba(15,23,42,0.06)',
+          border: '1px solid #e2e8f0'
+        }}
         styles={{ body: { padding: isMobile ? 14 : 20 } }}
       >
-        <Row gutter={[12, 12]}>
-          <Col xs={24} lg={10}>
-            <RangePicker value={range as any} onChange={(v) => setRange((v as [Dayjs | null, Dayjs | null]) || null)} style={{ width: '100%' }} format="DD/MM/YYYY" size="large" allowEmpty={[true, true]} />
-          </Col>
-          <Col xs={24} md={12} lg={7}>
-            <Select allowClear showSearch size="large" placeholder="Cliente" style={{ width: '100%' }} value={clientId ?? undefined} onChange={(v) => setClientId(v ?? null)} optionFilterProp="label" options={(clientsQuery.data || []).map((c) => ({ value: c.id, label: c.name }))} />
-          </Col>
-          <Col xs={24} md={12} lg={7}>
-            <Input allowClear size="large" prefix={<SearchOutlined />} placeholder="Buscar por projeto, AF, cliente, coordenador ou supervisor" value={q} onChange={(e) => setQ(e.target.value)} />
-          </Col>
-          <Col xs={24} md={12} lg={6}>
-            <Select allowClear showSearch size="large" placeholder="Coordenador" style={{ width: '100%' }} value={coordinatorId ?? undefined} onChange={(v) => setCoordinatorId(v ?? null)} optionFilterProp="label" options={coordinators} />
-          </Col>
-          <Col xs={24} md={12} lg={6}>
-            <Select allowClear showSearch size="large" placeholder="Supervisor" style={{ width: '100%' }} value={supervisorId ?? undefined} onChange={(v) => setSupervisorId(v ?? null)} optionFilterProp="label" options={supervisors} />
-          </Col>
-          <Col xs={24} md={8} lg={4}>
-            <Select allowClear size="large" placeholder="Região" style={{ width: '100%' }} value={region ?? undefined} onChange={(v) => setRegion(v ?? null)} options={[{ value: 'Norte', label: 'Norte' }, { value: 'Nordeste', label: 'Nordeste' }, { value: 'Centro-Oeste', label: 'Centro-Oeste' }, { value: 'Sudeste', label: 'Sudeste' }, { value: 'Sul', label: 'Sul' }]} />
-          </Col>
-          <Col xs={24} md={8} lg={3}>
-            <Select allowClear size="large" placeholder="UF" style={{ width: '100%' }} value={uf ?? undefined} onChange={(v) => setUf(v ?? null)} options={['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map((value) => ({ value, label: value }))} />
-          </Col>
-          <Col xs={24} md={8} lg={4}>
-            <Select allowClear size="large" placeholder="Status" style={{ width: '100%' }} value={status ?? undefined} onChange={(v) => setStatus(v ?? null)} options={[{ value: 'A_INICIAR', label: 'À iniciar' }, { value: 'INICIADO', label: 'Iniciado' }, { value: 'FINALIZADO', label: 'Finalizado' }]} />
-          </Col>
-          <Col xs={24} md={12} lg={7}>
-            <Input allowClear size="large" placeholder="Produto / equipamento" value={product} onChange={(e) => setProduct(e.target.value)} />
-          </Col>
-        </Row>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: 12,
+            marginBottom: showFilters ? 18 : 0
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <CalendarOutlined style={{ color: '#2563eb' }} />
+              <Typography.Text style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                Filtros do dashboard
+              </Typography.Text>
+            </div>
+
+            <Typography.Text style={{ color: '#64748b', fontSize: 13 }}>
+              Período padrão: <strong>01/01/2026 até 31/12/2026</strong>
+            </Typography.Text>
+          </div>
+
+          <Space wrap>
+            <Button
+              size="large"
+              onClick={() => {
+                setRange([dayjs('2026-01-01'), dayjs('2026-12-31')]);
+              }}
+              style={{ borderRadius: 12 }}
+            >
+              Ano 2026
+            </Button>
+
+            <Button
+              size="large"
+              icon={showFilters ? <UpOutlined /> : <DownOutlined />}
+              onClick={() => setShowFilters((prev) => !prev)}
+              style={{ borderRadius: 12, fontWeight: 600 }}
+            >
+              {showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
+            </Button>
+          </Space>
+        </div>
+
+        {showFilters && (
+          <Row gutter={[12, 12]}>
+            <Col xs={24} lg={10}>
+              <RangePicker
+                value={range as any}
+                onChange={(v) => setRange((v as [Dayjs | null, Dayjs | null]) || null)}
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                size="large"
+                allowEmpty={[true, true]}
+              />
+            </Col>
+
+            <Col xs={24} md={12} lg={7}>
+              <Select
+                allowClear
+                showSearch
+                size="large"
+                placeholder="Cliente"
+                style={{ width: '100%' }}
+                value={clientId ?? undefined}
+                onChange={(v) => setClientId(v ?? null)}
+                optionFilterProp="label"
+                options={(clientsQuery.data || []).map((c) => ({ value: c.id, label: c.name }))}
+              />
+            </Col>
+
+            <Col xs={24} md={12} lg={7}>
+              <Input
+                allowClear
+                size="large"
+                prefix={<SearchOutlined />}
+                placeholder="Buscar por projeto, AF, cliente, coordenador ou supervisor"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </Col>
+
+            <Col xs={24} md={12} lg={6}>
+              <Select
+                allowClear
+                showSearch
+                size="large"
+                placeholder="Coordenador"
+                style={{ width: '100%' }}
+                value={coordinatorId ?? undefined}
+                onChange={(v) => setCoordinatorId(v ?? null)}
+                optionFilterProp="label"
+                options={coordinators}
+              />
+            </Col>
+
+            <Col xs={24} md={12} lg={6}>
+              <Select
+                allowClear
+                showSearch
+                size="large"
+                placeholder="Supervisor"
+                style={{ width: '100%' }}
+                value={supervisorId ?? undefined}
+                onChange={(v) => setSupervisorId(v ?? null)}
+                optionFilterProp="label"
+                options={supervisors}
+              />
+            </Col>
+
+            <Col xs={24} md={8} lg={4}>
+              <Select
+                allowClear
+                size="large"
+                placeholder="Região"
+                style={{ width: '100%' }}
+                value={region ?? undefined}
+                onChange={(v) => setRegion(v ?? null)}
+                options={[
+                  { value: 'Norte', label: 'Norte' },
+                  { value: 'Nordeste', label: 'Nordeste' },
+                  { value: 'Centro-Oeste', label: 'Centro-Oeste' },
+                  { value: 'Sudeste', label: 'Sudeste' },
+                  { value: 'Sul', label: 'Sul' }
+                ]}
+              />
+            </Col>
+
+            <Col xs={24} md={8} lg={3}>
+              <Select
+                allowClear
+                size="large"
+                placeholder="UF"
+                style={{ width: '100%' }}
+                value={uf ?? undefined}
+                onChange={(v) => setUf(v ?? null)}
+                options={[
+                  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB',
+                  'PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'
+                ].map((value) => ({ value, label: value }))}
+              />
+            </Col>
+
+            <Col xs={24} md={8} lg={4}>
+              <Select
+                allowClear
+                size="large"
+                placeholder="Status"
+                style={{ width: '100%' }}
+                value={status ?? undefined}
+                onChange={(v) => setStatus(v ?? null)}
+                options={[
+                  { value: 'A_INICIAR', label: 'À iniciar' },
+                  { value: 'INICIADO', label: 'Iniciado' },
+                  { value: 'FINALIZADO', label: 'Finalizado' }
+                ]}
+              />
+            </Col>
+
+            <Col xs={24} md={12} lg={7}>
+              <Input
+                allowClear
+                size="large"
+                placeholder="Produto / equipamento"
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+              />
+            </Col>
+          </Row>
+        )}
       </Card>
 
       {dashboardQuery.isLoading ? (
@@ -915,25 +1437,22 @@ export default function InstallationProjectsDashboardPage() {
         <>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total planejado" value={overview.planned} subtitle="Volume total previsto" icon={<FundOutlined />} colors={{ bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)', border: '#dbeafe', iconBg: 'linear-gradient(135deg, #1677ff 0%, #69b1ff 100%)', iconColor: '#fff' }} />
+              <KpiCard title="Total base" value={totalBase} subtitle="Volume total previsto" icon={<DatabaseOutlined />} colors={{ bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)', border: '#bfdbfe', iconBg: 'linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
               <KpiCard title="Total realizado" value={overview.done} subtitle="Instalações já concluídas" icon={<CheckCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)', border: '#bbf7d0', iconBg: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total pendente" value={overview.pending} subtitle="Ainda falta instalar" icon={<ClockCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)', border: '#fed7aa', iconBg: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)', iconColor: '#fff' }} />
+              <KpiCard title="Total pendente" value={overview.pending} subtitle="Ainda falta instalar" icon={<ClockCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)', border: '#fdba74', iconBg: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
               <KpiCard title="% concluído" value={overview.percentDone} suffix="%" subtitle="Percentual geral de execução" icon={<TrophyOutlined />} colors={{ bg: 'linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%)', border: '#ddd6fe', iconBg: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Projetos" value={overview.totalProjects} subtitle="Quantidade total de projetos" icon={<TeamOutlined />} colors={{ bg: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)', border: '#e2e8f0', iconBg: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)', iconColor: '#fff' }} />
+              <KpiCard title="Total projetos" value={overview.totalProjects} subtitle="Quantidade total de projetos" icon={<TeamOutlined />} colors={{ bg: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)', border: '#cbd5e1', iconBg: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <div
-                onClick={() => setOpenDelayedModal(true)}
-                style={{ cursor: 'pointer' }}
-              >
+              <div onClick={() => setOpenDelayedModal(true)} style={{ cursor: 'pointer' }}>
                 <KpiCard
                   title="Projetos atrasados"
                   value={overview.delayedProjects}
@@ -941,7 +1460,7 @@ export default function InstallationProjectsDashboardPage() {
                   icon={<WarningOutlined />}
                   colors={{
                     bg: 'linear-gradient(180deg, #fef2f2 0%, #ffffff 100%)',
-                    border: '#fecaca',
+                    border: '#fca5a5',
                     iconBg: 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)',
                     iconColor: '#fff',
                   }}
@@ -949,7 +1468,7 @@ export default function InstallationProjectsDashboardPage() {
               </div>
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Média diária" value={productivity.averageDaily} subtitle="Produção média por dia" icon={<RiseOutlined />} colors={{ bg: 'linear-gradient(180deg, #eefbf3 0%, #ffffff 100%)', border: '#c7f9d4', iconBg: 'linear-gradient(135deg, #059669 0%, #34d399 100%)', iconColor: '#fff' }} />
+              <KpiCard title="Média diária" value={productivity.averageDaily} subtitle="Produção média por dia" icon={<RiseOutlined />} colors={{ bg: 'linear-gradient(180deg, #eefbf3 0%, #ffffff 100%)', border: '#bbf7d0', iconBg: 'linear-gradient(135deg, #059669 0%, #34d399 100%)', iconColor: '#fff' }} />
             </Col>
             <Col xs={24} sm={12} xl={6}>
               <KpiCard title="Taxa de sucesso" value={successSummary.successRate} suffix="%" subtitle="Baseada em projetos no prazo" icon={<CheckCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)', border: '#dbeafe', iconBg: 'linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)', iconColor: '#fff' }} />
@@ -983,7 +1502,7 @@ export default function InstallationProjectsDashboardPage() {
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div style={{ borderRadius: 20, background: '#ffffff', border: '1px solid #dcfce7', padding: 18 }}>
                         <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>Taxa de sucesso</div>
-                        <div style={{ fontSize: 34, fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>{successSummary.successRate}%</div>
+                        <div style={{ fontSize: 34, fontWeight: 900, color: '#16a34a', lineHeight: 1 }}>{successSummary.successRate}%</div>
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>Baseado em total de projetos x atrasados</div>
                         <Progress percent={Math.min(Number(successSummary.successRate || 0), 100)} strokeColor="#16a34a" showInfo={false} style={{ marginTop: 12 }} />
                       </div>
@@ -1029,11 +1548,11 @@ export default function InstallationProjectsDashboardPage() {
                         ]}
                       >
                         <List.Item.Meta
-                          title={<div style={{ fontWeight: 600 }}>{item.title}</div>}
+                          title={<div style={{ fontWeight: 700 }}>{item.title}</div>}
                           description={<div style={{ fontSize: 12, color: '#64748b' }}>{item.clientName || '-'} • {item.supervisorName || 'Sem supervisor'}</div>}
                         />
                         <div style={{ textAlign: 'right', minWidth: 140 }}>
-                          <div style={{ fontWeight: 700 }}>{item.pending} carros</div>
+                          <div style={{ fontWeight: 800 }}>{item.pending} carros</div>
                           <div style={{ fontSize: 12, color: '#64748b' }}>{item.endPlannedAt ? dayjs(item.endPlannedAt).format('DD/MM/YYYY') : '-'}</div>
                         </div>
                       </List.Item>
@@ -1052,13 +1571,13 @@ export default function InstallationProjectsDashboardPage() {
 
           <Row gutter={[16, 16]}>
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<FundOutlined />, 'Visão por cliente', 'Total, concluídos, planejado, realizado e pendente')}>
+              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<FundOutlined />, 'Visão por cliente', 'Total de projetos, base, concluídos, realizado e pendente')}>
                 <Table rowKey="clientId" dataSource={byClient} columns={clientColumns} pagination={{ pageSize: 6 }} scroll={{ x: 1000 }} />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por coordenador', 'Performance e atrasos')} styles={{ body: { padding: 18 } }}>
+              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por coordenador', 'Performance, base e atrasos')} styles={{ body: { padding: 18 } }}>
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
                   <Col xs={24} xl={12}><PieAndDetailsCard title="Projetos por coordenador" subtitle="Gráfico à esquerda e detalhamento à direita" data={coordinatorProjectsDonut} centerValue={coordinatorProjectsDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Projetos" /></Col>
                   <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por coordenador" subtitle="Gráfico à esquerda e detalhamento à direita" data={coordinatorDoneDonut} centerValue={coordinatorDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
@@ -1068,7 +1587,7 @@ export default function InstallationProjectsDashboardPage() {
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por supervisor', 'Execução, pendências e atrasos')} styles={{ body: { padding: 18 } }}>
+              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por supervisor', 'Execução, base, pendências e atrasos')} styles={{ body: { padding: 18 } }}>
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
                   <Col xs={24} xl={12}><PieAndDetailsCard title="Projetos por supervisor" subtitle="Gráfico à esquerda e detalhamento à direita" data={supervisorProjectsDonut} centerValue={supervisorProjectsDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Projetos" /></Col>
                   <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por supervisor" subtitle="Gráfico à esquerda e detalhamento à direita" data={supervisorDoneDonut} centerValue={supervisorDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
@@ -1078,15 +1597,15 @@ export default function InstallationProjectsDashboardPage() {
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<EnvironmentOutlined />, 'Visão por região', 'Distribuição geográfica e atrasos')}>
+              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<EnvironmentOutlined />, 'Visão por região', 'Distribuição geográfica, base e atrasos')}>
                 <Table rowKey={(r) => `${r.region}_${r.uf}_${r.city}`} dataSource={byRegion} columns={regionColumns} pagination={{ pageSize: 6 }} scroll={{ x: 900 }} />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<ToolOutlined />, 'Visão por produto', 'Volume por equipamento')} styles={{ body: { padding: 18 } }}>
+              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<ToolOutlined />, 'Visão por produto', 'Volume por equipamento com base e realizado')} styles={{ body: { padding: 18 } }}>
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Planejado por produto" subtitle="Gráfico à esquerda e detalhamento à direita" data={productPlannedDonut} centerValue={productPlannedDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Planejado" /></Col>
+                  <Col xs={24} xl={12}><PieAndDetailsCard title="Base por produto" subtitle="Gráfico à esquerda e detalhamento à direita" data={productPlannedDonut} centerValue={productPlannedDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Base" /></Col>
                   <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por produto" subtitle="Gráfico à esquerda e detalhamento à direita" data={productDoneDonut} centerValue={productDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
                 </Row>
                 <Table rowKey={(r) => `${r.code || r.product}`} dataSource={byProduct} columns={productColumns} pagination={{ pageSize: 6 }} scroll={{ x: 900 }} />
@@ -1119,7 +1638,7 @@ export default function InstallationProjectsDashboardPage() {
                 <div style={{ width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: 700 }}>{item.title}</div>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{item.clientName || '-'} • {item.supervisorName || 'Sem supervisor'}</div>
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Fim previsto: {item.endPlannedAt ? dayjs(item.endPlannedAt).format('DD/MM/YYYY') : '-'}</div>
                     </div>
@@ -1127,7 +1646,7 @@ export default function InstallationProjectsDashboardPage() {
                       <span style={{ padding: '4px 10px', borderRadius: 999, background: item.daysLeft <= 2 ? '#fff1f0' : '#e6f4ff', border: `1px solid ${item.daysLeft <= 2 ? '#ffa39e' : '#91caff'}`, color: item.daysLeft <= 2 ? '#cf1322' : '#0958d9', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {item.daysLeft} dia(s)
                       </span>
-                      <span style={{ fontWeight: 700 }}>{item.pending} carro(s) restante(s)</span>
+                      <span style={{ fontWeight: 800 }}>{item.pending} carro(s) restante(s)</span>
                     </Space>
                   </div>
                 </div>
