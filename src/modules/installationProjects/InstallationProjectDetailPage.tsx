@@ -36,6 +36,8 @@ import {
   UploadOutlined,
   ExclamationCircleOutlined,
   DeleteOutlined,
+  SearchOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -112,6 +114,19 @@ type ClientFull = {
   telefone2: string;
 };
 
+type GeoResult = {
+  display_name?: string;
+  lat?: string | number;
+  lon?: string | number;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    state?: string;
+    postcode?: string;
+  };
+};
+
 type InstallationProject = {
   id: number;
   title: string;
@@ -129,6 +144,13 @@ type InstallationProject = {
   technician?: UserLite | null;
   techniciansList?: UserOption[];
   technicianNames?: string[];
+
+  requestedLocationText?: string | null;
+  requestedCity?: string | null;
+  requestedState?: string | null;
+  requestedCep?: string | null;
+  requestedLat?: number | null;
+  requestedLng?: number | null;
 
   contactName?: string | null;
   contactEmail?: string | null;
@@ -165,7 +187,79 @@ type ImportSummary = {
 function unwrap<T>(resData: any): T {
   return resData && typeof resData === 'object' && 'data' in resData ? (resData.data as T) : (resData as T);
 }
+function normalizeZip(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
 
+function getGeoCity(it: any) {
+  return (
+    it?.requestedCity ||
+    it?.city ||
+    it?.town ||
+    it?.village ||
+    it?.municipality ||
+    it?.address?.city ||
+    it?.address?.town ||
+    it?.address?.village ||
+    it?.address?.municipality ||
+    null
+  );
+}
+
+function getGeoUf(it: any) {
+  const uf =
+    it?.requestedState ||
+    it?.uf ||
+    it?.state ||
+    it?.addressState ||
+    it?.address?.state_code ||
+    it?.address?.state ||
+    null;
+
+  return uf ? String(uf).toUpperCase() : null;
+}
+
+function getGeoCep(it: any) {
+  return (
+    normalizeZip(
+      it?.requestedCep ||
+        it?.cep ||
+        it?.postcode ||
+        it?.zip ||
+        it?.addressZip ||
+        it?.address?.postcode
+    ) || null
+  );
+}
+
+function getGeoLat(it: any) {
+  const value = it?.lat ?? it?.latitude;
+  return value != null && value !== '' ? Number(value) : null;
+}
+
+function getGeoLng(it: any) {
+  const value = it?.lng ?? it?.lon ?? it?.longitude;
+  return value != null && value !== '' ? Number(value) : null;
+}
+
+function getGeoLabel(it: any) {
+  return (
+    it?.label ||
+    it?.displayName ||
+    it?.display_name ||
+    it?.requestedLocationText ||
+    [
+      it?.address?.road || it?.road || it?.street,
+      getGeoCity(it),
+      getGeoUf(it),
+    ]
+      .filter(Boolean)
+      .join(', ') ||
+    'Localização'
+  );
+}
 function statusTag(s: Status) {
   if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
   if (s === 'INICIADO') return <Tag color="blue">Iniciado</Tag>;
@@ -279,6 +373,17 @@ function isValidPlate(value?: string) {
   return /^[A-Z]{3}[0-9]{4}$/.test(v) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(v);
 }
 
+function normalizeUF(value?: string | null) {
+  return String(value || '').trim().toUpperCase().slice(0, 2);
+}
+
+function normalizeCep(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  if (!digits) return '';
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
 export default function InstallationProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
@@ -299,6 +404,10 @@ export default function InstallationProjectDetailPage() {
 
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [geoOpen, setGeoOpen] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const [geoQuery, setGeoQuery] = useState('');
 
   const [editForm] = Form.useForm();
   const [waForm] = Form.useForm();
@@ -326,6 +435,15 @@ export default function InstallationProjectDetailPage() {
     const dateLabel = dayjs(progress.date).format('DD-MM-YYYY');
     XLSX.writeFile(workbook, `placas-series-${dateLabel}.xlsx`);
   };
+
+  const PRODUTOS_FIXOS = [
+    { label: 'OMNISAFE', value: 'OMNISAFE' },
+    { label: 'OMNIDUAL', value: 'OMNIDUAL' },
+    { label: 'OMNIFROTA', value: 'OMNIFROTA' },
+    { label: 'OMNILORA', value: 'OMNILORA' },
+    { label: 'OMNICARRETA', value: 'OMNICARRETA' },
+    { label: 'E.LOCK', value: 'E.LOCK' },
+  ];
 
   const [importSummary, setImportSummary] = useState<ImportSummary>({
     loading: false,
@@ -466,6 +584,7 @@ export default function InstallationProjectDetailPage() {
     onSuccess: async () => {
       message.success('Projeto atualizado!');
       setEditOpen(false);
+      setGeoOpen(false);
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
       await qc.invalidateQueries({ queryKey: ['installation-projects'] });
     },
@@ -517,13 +636,15 @@ export default function InstallationProjectDetailPage() {
       return unwrap<ProjectItem>(res.data);
     },
     onSuccess: async () => {
-      message.success('Item adicionado!');
+      message.success(editingItem ? 'Item atualizado!' : 'Item adicionado!');
       setItemOpen(false);
+      setEditingItem(null);
       itemForm.resetFields();
       await qc.invalidateQueries({ queryKey: ['installation-project', projectId] });
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao adicionar item'),
   });
+
   const deleteItem = useMutation({
     mutationFn: async (itemId: number) => {
       const res = await api.delete(`/installation-projects/${projectId}/items/${itemId}`);
@@ -535,6 +656,7 @@ export default function InstallationProjectDetailPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao excluir item'),
   });
+
   const updateItem = useMutation({
     mutationFn: async ({
       itemId,
@@ -555,6 +677,7 @@ export default function InstallationProjectDetailPage() {
     },
     onError: (e: any) => message.error(e?.response?.data?.error || 'Falha ao atualizar item'),
   });
+
   async function extractVehiclesFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
       return {
@@ -596,7 +719,10 @@ export default function InstallationProjectDetailPage() {
       } else {
         const key = `${plate}__${serial}`;
 
-        if (existingPublishedPlates.has(plate) && (!editingProgress || !(editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === plate))) {
+        if (
+          existingPublishedPlates.has(plate) &&
+          (!editingProgress || !(editingProgress.vehicles || []).some((v) => normalizePlate(v.plate) === plate))
+        ) {
           alreadyPublishedSet.add(plate);
         }
 
@@ -662,8 +788,7 @@ export default function InstallationProjectDetailPage() {
         totalRows: Array.isArray(rows) ? rows.length : 0,
       }));
 
-      const { vehicles, duplicatesInFile, alreadyPublished, invalidRows } =
-        await extractVehiclesFromExcelRows(rows);
+      const { vehicles, duplicatesInFile, alreadyPublished, invalidRows } = await extractVehiclesFromExcelRows(rows);
 
       if (!vehicles.length) {
         setImportSummary({
@@ -806,6 +931,13 @@ export default function InstallationProjectDetailPage() {
   const coordinatorLabel = p?.coordinator?.name || coordinatorNameById(p?.coordinatorId) || '-';
   const technicianLabel = technicianNames.length ? technicianNames.join(', ') : '-';
   const contactEmailsLabel = projectEmails.length ? projectEmails.join(', ') : '-';
+  const locationLabel = [
+    p?.requestedLocationText,
+    [p?.requestedCity, p?.requestedState].filter(Boolean).join(' / '),
+    p?.requestedCep ? `CEP ${p.requestedCep}` : '',
+  ]
+    .filter(Boolean)
+    .join(' • ');
 
   const wrapAny = { overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const };
 
@@ -835,6 +967,71 @@ export default function InstallationProjectDetailPage() {
     gap: isMobile ? 12 : 16,
     alignItems: 'start',
     maxWidth: '100%',
+  };
+
+  const searchGeo = async () => {
+    const q = geoQuery.trim();
+    if (!q) {
+      message.warning('Digite um endereço, cidade ou CEP para buscar.');
+      return;
+    }
+
+    setGeoLoading(true);
+    try {
+      const res = await api.get('/geocode', { params: { q } });
+      const data = Array.isArray(res.data) ? res.data : unwrap<any[]>(res.data) || [];
+      setGeoResults(data);
+      if (!data.length) {
+        message.warning('Nenhum resultado encontrado.');
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || 'Falha ao buscar endereço');
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const handleSearchCep = async () => {
+    const cep = normalizeCep(editForm.getFieldValue('requestedCep'));
+    if (!cep || cep.length < 8) {
+      message.warning('Informe um CEP válido.');
+      return;
+    }
+
+    setGeoLoading(true);
+    try {
+      const res = await api.get('/users/cep', { params: { cep } });
+      const data = unwrap<any>(res.data);
+
+      editForm.setFieldsValue({
+        requestedLocationText:
+          data?.logradouro ||
+          editForm.getFieldValue('requestedLocationText') ||
+          '',
+        requestedCity: data?.cidade || data?.localidade || editForm.getFieldValue('requestedCity') || '',
+        requestedState: normalizeUF(data?.estado || data?.uf || editForm.getFieldValue('requestedState')),
+        requestedCep: normalizeCep(cep),
+      });
+
+      message.success('Endereço preenchido pelo CEP.');
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || 'Falha ao buscar CEP');
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const applyGeo = (it: any) => {
+    editForm.setFieldsValue({
+      requestedLocationText: getGeoLabel(it),
+      requestedCity: getGeoCity(it),
+      requestedState: getGeoUf(it),
+      requestedCep: getGeoCep(it),
+      requestedLat: getGeoLat(it),
+      requestedLng: getGeoLng(it),
+    });
+
+    setGeoOpen(false);
   };
 
   const handleConfirmStart = () => {
@@ -1108,6 +1305,17 @@ export default function InstallationProjectDetailPage() {
             <InfoRow label="E-mails" value={contactEmailsLabel} />
             <InfoRow label="Telefone" value={p?.contactPhone || '-'} />
           </Card>
+
+          <Card
+            size="small"
+            title="Localização"
+            styles={{ body: { padding: 14 } }}
+            style={{ borderRadius: 14, gridColumn: isMobile ? 'auto' : '1 / -1' }}
+          >
+            <InfoRow label="Endereço" value={locationLabel || '-'} />
+            <InfoRow label="Latitude" value={p?.requestedLat ?? '-'} />
+            <InfoRow label="Longitude" value={p?.requestedLng ?? '-'} />
+          </Card>
         </div>
 
         <Card
@@ -1200,7 +1408,16 @@ export default function InstallationProjectDetailPage() {
           <Card
             title="Itens / Equipamentos"
             extra={
-              <Button icon={<PlusOutlined />} type="primary" onClick={() => setItemOpen(true)}>
+              <Button
+                icon={<PlusOutlined />}
+                type="primary"
+                onClick={() => {
+                  setEditingItem(null);
+                  itemForm.resetFields();
+                  itemForm.setFieldsValue({ qty: 1 });
+                  setItemOpen(true);
+                }}
+              >
                 Adicionar item
               </Button>
             }
@@ -1425,11 +1642,7 @@ export default function InstallationProjectDetailPage() {
           renderItem={(pr) => (
             <List.Item>
               <div style={{ width: '100%', display: 'grid', gap: 6, maxWidth: '100%' }}>
-                <Space
-                  style={{ width: '100%', justifyContent: 'space-between' }}
-                  align="start"
-                  wrap
-                >
+                <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start" wrap>
                   <Space wrap>
                     <Tag>{dayjs(pr.date).format('DD/MM/YYYY')}</Tag>
                     <Typography.Text strong>{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
@@ -1486,7 +1699,10 @@ export default function InstallationProjectDetailPage() {
         title="Editar Projeto"
         okText="Salvar"
         confirmLoading={updateProject.isPending}
-        onCancel={() => setEditOpen(false)}
+        onCancel={() => {
+          setEditOpen(false);
+          setGeoOpen(false);
+        }}
         onOk={async () => {
           try {
             const v = await editForm.validateFields();
@@ -1512,6 +1728,12 @@ export default function InstallationProjectDetailPage() {
               contactEmail: contactEmails[0] ?? null,
               contactPhone: v.contactPhone ?? null,
               notes: v.notes ?? null,
+              requestedLocationText: v.requestedLocationText ?? null,
+              requestedCity: v.requestedCity ?? null,
+              requestedState: normalizeUF(v.requestedState),
+              requestedCep: normalizeCep(v.requestedCep),
+              requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
+              requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
             });
           } catch {}
         }}
@@ -1519,13 +1741,12 @@ export default function InstallationProjectDetailPage() {
           if (o) {
             setTechSearch('');
             setSupervisorSearch('');
+            setGeoQuery('');
+            setGeoResults([]);
 
-            const initialEmails = normalizeEmailList(
-              p.contactEmails?.length ? p.contactEmails : p.contactEmail,
-            );
+            const initialEmails = normalizeEmailList(p.contactEmails?.length ? p.contactEmails : p.contactEmail);
 
-            const initialTechnicianIds =
-              p.technicianIds?.length ? p.technicianIds : p.technicianId ? [p.technicianId] : [];
+            const initialTechnicianIds = p.technicianIds?.length ? p.technicianIds : p.technicianId ? [p.technicianId] : [];
 
             editForm.setFieldsValue({
               title: p.title,
@@ -1542,12 +1763,29 @@ export default function InstallationProjectDetailPage() {
               contactEmails: initialEmails,
               contactPhone: p.contactPhone ?? null,
               notes: p.notes ?? null,
+              requestedLocationText: p.requestedLocationText ?? null,
+              requestedCity: p.requestedCity ?? null,
+              requestedState: p.requestedState ?? null,
+              requestedCep: p.requestedCep ?? null,
+              requestedLat: p.requestedLat ?? null,
+              requestedLng: p.requestedLng ?? null,
             });
+          } else {
+            setGeoOpen(false);
+            setGeoQuery('');
+            setGeoResults([]);
           }
         }}
-        width={isMobile ? '96vw' : 820}
+        width={isMobile ? '96vw' : 1120}
         style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
+        styles={{
+          body: {
+            padding: isMobile ? 12 : 20,
+            maxHeight: '80vh',
+            overflowY: 'auto',
+          },
+        }}
       >
         <Form
           form={editForm}
@@ -1567,146 +1805,283 @@ export default function InstallationProjectDetailPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-              gap: 12,
+              gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.8fr',
+              gap: 16,
+              width: '100%',
             }}
           >
-            <Form.Item
-              name="technicianIds"
-              label="Técnico / Prestador"
-            >
-              <Select
-                mode="multiple"
-                showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
-                loading={usersQuery.isLoading}
-                filterOption={false}
-                onSearch={(v) => setTechSearch(v)}
-                onDropdownVisibleChange={(isOpen) => {
-                  if (isOpen) setTechSearch('');
-                }}
-                options={technicianOptions.map((t) => ({ label: t.name, value: t.id }))}
-                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'}
-              />
-            </Form.Item>
+            <div style={{ minWidth: 0, display: 'grid', gap: 12 }}>
+              <Card title="Dados do projeto" size="small" style={{ borderRadius: 14, width: '100%' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                  <Form.Item name="technicianIds" label="Técnico / Prestador">
+                    <Select
+                      mode="multiple"
+                      showSearch
+                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
+                      loading={usersQuery.isLoading}
+                      filterOption={false}
+                      onSearch={(v) => setTechSearch(v)}
+                      onDropdownVisibleChange={(isOpen) => {
+                        if (isOpen) setTechSearch('');
+                      }}
+                      options={technicianOptions.map((t) => ({ label: t.name, value: t.id }))}
+                      notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'}
+                    />
+                  </Form.Item>
 
-            <Form.Item
-              name="supervisorId"
-              label="Supervisor (obrigatório)"
-              rules={[{ required: true, message: 'Selecione o supervisor' }]}
-            >
-              <Select
-                showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
-                loading={usersQuery.isLoading}
-                filterOption={false}
-                onSearch={(v) => setSupervisorSearch(v)}
-                onDropdownVisibleChange={(isOpen) => {
-                  if (isOpen) setSupervisorSearch('');
-                }}
-                options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
-                notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'}
-              />
-            </Form.Item>
+                  <Form.Item
+                    name="supervisorId"
+                    label="Supervisor (obrigatório)"
+                    rules={[{ required: true, message: 'Selecione o supervisor' }]}
+                  >
+                    <Select
+                      showSearch
+                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                      loading={usersQuery.isLoading}
+                      filterOption={false}
+                      onSearch={(v) => setSupervisorSearch(v)}
+                      onDropdownVisibleChange={(isOpen) => {
+                        if (isOpen) setSupervisorSearch('');
+                      }}
+                      options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
+                      notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'}
+                    />
+                  </Form.Item>
 
-            <Form.Item
-              name="coordinatorId"
-              label="Coordenador (auto)"
-              tooltip="Preenchido automaticamente pelo supervisor"
-              style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
-            >
-              <Select
-                disabled
-                loading={coordinatorsQuery.isLoading || coordinatorFromSupervisor.isPending}
-                placeholder={coordinatorFromSupervisor.isPending ? 'Buscando...' : 'Automático'}
-                options={(coordinatorsQuery.data || []).map((u) => ({ value: u.id, label: u.name }))}
-              />
-            </Form.Item>
+                  <Form.Item
+                    name="coordinatorId"
+                    label="Coordenador (auto)"
+                    tooltip="Preenchido automaticamente pelo supervisor"
+                    style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
+                  >
+                    <Select
+                      disabled
+                      loading={coordinatorsQuery.isLoading || coordinatorFromSupervisor.isPending}
+                      placeholder={coordinatorFromSupervisor.isPending ? 'Buscando...' : 'Automático'}
+                      options={(coordinatorsQuery.data || []).map((u) => ({ value: u.id, label: u.name }))}
+                    />
+                  </Form.Item>
+                </div>
+
+                <Form.Item name="title" label="Nome do Projeto" rules={[{ required: true, message: 'Informe o nome' }]}>
+                  <Input />
+                </Form.Item>
+
+                <Form.Item name="af" label="AF" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
+                  <Input placeholder="Ex: AF-2026-000123" />
+                </Form.Item>
+
+                <Form.Item name="clientId" label="Cliente">
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder="Selecione um cliente"
+                    loading={clientsQuery.isLoading}
+                    optionFilterProp="label"
+                    filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
+                    options={(clientsQuery.data || []).map((c) => {
+                      const loc = [c.cidade, c.estado].filter(Boolean).join(' / ');
+                      const doc = c.documento ? ` • ${c.documento}` : '';
+                      const tel = c.telefone1 ? ` • ${c.telefone1}` : '';
+                      return {
+                        value: c.id,
+                        label: `${c.name}${loc ? ` — ${loc}` : ''}${doc}${tel}`,
+                      };
+                    })}
+                  />
+                </Form.Item>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                  <Form.Item name="trucksTotal" label="Qtd. veículos (total)" rules={[{ required: true, message: 'Informe' }]}>
+                    <InputNumber min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name="equipmentsPerDay" label="Previsão de instalação por dia">
+                    <InputNumber min={1} style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                  <Form.Item name="startPlannedAt" label="Data prevista de início">
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                  </Form.Item>
+
+                  <Form.Item name="endPlannedAt" label="Data prevista de término">
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                  </Form.Item>
+                </div>
+
+                <Form.Item name="notes" label="Observações (opcional)">
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+              </Card>
+            </div>
+
+            <div style={{ minWidth: 0, display: 'grid', gap: 12 }}>
+              <Card
+                title={
+                  <Space>
+                    <EnvironmentOutlined />
+                    Localização
+                  </Space>
+                }
+                size="small"
+                style={{ borderRadius: 14, width: '100%' }}
+                extra={
+                  <Button
+                    size="small"
+                    icon={<SearchOutlined />}
+                    onClick={() => {
+                      setGeoOpen(true);
+                      const current =
+                        editForm.getFieldValue('requestedLocationText') ||
+                        [editForm.getFieldValue('requestedCity'), editForm.getFieldValue('requestedState')].filter(Boolean).join(', ');
+                      setGeoQuery(current || '');
+                      setGeoResults([]);
+                    }}
+                  >
+                    Buscar endereço
+                  </Button>
+                }
+              >
+                <Form.Item name="requestedLocationText" label="Endereço / localização">
+                  <Input placeholder="Ex: Rua X, Centro, Campinas - SP" />
+                </Form.Item>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.7fr', gap: 12 }}>
+                  <Form.Item name="requestedCity" label="Cidade">
+                    <Input placeholder="Cidade da instalação" />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="requestedState"
+                    label="UF"
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          if (!value) return;
+                          if (normalizeUF(value).length !== 2) throw new Error('Informe a UF com 2 letras');
+                        },
+                      },
+                    ]}
+                  >
+                    <Input
+                      maxLength={2}
+                      placeholder="SP"
+                      onChange={(e) => editForm.setFieldValue('requestedState', normalizeUF(e.target.value))}
+                    />
+                  </Form.Item>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr auto', gap: 12, alignItems: 'end' }}>
+                  <Form.Item name="requestedCep" label="CEP" style={{ marginBottom: 0 }}>
+                    <Input
+                      placeholder="00000-000"
+                      onChange={(e) => editForm.setFieldValue('requestedCep', normalizeCep(e.target.value))}
+                    />
+                  </Form.Item>
+
+                  <Button onClick={handleSearchCep} loading={geoLoading}>
+                    Buscar CEP
+                  </Button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <Form.Item name="requestedLat" label="Latitude">
+                    <InputNumber style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name="requestedLng" label="Longitude">
+                    <InputNumber style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+              </Card>
+
+              <Card title="Dados de contato" size="small" style={{ borderRadius: 14, width: '100%' }}>
+                <Form.Item name="contactName" label="Contato">
+                  <Input />
+                </Form.Item>
+
+                <Form.Item
+                  name="contactEmails"
+                  label="E-mails"
+                  rules={[
+                    { required: true, message: 'Informe pelo menos um e-mail' },
+                    {
+                      validator: async (_, value) => {
+                        const emails = normalizeEmailList(value);
+                        if (!emails.length) {
+                          throw new Error('Informe pelo menos um e-mail');
+                        }
+                        const invalid = emails.find((email) => !isValidEmail(email));
+                        if (invalid) {
+                          throw new Error(`E-mail inválido: ${invalid}`);
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  <Select mode="tags" tokenSeparators={[',', ';', ' ']} placeholder="Digite um ou mais e-mails" />
+                </Form.Item>
+
+                <Form.Item name="contactPhone" label="Telefone (opcional)">
+                  <Input />
+                </Form.Item>
+              </Card>
+            </div>
           </div>
-
-          <Form.Item name="title" label="Nome do Projeto" rules={[{ required: true, message: 'Informe o nome' }]}>
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="af" label="AF" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
-            <Input placeholder="Ex: AF-2026-000123" />
-          </Form.Item>
-
-          <Form.Item name="clientId" label="Cliente">
-            <Select
-              showSearch
-              allowClear
-              placeholder="Selecione um cliente"
-              loading={clientsQuery.isLoading}
-              optionFilterProp="label"
-              filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
-              options={(clientsQuery.data || []).map((c) => {
-                const loc = [c.cidade, c.estado].filter(Boolean).join(' / ');
-                const doc = c.documento ? ` • ${c.documento}` : '';
-                const tel = c.telefone1 ? ` • ${c.telefone1}` : '';
-                return {
-                  value: c.id,
-                  label: `${c.name}${loc ? ` — ${loc}` : ''}${doc}${tel}`,
-                };
-              })}
-            />
-          </Form.Item>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item name="trucksTotal" label="Qtd. veículos (total)" rules={[{ required: true, message: 'Informe' }]}>
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="equipmentsPerDay" label="Previsão de instalação por dia">
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item name="startPlannedAt" label="Data prevista de início">
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
-            </Form.Item>
-
-            <Form.Item name="endPlannedAt" label="Data prevista de término">
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
-            </Form.Item>
-          </div>
-
-          <Form.Item name="contactName" label="Contato">
-            <Input />
-          </Form.Item>
-
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <Form.Item
-              name="contactEmails"
-              label="E-mails"
-              rules={[
-                { required: true, message: 'Informe pelo menos um e-mail' },
-                {
-                  validator: async (_, value) => {
-                    const emails = normalizeEmailList(value);
-                    if (!emails.length) {
-                      throw new Error('Informe pelo menos um e-mail');
-                    }
-                    const invalid = emails.find((email) => !isValidEmail(email));
-                    if (invalid) {
-                      throw new Error(`E-mail inválido: ${invalid}`);
-                    }
-                  },
-                },
-              ]}
-            >
-              <Select mode="tags" tokenSeparators={[',', ';', ' ']} placeholder="Digite um ou mais e-mails" />
-            </Form.Item>
-
-            <Form.Item name="contactPhone" label="Telefone (opcional)">
-              <Input />
-            </Form.Item>
-          </div>
-
-          <Form.Item name="notes" label="Observações (opcional)">
-            <Input.TextArea rows={3} />
-          </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={geoOpen}
+        title="Buscar coordenadas"
+        onCancel={() => setGeoOpen(false)}
+        footer={null}
+        width={isMobile ? '96vw' : 840}
+        centered
+      >
+        <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
+          <Input
+            value={geoQuery}
+            placeholder="Digite endereço, cidade, bairro ou CEP"
+            onChange={(e) => setGeoQuery(e.target.value)}
+            onPressEnter={searchGeo}
+          />
+          <Button type="primary" icon={<SearchOutlined />} loading={geoLoading} onClick={searchGeo}>
+            Buscar
+          </Button>
+        </Space.Compact>
+
+      <List
+        bordered
+        locale={{ emptyText: 'Nenhum resultado' }}
+        dataSource={geoResults}
+        renderItem={(item: any) => {
+          const city = getGeoCity(item);
+          const uf = getGeoUf(item);
+          const cep = getGeoCep(item);
+          const lat = getGeoLat(item);
+          const lng = getGeoLng(item);
+          const label = getGeoLabel(item);
+
+          return (
+            <List.Item actions={[<Button type="primary" onClick={() => applyGeo(item)}>Usar</Button>]}>
+              <List.Item.Meta
+                title={label}
+                description={
+                  <>
+                    <div>
+                      <b>Cidade:</b> {city || '-'} {uf ? `- ${uf}` : ''}
+                    </div>
+                    <div>
+                      <b>CEP:</b> {cep || '-'} • <b>Lat:</b> {lat ?? '-'} • <b>Lng:</b> {lng ?? '-'}
+                    </div>
+                  </>
+                }
+              />
+            </List.Item>
+          );
+        }}
+      />
       </Modal>
 
       <Modal
@@ -1776,32 +2151,50 @@ export default function InstallationProjectDetailPage() {
 
       <Modal
         open={itemOpen}
-        title="Adicionar item"
-        okText="Adicionar"
-        confirmLoading={addItem.isPending}
-        onCancel={() => setItemOpen(false)}
+        title={editingItem ? 'Editar item' : 'Adicionar item'}
+        okText={editingItem ? 'Salvar' : 'Adicionar'}
+        confirmLoading={addItem.isPending || updateItem.isPending}
+        onCancel={() => {
+          setItemOpen(false);
+          setEditingItem(null);
+        }}
         onOk={async () => {
           try {
             const v = await itemForm.validateFields();
-            addItem.mutate({
-              equipmentName: v.equipmentName,
-              equipmentCode: v.equipmentCode ?? null,
-              qty: v.qty ?? 1,
-            });
+
+            if (editingItem?.id) {
+              updateItem.mutate({
+                itemId: editingItem.id,
+                payload: {
+                  equipmentName: v.equipmentName,
+                  qty: v.qty ?? 1,
+                },
+              });
+            } else {
+              addItem.mutate({
+                equipmentName: v.equipmentName,
+                qty: v.qty ?? 1,
+              });
+            }
           } catch {}
         }}
         width={isMobile ? '96vw' : 520}
-        style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
       >
         <Form form={itemForm} layout="vertical" initialValues={{ qty: 1 }}>
-          <Form.Item name="equipmentName" label="Nome do equipamento" rules={[{ required: true, message: 'Informe' }]}>
-            <Input />
+          <Form.Item
+            name="equipmentName"
+            label="Produto"
+            rules={[{ required: true, message: 'Selecione o produto' }]}
+          >
+            <Select options={PRODUTOS_FIXOS} placeholder="Selecione o produto" />
           </Form.Item>
-          <Form.Item name="equipmentCode" label="Código (opcional)">
-            <Input />
-          </Form.Item>
-          <Form.Item name="qty" label="Quantidade" rules={[{ required: true, message: 'Informe' }]}>
+
+          <Form.Item
+            name="qty"
+            label="Quantidade"
+            rules={[{ required: true, message: 'Informe a quantidade' }]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

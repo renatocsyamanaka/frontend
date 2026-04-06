@@ -19,6 +19,7 @@ import {
   Spin,
   Grid,
   Pagination,
+  List,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -26,6 +27,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
   BarChartOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
@@ -55,6 +57,12 @@ type InstallationProject = {
 
   clientId: number | null;
   client?: { id: number; name: string } | null;
+  requestedLocationText?: string | null;
+  requestedCity?: string | null;
+  requestedState?: string | null;
+  requestedCep?: string | null;
+  requestedLat?: number | null;
+  requestedLng?: number | null;
 
   technicianId?: number | null;
   technicianIds?: number[];
@@ -82,6 +90,13 @@ type InstallationProject = {
   contactEmails?: string[];
   contactPhone?: string | null;
   notes?: string | null;
+
+  requestedLocationText?: string | null;
+  requestedCity?: string | null;
+  requestedState?: string | null;
+  requestedCep?: string | null;
+  requestedLat?: number | null;
+  requestedLng?: number | null;
 };
 
 type CreateDTO = {
@@ -104,6 +119,13 @@ type CreateDTO = {
   contactPhone?: string | null;
 
   notes?: string | null;
+
+  requestedLocationText?: string | null;
+  requestedCity?: string | null;
+  requestedState?: string | null;
+  requestedCep?: string | null;
+  requestedLat?: number | null;
+  requestedLng?: number | null;
 };
 
 type ResizableTitleProps = React.HTMLAttributes<HTMLTableCellElement> & {
@@ -117,6 +139,26 @@ type ResizableTitleProps = React.HTMLAttributes<HTMLTableCellElement> & {
 type ColumnResizeItem = {
   key: string;
   widthPct: number;
+};
+
+type GeocodeResult = {
+  label?: string | null;
+  displayName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  uf?: string | null;
+  cep?: string | null;
+  postcode?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  addressStreet?: string | null;
+  street?: string | null;
+  road?: string | null;
+  district?: string | null;
+  suburb?: string | null;
+  neighbourhood?: string | null;
+  neighborhood?: string | null;
+  address?: any;
 };
 
 function unwrap<T>(resData: any): T {
@@ -183,10 +225,28 @@ function isValidEmail(email?: string | null) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
+function isValidLatLng(lat?: unknown, lng?: unknown) {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
+  return latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180;
+}
+
+
 function statusTag(s: Status) {
   if (s === 'A_INICIAR') return <Tag>À iniciar</Tag>;
   if (s === 'INICIADO') return <Tag color="blue">Iniciado</Tag>;
   return <Tag color="green">Finalizado</Tag>;
+}
+
+function normalizeUF(value?: string | null) {
+  return String(value || '').trim().toUpperCase().slice(0, 2);
+}
+
+function normalizeCep(value?: string | null) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 const ResizableTitle = (props: ResizableTitleProps) => {
@@ -228,6 +288,10 @@ export default function InstallationProjectsPage() {
 
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [geoOpen, setGeoOpen] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoResults, setGeoResults] = useState<GeocodeResult[]>([]);
+  const [geoQuery, setGeoQuery] = useState('');
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -536,6 +600,112 @@ export default function InstallationProjectsPage() {
     }),
   }));
 
+  const searchGeo = async () => {
+    if (!geoQuery.trim()) {
+      message.warning('Digite uma cidade, CEP ou endereço para buscar.');
+      return;
+    }
+
+    setGeoLoading(true);
+    try {
+      const items = (await api.get('/geocode', { params: { q: geoQuery } })).data as GeocodeResult[];
+      setGeoResults(Array.isArray(items) ? items : []);
+      if (!items || !items.length) {
+        message.warning('Nenhum resultado encontrado para essa busca.');
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || 'Falha na busca geográfica');
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const applyGeo = (it: GeocodeResult) => {
+    const street =
+      it.addressStreet ||
+      it.street ||
+      it.road ||
+      it.address?.road ||
+      it.address?.pedestrian ||
+      it.address?.residential ||
+      undefined;
+
+    const district =
+      it.district ||
+      it.suburb ||
+      it.neighbourhood ||
+      it.neighborhood ||
+      it.address?.suburb ||
+      it.address?.neighbourhood ||
+      it.address?.neighborhood ||
+      undefined;
+
+    const city =
+      it.city ||
+      it.address?.city ||
+      it.address?.town ||
+      it.address?.village ||
+      it.address?.municipality ||
+      undefined;
+
+    const state = normalizeUF(
+      it.uf ||
+      it.state ||
+      it.address?.state_code ||
+      it.address?.state ||
+      undefined
+    );
+
+    const zip = normalizeCep(it.cep || it.postcode || it.address?.postcode || undefined) || undefined;
+
+    const displayName =
+      it.displayName ||
+      it.label ||
+      [street, district, city, state].filter(Boolean).join(', ') ||
+      undefined;
+
+    form.setFieldsValue({
+      requestedLocationText: displayName || form.getFieldValue('requestedLocationText') || null,
+      requestedCity: city || form.getFieldValue('requestedCity') || null,
+      requestedState: state || form.getFieldValue('requestedState') || null,
+      requestedCep: zip || form.getFieldValue('requestedCep') || null,
+      requestedLat: it.lat != null ? Number(it.lat) : form.getFieldValue('requestedLat') ?? null,
+      requestedLng: it.lng != null ? Number(it.lng) : form.getFieldValue('requestedLng') ?? null,
+    });
+
+    setGeoOpen(false);
+    message.success('Localização aplicada com sucesso.');
+  };
+
+  const handleQuickGeoByCity = async () => {
+    const city = String(form.getFieldValue('requestedCity') || '').trim();
+    const uf = normalizeUF(form.getFieldValue('requestedState'));
+
+    if (!city || !uf) {
+      message.warning('Informe cidade e UF para buscar.');
+      return;
+    }
+
+    setGeoQuery(`${city}, ${uf}`);
+    setGeoOpen(true);
+    setGeoLoading(true);
+    try {
+      const items = (await api.get('/geocode', { params: { q: `${city}, ${uf}` } })).data as GeocodeResult[];
+      setGeoResults(Array.isArray(items) ? items : []);
+      if (Array.isArray(items) && items.length === 1) {
+        applyGeo(items[0]);
+        return;
+      }
+      if (!items || !items.length) {
+        message.warning('Nenhum resultado encontrado para essa cidade/UF.');
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || 'Falha na busca geográfica');
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gap: isMobile ? 12 : 16, maxWidth: '100%', overflowX: 'hidden' }}>
       <div
@@ -736,7 +906,7 @@ export default function InstallationProjectsPage() {
         title="Novo Projeto"
         okText="Criar"
         confirmLoading={createProject.isPending}
-        width={isMobile ? '96vw' : 820}
+        width={isMobile ? '100%' : 1300}
         style={isMobile ? { maxWidth: '96vw' } : {}}
         centered
         styles={{ body: { paddingTop: 12, maxWidth: '100%' } }}
@@ -756,6 +926,12 @@ export default function InstallationProjectsPage() {
               notes: null,
               technicianIds: [],
               supervisorId: null,
+              requestedLocationText: null,
+              requestedCity: null,
+              requestedState: null,
+              requestedCep: null,
+              requestedLat: null,
+              requestedLng: null,
             });
           }
         }}
@@ -784,164 +960,349 @@ export default function InstallationProjectsPage() {
               contactEmail: contactEmails[0] ?? null,
               contactPhone: v.contactPhone ?? null,
               notes: v.notes ?? null,
+              requestedLocationText: v.requestedLocationText ?? null,
+              requestedCity: v.requestedCity ? String(v.requestedCity).trim() : null,
+              requestedState: v.requestedState ? String(v.requestedState).trim().toUpperCase() : null,
+              requestedCep: v.requestedCep ?? null,
+              requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
+              requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
             };
+
+            if (
+              (payload.requestedLat != null || payload.requestedLng != null) &&
+              !isValidLatLng(payload.requestedLat, payload.requestedLng)
+            ) {
+              message.error('Latitude/Longitude inválidas.');
+              return;
+            }
 
             createProject.mutate(payload);
           } catch {}
         }}
       >
         <Form form={form} layout="vertical" initialValues={{ trucksTotal: 1, equipmentsPerDay: 1 }}>
-          <div style={gridStyle('1fr 1fr')}>
-            <Form.Item
-              label="Técnico / Prestador"
-              name="technicianIds"
-            >
-              <Select
-                mode="multiple"
-                showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
-                filterOption={false}
-                onSearch={(v) => setTechSearch(v)}
-                onDropdownVisibleChange={(isOpen) => {
-                  if (isOpen) setTechSearch('');
-                }}
-                loading={usersQuery.isLoading}
-                options={technicianOptions.map((t) => ({ value: t.id, label: t.name }))}
-                notFoundContent={
-                  usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'
-                }
-              />
-            </Form.Item>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1.08fr 0.92fr',
+              gap: 16,
+              alignItems: 'start',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 12 }}>
+              <Card
+                size="small"
+                title="Dados do projeto"
+                styles={{ body: { padding: 14 } }}
+                style={{ borderRadius: 14 }}
+              >
+                <div style={gridStyle('1fr 1fr')}>
+                  <Form.Item label="Técnico / Prestador" name="technicianIds">
+                    <Select
+                      mode="multiple"
+                      showSearch
+                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione um ou mais'}
+                      filterOption={false}
+                      onSearch={(v) => setTechSearch(v)}
+                      onOpenChange={(isOpen) => {
+                        if (isOpen) setTechSearch('');
+                      }}
+                      loading={usersQuery.isLoading}
+                      options={technicianOptions.map((t) => ({ value: t.id, label: t.name }))}
+                      notFoundContent={
+                        usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum técnico/prestador encontrado'
+                      }
+                    />
+                  </Form.Item>
 
-            <Form.Item
-              label="Supervisor (obrigatório)"
-              name="supervisorId"
-              rules={[{ required: true, message: 'Selecione um supervisor' }]}
-            >
-              <Select
-                showSearch
-                placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
-                filterOption={false}
-                onSearch={(v) => setSupervisorSearch(v)}
-                onDropdownVisibleChange={(isOpen) => {
-                  if (isOpen) setSupervisorSearch('');
-                }}
-                loading={usersQuery.isLoading}
-                options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
-                notFoundContent={
-                  usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'
-                }
-              />
-            </Form.Item>
+                  <Form.Item
+                    label="Supervisor (obrigatório)"
+                    name="supervisorId"
+                    rules={[{ required: true, message: 'Selecione um supervisor' }]}
+                  >
+                    <Select
+                      showSearch
+                      placeholder={usersQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                      filterOption={false}
+                      onSearch={(v) => setSupervisorSearch(v)}
+                      onOpenChange={(isOpen) => {
+                        if (isOpen) setSupervisorSearch('');
+                      }}
+                      loading={usersQuery.isLoading}
+                      options={supervisorOptions.map((u) => ({ value: u.id, label: u.name }))}
+                      notFoundContent={
+                        usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum supervisor encontrado'
+                      }
+                    />
+                  </Form.Item>
 
-            <Form.Item
-              label="Coordenador"
-              tooltip="Definido automaticamente pelo supervisor"
-              style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
-            >
-              <Input value={coordinatorPreviewText} disabled />
-            </Form.Item>
-          </div>
+                  <Form.Item
+                    label="Coordenador"
+                    tooltip="Definido automaticamente pelo supervisor"
+                    style={{ gridColumn: isMobile ? 'auto' : '1 / -1' }}
+                  >
+                    <Input value={coordinatorPreviewText} disabled />
+                  </Form.Item>
+                </div>
 
-          <div style={gridStyle('2fr 1fr')}>
-            <Form.Item
-              label="Nome do Projeto"
-              name="title"
-              rules={[{ required: true, message: 'Informe o nome do projeto' }]}
-            >
-              <Input placeholder="Ex: Instalação cliente X" />
-            </Form.Item>
+                <div style={gridStyle('2fr 1fr')}>
+                  <Form.Item
+                    label="Nome do Projeto"
+                    name="title"
+                    rules={[{ required: true, message: 'Informe o nome do projeto' }]}
+                  >
+                    <Input placeholder="Ex: Instalação cliente X" />
+                  </Form.Item>
 
-            <Form.Item label="AF" name="af" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
-              <Input placeholder="Ex: AF-2026-000123" />
-            </Form.Item>
-          </div>
+                  <Form.Item label="AF" name="af" rules={[{ max: 50, message: 'Máximo 50 caracteres' }]}>
+                    <Input placeholder="Ex: AF-2026-000123" />
+                  </Form.Item>
+                </div>
 
-          <Form.Item label="Cliente" name="clientId">
-            <Select
-              showSearch
-              allowClear
-              placeholder={clientsQuery.isLoading ? 'Carregando...' : 'Selecione'}
-              optionFilterProp="label"
-              filterOption={(input, option) =>
-                String(option?.label || '').toLowerCase().includes(String(input || '').toLowerCase())
-              }
-              options={(clientsQuery.data || []).map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </Form.Item>
-
-          <div style={gridStyle('1fr 1fr 1fr')}>
-            <Form.Item
-              label="Qtd. Veículos (total)"
-              name="trucksTotal"
-              rules={[{ required: true, message: 'Informe a quantidade total de veículos' }]}
-            >
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item
-              label="Previsão de instalação por dia"
-              name="equipmentsPerDay"
-              rules={[{ required: true, message: 'Informe a previsão por dia' }]}
-            >
-              <InputNumber min={1} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item
-              label="Data prevista de início"
-              name="startPlannedAt"
-              rules={[{ required: true, message: 'Selecione a data de início' }]}
-            >
-              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
-            </Form.Item>
-          </div>
-
-          {endPreview && (
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-              Previsão de duração: {endPreview}
-            </Typography.Text>
-          )}
-
-          <Form.Item label="Contato (opcional)" name="contactName">
-            <Input placeholder="Nome do contato" />
-          </Form.Item>
-
-          <div style={gridStyle('1.4fr 1fr')}>
-            <Form.Item
-              label="E-mails (obrigatório)"
-              name="contactEmails"
-              rules={[
-                { required: true, message: 'Informe pelo menos um e-mail' },
-                {
-                  validator: async (_, value) => {
-                    const emails = normalizeEmailList(value);
-                    if (!emails.length) {
-                      throw new Error('Informe pelo menos um e-mail');
+                <Form.Item label="Cliente" name="clientId">
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder={clientsQuery.isLoading ? 'Carregando...' : 'Selecione'}
+                    optionFilterProp="label"
+                    filterOption={(input, option) =>
+                      String(option?.label || '').toLowerCase().includes(String(input || '').toLowerCase())
                     }
-                    const invalid = emails.find((email) => !isValidEmail(email));
-                    if (invalid) {
-                      throw new Error(`E-mail inválido: ${invalid}`);
+                    options={(clientsQuery.data || []).map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                </Form.Item>
+
+                <div style={gridStyle('1fr 1fr 1fr')}>
+                  <Form.Item
+                    label="Qtd. Veículos (total)"
+                    name="trucksTotal"
+                    rules={[{ required: true, message: 'Informe a quantidade total de veículos' }]}
+                  >
+                    <InputNumber min={1} style={{ width: '100%' }} />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Prev. de instalação por dia"
+                    name="equipmentsPerDay"
+                    rules={[{ required: true, message: 'Informe a previsão por dia' }]}
+                  >
+                    <InputNumber min={1} style={{ width: '100%' }} />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Data prevista de início"
+                    name="startPlannedAt"
+                    rules={[{ required: true, message: 'Selecione a data de início' }]}
+                  >
+                    <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" inputReadOnly />
+                  </Form.Item>
+                </div>
+
+                {endPreview && (
+                  <Typography.Text type="secondary" style={{ display: 'block', marginTop: -2 }}>
+                    Previsão de duração: {endPreview}
+                  </Typography.Text>
+                )}
+
+                <Form.Item label="Observações (opcional)" name="notes" style={{ marginTop: 12, marginBottom: 0 }}>
+                  <Input.TextArea rows={4} placeholder="Anotações iniciais..." />
+                </Form.Item>
+              </Card>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              <Card
+                size="small"
+                title={
+                  <Space>
+                    <EnvironmentOutlined />
+                    Localização
+                  </Space>
+                }
+                styles={{ body: { padding: 14 } }}
+                style={{ borderRadius: 14 }}
+              >
+                <Form.Item label="Endereço / localização" name="requestedLocationText">
+                  <Input
+                    placeholder="Ex: Rua X, Centro, Campinas - SP"
+                    addonAfter={
+                      <Button
+                        type="link"
+                        style={{ paddingInline: 0 }}
+                        onClick={() => {
+                          const city = String(form.getFieldValue('requestedCity') || '').trim();
+                          const uf = normalizeUF(form.getFieldValue('requestedState'));
+                          const cep = String(form.getFieldValue('requestedCep') || '').trim();
+                          const address = String(form.getFieldValue('requestedLocationText') || '').trim();
+                          const q = address || cep || [city, uf].filter(Boolean).join(', ');
+                          setGeoQuery(q);
+                          setGeoResults([]);
+                          setGeoOpen(true);
+                        }}
+                      >
+                        Buscar
+                      </Button>
                     }
-                  },
-                },
-              ]}
-            >
-              <Select
-                mode="tags"
-                tokenSeparators={[',', ';', ' ']}
-                placeholder="Digite um ou mais e-mails"
-              />
-            </Form.Item>
+                  />
+                </Form.Item>
 
-            <Form.Item label="Telefone (opcional)" name="contactPhone">
-              <Input placeholder="(11) 99999-9999" />
-            </Form.Item>
+                <div style={gridStyle('1.2fr 0.7fr 0.9fr')}>
+                  <Form.Item label="Cidade" name="requestedCity">
+                    <Input placeholder="Cidade da instalação" />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="UF"
+                    name="requestedState"
+                    rules={[{ len: 2, message: 'Informe a UF com 2 letras' }]}
+                  >
+                    <Input
+                      maxLength={2}
+                      placeholder="SP"
+                      onChange={(e) => form.setFieldValue('requestedState', normalizeUF(e.target.value))}
+                    />
+                  </Form.Item>
+
+                  <Form.Item label="CEP" name="requestedCep">
+                    <Input
+                      placeholder="00000-000"
+                      onChange={(e) => form.setFieldValue('requestedCep', normalizeCep(e.target.value))}
+                    />
+                  </Form.Item>
+                </div>
+
+                <div style={gridStyle('1fr 1fr')}>
+                  <Form.Item
+                    label="Latitude"
+                    name="requestedLat"
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          if (value == null || value === '') return;
+                          const num = Number(value);
+                          if (!Number.isFinite(num) || num < -90 || num > 90) {
+                            throw new Error('Latitude inválida');
+                          }
+                        },
+                      },
+                    ]}
+                  >
+                    <InputNumber placeholder="-23.55052" style={{ width: '100%' }} />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Longitude"
+                    name="requestedLng"
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          if (value == null || value === '') return;
+                          const num = Number(value);
+                          if (!Number.isFinite(num) || num < -180 || num > 180) {
+                            throw new Error('Longitude inválida');
+                          }
+                        },
+                      },
+                    ]}
+                  >
+                    <InputNumber placeholder="-46.633308" style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  A geolocalização do projeto agora usa estes dados, e não mais a localização do cliente.
+                </Typography.Text>
+              </Card>
+
+              <Card
+                size="small"
+                title="Dados de contato"
+                styles={{ body: { padding: 14 } }}
+                style={{ borderRadius: 14 }}
+              >
+                <Form.Item label="Contato (opcional)" name="contactName">
+                  <Input placeholder="Nome do contato" />
+                </Form.Item>
+
+                <Form.Item
+                  label="E-mails (obrigatório)"
+                  name="contactEmails"
+                  rules={[
+                    { required: true, message: 'Informe pelo menos um e-mail' },
+                    {
+                      validator: async (_, value) => {
+                        const emails = normalizeEmailList(value);
+                        if (!emails.length) throw new Error('Informe pelo menos um e-mail');
+                        const invalid = emails.find((email) => !isValidEmail(email));
+                        if (invalid) throw new Error(`E-mail inválido: ${invalid}`);
+                      },
+                    },
+                  ]}
+                >
+                  <Select
+                    mode="tags"
+                    tokenSeparators={[',', ';', ' ']}
+                    placeholder="Digite um ou mais e-mails"
+                  />
+                </Form.Item>
+
+                <Form.Item label="Telefone (opcional)" name="contactPhone" style={{ marginBottom: 0 }}>
+                  <Input placeholder="(11) 99999-9999" />
+                </Form.Item>
+              </Card>
+            </div>
           </div>
-
-          <Form.Item label="Observações (opcional)" name="notes">
-            <Input.TextArea rows={3} placeholder="Anotações iniciais..." />
-          </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Buscar coordenadas"
+        open={geoOpen}
+        onCancel={() => setGeoOpen(false)}
+        footer={null}
+        destroyOnHidden
+        width={isMobile ? '100%' : 900}
+        style={isMobile ? { top: 0, padding: 0 } : undefined}
+      >
+        <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
+          <Input
+            placeholder="Ex.: Cotia, SP ou Rua XV de Novembro, Curitiba"
+            value={geoQuery}
+            onChange={(e) => setGeoQuery(e.target.value)}
+            onPressEnter={searchGeo}
+          />
+          <Button type="primary" icon={<SearchOutlined />} loading={geoLoading} onClick={searchGeo}>
+            Buscar
+          </Button>
+        </Space.Compact>
+
+        <List
+          bordered
+          locale={{ emptyText: geoLoading ? 'Buscando...' : 'Nenhum resultado' }}
+          dataSource={geoResults}
+          renderItem={(item: GeocodeResult) => (
+            <List.Item actions={[<Button type="link" onClick={() => applyGeo(item)}>Usar</Button>]}>
+              <List.Item.Meta
+                title={item.label || item.displayName || 'Local encontrado'}
+                description={
+                  <>
+                    <div>
+                      <b>lat/lng:</b> {item.lat ?? '—'}, {item.lng ?? '—'}
+                    </div>
+                    <div>
+                      <b>cidade:</b> {item.city || item.address?.city || item.address?.town || item.address?.village || '—'}
+                      {' • '}
+                      <b>UF:</b> {normalizeUF(item.uf || item.state || item.address?.state_code || item.address?.state) || '—'}
+                    </div>
+                    <div>
+                      <b>CEP:</b> {normalizeCep(item.cep || item.postcode || item.address?.postcode) || '—'}
+                    </div>
+                  </>
+                }
+              />
+            </List.Item>
+          )}
+        />
       </Modal>
     </div>
   );
