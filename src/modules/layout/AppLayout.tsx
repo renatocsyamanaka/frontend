@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Layout, Menu, Grid, Drawer, Button, Avatar, Typography, Space } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   HomeOutlined,
   ToolOutlined,
@@ -41,6 +42,27 @@ const SECTOR_LABELS: Record<string, string> = {
   GESTAO: 'Gestão',
 };
 
+type AppUser = {
+  id?: number;
+  name?: string;
+  avatarUrl?: string | null;
+  sectors?: string[];
+};
+
+type MenuConfigItem = {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  permission: string;
+};
+
+type MenuConfigGroup = {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  children: MenuConfigItem[];
+};
+
 const abs = (url?: string | null) => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
@@ -54,7 +76,7 @@ function getSectorLabel(sector?: string) {
   return SECTOR_LABELS[sector] || sector;
 }
 
-function getUserSectors(user: any) {
+function getUserSectors(user: AppUser | null | undefined) {
   if (!Array.isArray(user?.sectors) || user.sectors.length === 0) {
     return ['GESTAO'];
   }
@@ -67,7 +89,12 @@ function getUserSectors(user: any) {
 }
 
 export function AppLayout() {
-  const { user, logout, setUser } = useAuth();
+  const { user, logout, setUser } = useAuth() as {
+    user: AppUser | null;
+    logout: () => void;
+    setUser?: (next: AppUser | null) => void;
+  };
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -79,12 +106,17 @@ export function AppLayout() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+
+  const siderWidth = 280;
+  const siderCollapsedWidth = 84;
+  const collapsedSidebar = !sidebarHovered;
 
   getUserLevel(user);
 
   const sectors = getUserSectors(user);
-  const sectorsLabel =
-    sectors.length > 0 ? sectors.map(getSectorLabel).join(' • ') : 'Gestão';
+  const sectorsLabel = sectors.length > 0 ? sectors.map(getSectorLabel).join(' • ') : 'Gestão';
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -103,208 +135,193 @@ export function AppLayout() {
     }
   }, [location.pathname, isMobile]);
 
-const menuConfig = [
-  {
-    key: 'group-operacoes',
-    label: 'Operações',
-    icon: <DatabaseOutlined />,
-    children: [
-      {
-        key: '/projetos-instalacao',
-        label: 'Projetos de Instalação',
-        icon: <ProjectOutlined />,
-        permission: 'INSTALLATION_PROJECTS_VIEW',
-      },
-      {
-        key: '/pedidos-pecas',
-        label: 'Pedidos de Peças',
-        icon: <DatabaseOutlined />,
-        permission: 'PART_REQUESTS_VIEW',
-      },
-      {
-        key: '/meus-pedidos-pecas',
-        label: 'Meus Pedidos de Peças',
-        icon: <ProfileOutlined />,
-        permission: 'MY_PART_REQUESTS_VIEW',
-      },
-      {
-        key: '/agenda',
-        label: 'Agenda',
-        icon: <ScheduleOutlined />,
-        permission: 'ASSIGNMENTS_VIEW',
-      },
-    ],
-  },
-  {
-    key: 'group-planejamento',
-    label: 'Planejamento',
-    icon: <ProfileOutlined />,
-    children: [
-      {
-        key: '/planejamento-cia',
-        label: 'Planejamento CIA',
-        icon: <ProfileOutlined />,
-        permission: 'DASHBOARD_ACTIVITY_VIEW',
-      },
-      {
-        key: '/demandas',
-        label: 'Demandas',
-        icon: <ProfileOutlined />,
-        permission: 'TASKS_VIEW',
-      },
-    ],
-  },
-  {
-    key: 'group-tecnicos',
-    label: 'Técnicos e Prestadores',
-    icon: <ToolOutlined />,
-    children: [
-      {
-        key: '/mapa-tecnicos',
-        label: 'Mapa de Técnicos',
-        icon: <ToolOutlined />,
-        permission: 'TECHS_MAP_VIEW',
-      },
-      {
-        key: '/requisicoes',
-        label: 'Prospecções Operação',
-        icon: <DatabaseOutlined />,
-        permission: 'NEEDS_VIEW',
-      },
-      {
-        key: '/requisicoes/mapa',
-        label: 'Mapa de solicitações',
-        icon: <EnvironmentOutlined />,
-        permission: 'NEEDS_MAP_VIEW',
-      },
-      {
-        key: '/prestadores-aprovados',
-        label: 'Prestadores Aprovados',
-        icon: <TeamOutlined />,
-        permission: 'PRESTADORES_APROVADOS_VIEW',
-      },
-    ],
-  },
-  {
-    key: 'group-gestao',
-    label: 'Gestão',
-    icon: <TeamOutlined />,
-    children: [
-      {
-        key: '/colaboradores',
-        label: 'Colaboradores',
-        icon: <TeamOutlined />,
-        permission: 'USERS_VIEW',
-      },
-      {
-        key: '/organograma',
-        label: 'Organograma',
-        icon: <ClusterOutlined />,
-        permission: 'ORG_VIEW',
-      },
-      {
-        key: '/clientes',
-        label: 'Clientes',
-        icon: <ProfileOutlined />,
-        permission: 'CLIENTS_VIEW',
-      },
-    ],
-  },
-  {
-    key: 'group-relatorios',
-    label: 'Relatórios e Comunicação',
-    icon: <NotificationOutlined />,
-    children: [
-      {
-        key: '/relatorios-entrega',
-        label: 'Relatório de Entregas',
-        icon: <DatabaseOutlined />,
-        permission: 'DELIVERY_REPORTS_VIEW',
-      },
-      {
-        key: '/noticias',
-        label: 'Notícias',
-        icon: <NotificationOutlined />,
-        permission: 'NEWS_VIEW',
-      },
-      {
-        key: '/noticias-admin',
-        label: 'Administração de Notícias',
-        icon: <NotificationOutlined />,
-        permission: 'NEWS_ADMIN_VIEW',
-      },
-    ],
-  },
-];
+  useEffect(() => {
+    if (collapsedSidebar && !isMobile) {
+      setOpenMenuKeys([]);
+    }
+  }, [collapsedSidebar, isMobile]);
 
-const visibleMenuConfig = useMemo(() => {
-  return menuConfig
-    .map((group) => {
-      const visibleChildren = (group.children || []).filter((item) =>
-        hasPermission(user, item.permission)
-      );
-
-      return {
-        ...group,
-        children: visibleChildren,
-      };
-    })
-    .filter((group) => group.children && group.children.length > 0);
-}, [user]);
-
-const menuItems = useMemo(() => {
-  const dashboardItem = hasPermission(user, 'DASHBOARD_VIEW')
-    ? [
+  const menuConfig: MenuConfigGroup[] = [
+    {
+      key: 'group-operacoes',
+      label: 'Operações',
+      icon: <DatabaseOutlined />,
+      children: [
         {
-          key: '/',
-          icon: <HomeOutlined />,
-          label: (
-            <Link
-              to="/"
-              onClick={() => {
-                if (isMobile) setDrawerOpen(false);
-              }}
-            >
-              Painel
-            </Link>
-          ),
+          key: '/projetos-instalacao',
+          label: 'Projetos de Instalação',
+          icon: <ProjectOutlined />,
+          permission: 'INSTALLATION_PROJECTS_VIEW',
         },
-      ]
-    : [];
+        {
+          key: '/pedidos-pecas',
+          label: 'Pedidos de Peças',
+          icon: <DatabaseOutlined />,
+          permission: 'PART_REQUESTS_VIEW',
+        },
+        {
+          key: '/meus-pedidos-pecas',
+          label: 'Meus Pedidos de Peças',
+          icon: <ProfileOutlined />,
+          permission: 'MY_PART_REQUESTS_VIEW',
+        },
+        {
+          key: '/agenda',
+          label: 'Agenda',
+          icon: <ScheduleOutlined />,
+          permission: 'ASSIGNMENTS_VIEW',
+        },
+      ],
+    },
+    {
+      key: 'group-planejamento',
+      label: 'Planejamento',
+      icon: <ProfileOutlined />,
+      children: [
+        {
+          key: '/planejamento-cia',
+          label: 'Planejamento CIA',
+          icon: <ProfileOutlined />,
+          permission: 'DASHBOARD_ACTIVITY_VIEW',
+        },
+        {
+          key: '/demandas',
+          label: 'Demandas',
+          icon: <ProfileOutlined />,
+          permission: 'TASKS_VIEW',
+        },
+      ],
+    },
+    {
+      key: 'group-pessoas',
+      label: 'Pessoas',
+      icon: <TeamOutlined />,
+      children: [
+        { key: '/colaboradores', label: 'Usuários', icon: <TeamOutlined />, permission: 'USERS_VIEW' },
+        { key: '/organograma', label: 'Organograma', icon: <ClusterOutlined />, permission: 'ORG_VIEW' },
+        { key: '/clientes', label: 'Clientes', icon: <ToolOutlined />, permission: 'CLIENTS_VIEW' },
+      ],
+    },
+    {
+      key: 'group-localizacao',
+      label: 'Localização',
+      icon: <EnvironmentOutlined />,
+      children: [
+        {
+          key: '/projetos-instalacao/geolocalizacao',
+          label: 'Validar geolocalização',
+          icon: <EnvironmentOutlined />,
+          permission: 'INSTALLATION_PROJECTS_VIEW',
+        },
+      ],
+    },
+    {
+      key: 'group-relatorios',
+      label: 'Relatórios e Comunicação',
+      icon: <NotificationOutlined />,
+      children: [
+        {
+          key: '/relatorios-entrega',
+          label: 'Relatório de Entregas',
+          icon: <DatabaseOutlined />,
+          permission: 'DELIVERY_REPORTS_VIEW',
+        },
+        { key: '/noticias', label: 'Notícias', icon: <NotificationOutlined />, permission: 'NEWS_VIEW' },
+        {
+          key: '/noticias-admin',
+          label: 'Administração de Notícias',
+          icon: <NotificationOutlined />,
+          permission: 'NEWS_ADMIN_VIEW',
+        },
+      ],
+    },
+  ];
 
-  const groupedItems = visibleMenuConfig.map((group) => ({
-    key: group.key,
-    icon: group.icon,
-    label: group.label,
-    children: group.children.map((item) => ({
-      key: item.key,
-      icon: item.icon,
-      label: (
-        <Link
-          to={item.key}
-          onClick={() => {
-            if (isMobile) setDrawerOpen(false);
-          }}
-        >
-          {item.label}
-        </Link>
-      ),
-    })),
-  }));
+  const visibleMenuConfig = useMemo(() => {
+    return menuConfig
+      .map((group) => ({
+        ...group,
+        children: (group.children || []).filter((item) => hasPermission(user, item.permission)),
+      }))
+      .filter((group) => group.children.length > 0);
+  }, [user]);
 
-  return [...dashboardItem, ...groupedItems];
-}, [visibleMenuConfig, isMobile, user]);
+  const groupKeys = useMemo(() => visibleMenuConfig.map((group) => group.key), [visibleMenuConfig]);
+
+  const menuItems = useMemo<MenuProps['items']>(() => {
+    const dashboardItem = hasPermission(user, 'DASHBOARD_VIEW')
+      ? [
+          {
+            key: '/',
+            icon: <HomeOutlined />,
+            label: (
+              <Link
+                to="/"
+                onClick={() => {
+                  if (isMobile) setDrawerOpen(false);
+                }}
+              >
+                Painel
+              </Link>
+            ),
+          },
+        ]
+      : [];
+
+    const groupedItems = visibleMenuConfig.map((group) => ({
+      key: group.key,
+      icon: group.icon,
+      label: group.label,
+      children: group.children.map((item) => ({
+        key: item.key,
+        icon: item.icon,
+        label: (
+          <Link
+            to={item.key}
+            onClick={() => {
+              if (isMobile) setDrawerOpen(false);
+            }}
+          >
+            {item.label}
+          </Link>
+        ),
+      })),
+    }));
+
+    return [...dashboardItem, ...groupedItems];
+  }, [visibleMenuConfig, isMobile, user]);
 
   const selectedKey = useMemo(() => {
     const pathname = location.pathname;
+    const childKeys = visibleMenuConfig.flatMap((group) => group.children.map((item) => item.key));
+    const dashboardKeys = hasPermission(user, 'DASHBOARD_VIEW') ? ['/'] : [];
+    const allKeys = [...dashboardKeys, ...childKeys];
 
-    const found = visibleMenuConfig
-      .map((item) => item.key)
+    const found = allKeys
       .sort((a, b) => b.length - a.length)
       .find((key) => (key === '/' ? pathname === '/' : pathname.startsWith(key)));
 
     return found ? [found] : [];
-  }, [location.pathname, visibleMenuConfig]);
+  }, [location.pathname, visibleMenuConfig, user]);
+
+  const handleMenuOpenChange: MenuProps['onOpenChange'] = (keys) => {
+    if (collapsedSidebar && !isMobile) {
+      return;
+    }
+
+    const latest = keys.find((key) => !openMenuKeys.includes(String(key)));
+
+    if (!latest) {
+      setOpenMenuKeys(keys.map(String));
+      return;
+    }
+
+    if (groupKeys.includes(String(latest))) {
+      setOpenMenuKeys([String(latest)]);
+    } else {
+      setOpenMenuKeys(keys.map(String));
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -334,11 +351,53 @@ const menuItems = useMemo(() => {
       flex-direction: column;
       border-right: 1px solid rgba(255,255,255,0.06);
       overflow: hidden;
+      transition: all 0.22s ease;
     }
-    .brand-menu .ant-menu-submenu {
-      margin: 6px 0 !important;
+    .brand-sidebar.is-collapsed .brand-sidebar-logo-text,
+    .brand-sidebar.is-collapsed .brand-sidebar-section-title,
+    .brand-sidebar.is-collapsed .brand-sidebar-footer-text {
+      display: none !important;
     }
-
+    .brand-sidebar.is-collapsed .brand-sidebar-header {
+      justify-content: center !important;
+      padding-inline: 10px !important;
+    }
+    .brand-sidebar.is-collapsed .brand-scroll {
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title,
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-item {
+      padding-inline: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-title-content {
+      opacity: 0;
+      width: 0;
+      overflow: hidden;
+      display: none !important;
+    }
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-arrow {
+      display: none !important;
+    }
+    .brand-sidebar.is-collapsed .logout-menu .ant-menu-item {
+      padding-inline: 0 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .brand-sidebar.is-collapsed .logout-menu .ant-menu-title-content {
+      display: none !important;
+    }
+    .brand-sidebar.is-collapsed .logout-menu .ant-menu-item .ant-menu-item-icon,
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-item .ant-menu-item-icon,
+    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
+      margin-inline-end: 0 !important;
+      font-size: 20px !important;
+    }
+    .brand-menu .ant-menu-submenu { margin: 6px 0 !important; }
     .brand-menu .ant-menu-submenu-title {
       height: 48px !important;
       line-height: 48px !important;
@@ -347,17 +406,15 @@ const menuItems = useMemo(() => {
       font-weight: 700;
       font-size: 15px;
       padding-inline: 14px !important;
+      transition: all 0.2s ease;
     }
-
     .brand-menu .ant-menu-submenu-title:hover {
       background: ${HOVER_BG} !important;
       color: #ffffff !important;
     }
-
     .brand-menu .ant-menu-sub {
       background: transparent !important;
     }
-
     .brand-menu .ant-menu-sub .ant-menu-item {
       height: 42px !important;
       line-height: 42px !important;
@@ -366,11 +423,9 @@ const menuItems = useMemo(() => {
       font-size: 14px;
       font-weight: 600;
     }
-
     .brand-menu .ant-menu-submenu-arrow {
       color: ${TEXT_SECONDARY} !important;
     }
-
     .brand-menu .ant-menu-submenu-open > .ant-menu-submenu-title {
       background: rgba(255,255,255,0.05) !important;
     }
@@ -381,41 +436,22 @@ const menuItems = useMemo(() => {
       scrollbar-width: thin;
       scrollbar-color: rgba(31, 113, 184, 0.75) transparent;
     }
-
-    .brand-scroll::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .brand-scroll::-webkit-scrollbar-track {
-      background: transparent;
-      margin: 10px 0;
-    }
-
+    .brand-scroll::-webkit-scrollbar { width: 8px; }
+    .brand-scroll::-webkit-scrollbar-track { background: transparent; margin: 10px 0; }
     .brand-scroll::-webkit-scrollbar-thumb {
-      background: linear-gradient(
-        180deg,
-        rgba(31, 113, 184, 0.85),
-        rgba(31, 113, 184, 0.45)
-      );
+      background: linear-gradient(180deg, rgba(31, 113, 184, 0.85), rgba(31, 113, 184, 0.45));
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.08);
     }
-
     .brand-scroll::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(
-        180deg,
-        rgba(31, 113, 184, 1),
-        rgba(31, 113, 184, 0.65)
-      );
+      background: linear-gradient(180deg, rgba(31, 113, 184, 1), rgba(31, 113, 184, 0.65));
     }
-
     .brand-menu.ant-menu {
       background: transparent !important;
       border-inline-end: none !important;
       color: ${TEXT_SECONDARY} !important;
       padding: 0 !important;
     }
-
     .brand-menu .ant-menu-item {
       height: 48px;
       line-height: 48px;
@@ -427,153 +463,90 @@ const menuItems = useMemo(() => {
       transition: all 0.2s ease;
       padding-inline: 14px !important;
     }
-
     .brand-menu .ant-menu-item .ant-menu-title-content a {
       color: inherit !important;
     }
-
     .brand-menu .ant-menu-item .ant-menu-item-icon,
     .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
       color: ${TEXT_SECONDARY} !important;
       font-size: 18px;
     }
-
     .brand-menu .ant-menu-item:hover {
       background: ${HOVER_BG} !important;
       color: ${TEXT_PRIMARY} !important;
     }
-
-    .brand-menu .ant-menu-item:hover .ant-menu-item-icon {
-      color: ${TEXT_PRIMARY} !important;
+    .brand-menu .ant-menu-item:hover .ant-menu-item-icon,
+    .brand-menu .ant-menu-submenu-title:hover .ant-menu-item-icon {
+      color: #ffffff !important;
     }
-
     .brand-menu .ant-menu-item-selected {
-      background: ${ACTIVE_BG} !important;
+      background: linear-gradient(135deg, ${ACTIVE_BG} 0%, #2f89d8 100%) !important;
       color: #ffffff !important;
-      box-shadow: 0 10px 24px rgba(31, 113, 184, 0.28);
+      box-shadow: 0 10px 24px rgba(31, 113, 184, 0.32);
     }
-
-    .brand-menu .ant-menu-item-selected .ant-menu-item-icon,
-    .brand-menu .ant-menu-item-selected .ant-menu-title-content a {
+    .brand-menu .ant-menu-item-selected .ant-menu-item-icon {
       color: #ffffff !important;
     }
-
-    .brand-menu .ant-menu-item::after {
-      display: none !important;
-    }
-
     .logout-menu.ant-menu {
       background: transparent !important;
       border-inline-end: none !important;
-      padding: 0 8px 8px 8px;
     }
-
     .logout-menu .ant-menu-item {
-      height: 46px;
-      line-height: 46px;
-      margin: 6px 0 !important;
-      border-radius: 12px !important;
-      color: ${TEXT_SECONDARY} !important;
-      font-weight: 500;
+      height: 48px;
+      line-height: 48px;
+      margin: 0 !important;
+      border-radius: 14px !important;
+      color: #fecaca !important;
+      font-weight: 700;
+      padding-inline: 14px !important;
     }
-
     .logout-menu .ant-menu-item:hover {
-      background: rgba(255,255,255,0.08) !important;
+      background: rgba(239, 68, 68, 0.16) !important;
       color: #ffffff !important;
     }
-
     .logout-menu .ant-menu-item .ant-menu-item-icon {
       color: inherit !important;
     }
-
-    .header-profile-btn,
-    .header-logout-btn {
-      height: 44px !important;
-      border-radius: 14px !important;
-      padding: 0 16px !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 8px !important;
-      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
-      line-height: 1 !important;
-    }
-
-    .header-profile-btn {
-      border: 1px solid #E6EEF7 !important;
-      background: #fff !important;
-    }
-
-    .header-profile-btn:hover {
-      border-color: ${BRAND} !important;
-      color: ${BRAND} !important;
-    }
-
-    .header-logout-btn.ant-btn {
-      height: 44px !important;
-      border-radius: 14px !important;
-      padding: 0 16px !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
-    }
-
-    .header-logout-btn .anticon,
-    .header-profile-btn .anticon {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      line-height: 1 !important;
-    }
-
     .header-bell-wrap {
-      height: 44px;
-      min-width: 44px;
-      padding: 0 14px;
-      border: 1px solid #E6EEF7;
-      background: #fff;
-      border-radius: 14px;
+      height: 40px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: #f0f7ff;
+      border: 1px solid #d6e8fb;
       display: inline-flex;
       align-items: center;
-      justify-content: center;
       gap: 8px;
-      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
-      transition: all 0.2s ease;
       cursor: pointer;
-    }
-
-    .header-bell-wrap:hover {
-      border-color: ${BRAND};
-    }
-
-    .header-bell-wrap .header-bell-text {
-      color: #16324F;
-      font-weight: 700;
-      line-height: 1;
-      white-space: nowrap;
+      transition: all 0.2s ease;
       user-select: none;
     }
-
-    .header-bell-wrap .ant-btn,
-    .header-bell-wrap button {
-      border: none !important;
-      box-shadow: none !important;
-      padding: 0 !important;
-      background: transparent !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      height: auto !important;
+    .header-bell-wrap:hover {
+      background: #e5f1ff;
+      border-color: #bdd8f7;
     }
-
-    .header-bell-wrap * {
-      pointer-events: none;
+    .header-bell-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #16324F;
     }
-
-    .header-bell-wrap .ant-badge,
-    .header-bell-wrap .anticon {
-      pointer-events: none;
+    .header-profile-btn {
+      height: 40px !important;
+      border-radius: 999px !important;
+      border: 1px solid #dbe7f3 !important;
+      background: #ffffff !important;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
+    }
+    .header-profile-btn:hover {
+      border-color: #c5d9ec !important;
+      background: #f9fcff !important;
+    }
+    .header-logout-btn {
+      height: 40px !important;
+      border-radius: 999px !important;
+      box-shadow: 0 6px 14px rgba(239, 68, 68, 0.12);
+    }
+    .app-layout-content-scroll {
+      min-height: 0;
     }
   `;
 
@@ -581,91 +554,70 @@ const menuItems = useMemo(() => {
     <>
       <style>{sidebarStyles}</style>
 
-      <div className="brand-sidebar">
+      <div className={`brand-sidebar ${collapsedSidebar ? 'is-collapsed' : ''}`}>
         <div
+          className="brand-sidebar-header"
           style={{
-            padding: '20px 18px 14px 18px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            marginBottom: 6,
+            padding: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              background: 'transparent',
-              border: 'none',
-              width: '100%',
-              padding: 0,
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            <Avatar
-              src={abs(user?.avatarUrl)}
-              size={56}
-              icon={<UserOutlined />}
-              style={{
-                background: BRAND,
-                boxShadow: '0 6px 18px rgba(31,113,184,0.35)',
-                flexShrink: 0,
-              }}
-            />
+          <Avatar
+            size={42}
+            src={abs(user?.avatarUrl)}
+            icon={<UserOutlined />}
+            style={{ background: BRAND, flexShrink: 0 }}
+          />
 
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: 15,
-                  lineHeight: 1.25,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  maxWidth: 170,
-                }}
-              >
-                {user?.name || 'Usuário'}
-              </div>
-
-              <Text
-                style={{
-                  color: '#D9ECFF',
-                  fontSize: 12,
-                  display: 'block',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  maxWidth: 185,
-                  marginTop: 4,
-                }}
-              >
-                {sectorsLabel}
-              </Text>
-            </div>
-          </button>
+          <div className="brand-sidebar-logo-text" style={{ minWidth: 0 }}>
+            <div style={{ color: '#fff', fontWeight: 800, lineHeight: 1.1 }}>Operações</div>
+            <div style={{ color: TEXT_SECONDARY, fontSize: 12, marginTop: 2 }}>{sectorsLabel}</div>
+          </div>
         </div>
 
         <div className="brand-scroll">
+          <div
+            className="brand-sidebar-section-title"
+            style={{
+              color: TEXT_SECONDARY,
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: 0.8,
+              textTransform: 'uppercase',
+              padding: '4px 10px 6px',
+            }}
+          >
+            Navegação
+          </div>
+
           <Menu
             className="brand-menu"
             theme="dark"
             mode="inline"
             selectedKeys={selectedKey}
+            openKeys={collapsedSidebar && !isMobile ? [] : openMenuKeys}
+            onOpenChange={handleMenuOpenChange}
+            inlineCollapsed={collapsedSidebar}
             items={menuItems}
           />
         </div>
 
-        <div
-          style={{
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            paddingTop: 8,
-            marginTop: 'auto',
-          }}
-        >
+        <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div
+            className="brand-sidebar-footer-text"
+            style={{
+              color: TEXT_SECONDARY,
+              fontSize: 11,
+              fontWeight: 700,
+              marginBottom: 8,
+              paddingInline: 4,
+            }}
+          >
+            Sessão
+          </div>
+
           <Menu
             className="logout-menu"
             theme="dark"
@@ -689,11 +641,18 @@ const menuItems = useMemo(() => {
     <Layout style={{ minHeight: '100vh', background: '#F5F8FC' }}>
       {!isMobile && (
         <Sider
-          width={280}
+          width={siderWidth}
+          collapsedWidth={siderCollapsedWidth}
+          collapsed={collapsedSidebar}
+          trigger={null}
           theme="dark"
+          onMouseEnter={() => setSidebarHovered(true)}
+          onMouseLeave={() => setSidebarHovered(false)}
           style={{
             background: SIDEBAR_BG,
             boxShadow: '2px 0 16px rgba(3, 27, 49, 0.18)',
+            transition: 'all 0.22s ease',
+            overflow: 'hidden',
           }}
         >
           {MenuBlock}
@@ -757,10 +716,7 @@ const menuItems = useMemo(() => {
               {!isMobile && <span className="header-bell-text">Atividade</span>}
             </div>
 
-            <Button
-              className="header-profile-btn"
-              onClick={() => setProfileOpen(true)}
-            >
+            <Button className="header-profile-btn" onClick={() => setProfileOpen(true)}>
               <Space size={8} align="center">
                 <Avatar
                   size={30}
@@ -785,37 +741,34 @@ const menuItems = useMemo(() => {
                   title: 'Sair do sistema',
                   content: 'Deseja realmente sair?',
                   okText: 'Sair',
-                  okButtonProps: { danger: true },
                   cancelText: 'Cancelar',
+                  okButtonProps: { danger: true },
                   onOk: handleLogout,
                 });
               }}
             >
-              {!isMobile && 'Sair'}
+              {!isMobile ? 'Sair' : null}
             </Button>
           </Space>
         </Header>
 
-<Content
-  ref={contentRef}
-  className="app-layout-content-scroll"
-  style={{
-    margin: isMobile ? 12 : 20,
-    background: 'transparent',
-  }}
->
-  <Outlet />
-</Content>
+        <Content
+          ref={contentRef}
+          className="app-layout-content-scroll"
+          style={{ padding: isMobile ? 12 : 20, overflow: 'auto' }}
+        >
+          <Outlet />
+        </Content>
       </Layout>
 
       <ProfileModal
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
-        currentUser={user}
-        onUpdated={(updated) => {
-          if (setUser) setUser(updated);
-        }}
+        user={user}
+        setUser={setUser}
       />
     </Layout>
   );
 }
+
+export default AppLayout;

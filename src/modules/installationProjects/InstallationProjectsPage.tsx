@@ -279,34 +279,34 @@ function SummaryCard({
     <Card
       bordered={false}
       style={{
-        borderRadius: 24,
+        borderRadius: 22,
         background: bg,
         height: '100%',
-        boxShadow: '0 14px 28px rgba(15,23,42,0.08)',
+        boxShadow: '0 12px 24px rgba(15,23,42,0.07)',
       }}
-      styles={{ body: { padding: 18 } }}
+      styles={{ body: { padding: 14 } }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{title}</div>
-          <div style={{ marginTop: 8, fontSize: 30, fontWeight: 900, lineHeight: 1.05, color: '#0f172a' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>{title}</div>
+          <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, lineHeight: 1.05, color: '#0f172a' }}>
             {value}
           </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>{subtitle}</div>
+          <div style={{ marginTop: 6, fontSize: 11, color: '#64748b' }}>{subtitle}</div>
         </div>
         <div
           style={{
-            width: 52,
-            height: 52,
-            borderRadius: 18,
+            width: 46,
+            height: 46,
+            borderRadius: 16,
             background: iconBg,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            fontSize: 22,
+            fontSize: 20,
             flexShrink: 0,
-            boxShadow: '0 10px 24px rgba(15,23,42,0.12)',
+            boxShadow: '0 8px 18px rgba(15,23,42,0.10)',
           }}
         >
           {icon}
@@ -691,13 +691,6 @@ export default function InstallationProjectsPage() {
       render: (v) => v || '-',
     },
     {
-      title: 'Venda',
-      dataIndex: 'saleDate',
-      key: 'saleDate',
-      width: 120,
-      render: (v) => formatDate(v),
-    },
-    {
       title: 'Produtos',
       key: 'items',
       width: 260,
@@ -715,25 +708,6 @@ export default function InstallationProjectsPage() {
         ),
     },
     {
-      title: 'Equip.',
-      key: 'equipmentsTotal',
-      width: 90,
-      align: 'center',
-      render: (_, r) => r.equipmentsTotal ?? r.trucksTotal ?? '-',
-    },
-    {
-      title: 'Técnico / Prestador',
-      key: 'technician',
-      width: 220,
-      render: (_, r) => getTechnicianLabel(r),
-    },
-    {
-      title: 'Supervisor',
-      key: 'supervisor',
-      width: 170,
-      render: (_, r) => r.supervisor?.name || (r.supervisorId ? `#${r.supervisorId}` : '-'),
-    },
-    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
@@ -744,29 +718,10 @@ export default function InstallationProjectsPage() {
 
   const projectColumns: ColumnsType<InstallationProject> = [
     ...commonColumns,
-    {
-      title: 'Início',
-      key: 'start',
-      width: 120,
-      render: (_, r) => formatDate(r.startPlannedAt),
-    },
-    {
-      title: 'Fim',
-      key: 'end',
-      width: 120,
-      render: (_, r) => formatDate(r.endPlannedAt),
-    },
   ];
 
   const baseColumns: ColumnsType<InstallationProject> = [
     ...commonColumns,
-    {
-      title: 'Lote',
-      dataIndex: 'importBatch',
-      key: 'importBatch',
-      width: 170,
-      render: (v) => v || '-',
-    },
     {
       title: 'Ações',
       key: 'actions',
@@ -887,11 +842,13 @@ const tabItems = [
     ) : (
       <Table
         rowKey="id"
+        sticky
+        size="small"
         loading={projectsQuery.isLoading}
         dataSource={filteredRows}
         columns={projectColumns}
-        scroll={{ x: 1600 }}
-        pagination={{ pageSize: 10 }}
+        scroll={{ x: 1280 }}
+        pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
       />
     ),
   },
@@ -986,11 +943,13 @@ const tabItems = [
     ) : (
       <Table
         rowKey="id"
+        sticky
+        size="small"
         loading={projectsQuery.isLoading}
         dataSource={filteredRows}
         columns={baseColumns}
-        scroll={{ x: 1850 }}
-        pagination={{ pageSize: 10 }}
+        scroll={{ x: 1380 }}
+        pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
       />
     ),
   },
@@ -999,29 +958,33 @@ const tabItems = [
   return (
     <div
       style={{
-        display: 'grid',
-        gap: isMobile ? 12 : 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: isMobile ? 12 : 14,
         maxWidth: '100%',
+        minHeight: 0,
         overflowX: 'hidden',
+        overflowY: 'auto',
         padding: isMobile ? 0 : 4,
       }}
     >
       <Card
         bordered={false}
         style={{
-          borderRadius: 28,
+          borderRadius: 26,
           background: 'linear-gradient(135deg, #0f172a 0%, #1d4ed8 58%, #3b82f6 100%)',
-          boxShadow: '0 20px 40px rgba(15,23,42,0.16)',
+          boxShadow: '0 18px 34px rgba(15,23,42,0.14)',
           overflow: 'hidden',
+          flexShrink: 0,
         }}
-        styles={{ body: { padding: isMobile ? 18 : 26 } }}
+        styles={{ body: { padding: isMobile ? 16 : 20 } }}
       >
         <div
           style={{
             display: 'flex',
             alignItems: isMobile ? 'flex-start' : 'center',
             justifyContent: 'space-between',
-            gap: 16,
+            gap: 12,
             flexDirection: isMobile ? 'column' : 'row',
           }}
         >
@@ -1037,53 +1000,58 @@ const tabItems = [
                 color: '#dbeafe',
                 fontSize: 12,
                 fontWeight: 800,
-                marginBottom: 12,
+                marginBottom: 10,
               }}
             >
               <ProjectOutlined />
               Gestão operacional
             </div>
 
-            <Typography.Title level={2} style={{ margin: 0, color: '#fff' }}>
+            <Typography.Title level={2} style={{ margin: 0, color: '#fff', fontSize: isMobile ? 28 : 22, lineHeight: 1.15 }}>
               Projetos de Instalação
             </Typography.Title>
 
             <Typography.Paragraph
               style={{
-                margin: '10px 0 0',
+                margin: '8px 0 0',
                 color: 'rgba(255,255,255,0.82)',
-                maxWidth: 760,
+                maxWidth: 700,
+                fontSize: isMobile ? 13 : 14,
               }}
             >
               Visualize a base importada, acompanhe projetos ativos e mova registros da base para projetos com mais clareza.
             </Typography.Paragraph>
           </div>
 
-          <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
+          <Space size={[8, 8]} wrap style={{ width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'stretch' : 'flex-end' }}>
             <Button
               onClick={() => navigate('/projetos-instalacao/geolocalizacao')}
-              style={{ borderRadius: 14 }}
+              size={isMobile ? 'middle' : 'middle'}
+              style={{ borderRadius: 14, minHeight: 38 }}
             >
               Geolocalização
             </Button>
             <Button
               icon={<ReloadOutlined />}
               onClick={() => projectsQuery.refetch()}
-              style={{ borderRadius: 14 }}
+              size={isMobile ? 'middle' : 'middle'}
+              style={{ borderRadius: 14, minHeight: 38 }}
             >
               Atualizar
             </Button>
             <Button
               icon={<BarChartOutlined />}
               onClick={() => navigate('/projetos-instalacao/dashboard')}
-              style={{ borderRadius: 14 }}
+              size={isMobile ? 'middle' : 'middle'}
+              style={{ borderRadius: 14, minHeight: 38 }}
             >
               Dashboard
             </Button>
             <Button
               icon={<UploadOutlined />}
               onClick={() => setImportOpen(true)}
-              style={{ borderRadius: 14 }}
+              size={isMobile ? 'middle' : 'middle'}
+              style={{ borderRadius: 14, minHeight: 38 }}
             >
               Importar BASE
             </Button>
@@ -1091,7 +1059,8 @@ const tabItems = [
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => setOpen(true)}
-              style={{ borderRadius: 14, fontWeight: 700 }}
+              size={isMobile ? 'middle' : 'middle'}
+              style={{ borderRadius: 14, fontWeight: 700, minHeight: 38 }}
             >
               Novo Projeto
             </Button>
@@ -1102,8 +1071,9 @@ const tabItems = [
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, minmax(0, 1fr))',
-          gap: 14,
+          gridTemplateColumns: isMobile ? '1fr' : activeTab === 'PROJECT' ? 'repeat(3, minmax(0, 1fr))' : 'repeat(1, minmax(0, 320px))',
+          gap: 12,
+          flexShrink: 0,
         }}
       >
         {activeTab === 'PROJECT' && (
@@ -1177,15 +1147,18 @@ const tabItems = [
         style={{
           borderRadius: 24,
           boxShadow: '0 14px 32px rgba(15,23,42,0.06)',
+          display: 'flex',
+          flexDirection: 'column',
         }}
-        styles={{ body: { padding: isMobile ? 12 : 20 } }}
+        styles={{ body: { padding: isMobile ? 12 : 18, display: 'flex', flexDirection: 'column' } }}
       >
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : '1.15fr 0.7fr 320px',
-            gap: 12,
-            marginBottom: 18,
+            gap: 10,
+            marginBottom: 12,
+            flexShrink: 0,
           }}
         >
           <Input
@@ -1230,14 +1203,16 @@ const tabItems = [
           />
         </div>
 
-        <Tabs
-          activeKey={activeTab}
-          onChange={(key) => {
-            setActiveTab(key as RecordType);
-            setVisibleCount(6);
-          }}
-          items={tabItems}
-        />
+        <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => {
+              setActiveTab(key as RecordType);
+              setVisibleCount(6);
+            }}
+            items={tabItems}
+          />
+        </div>
       </Card>
 
       <Modal

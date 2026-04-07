@@ -13,8 +13,6 @@ import {
   message,
   Card,
   Progress,
-  Row,
-  Col,
 } from 'antd';
 import {
   CameraOutlined,
@@ -83,11 +81,11 @@ function Requirement({ ok, text }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {ok ? (
-        <CheckCircleFilled style={{ color: '#16a34a' }} />
+        <CheckCircleFilled style={{ color: '#16a34a', fontSize: 15 }} />
       ) : (
-        <CloseCircleFilled style={{ color: '#dc2626' }} />
+        <CloseCircleFilled style={{ color: '#dc2626', fontSize: 15 }} />
       )}
-      <Text style={{ color: ok ? '#166534' : '#991b1b' }}>{text}</Text>
+      <Text style={{ color: ok ? '#166534' : '#991b1b', fontSize: 13 }}>{text}</Text>
     </div>
   );
 }
@@ -215,119 +213,169 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
       open={open}
       onCancel={onClose}
       footer={null}
-      width={760}
-      title="Meu Perfil"
+      width={910}
+      title={<span style={{ fontSize: 16, fontWeight: 720 }}>Meu Perfil</span>}
       destroyOnHidden
+      centered
+      styles={{
+        content: {
+          maxWidth: '96vw',
+          overflow: 'hidden',
+          borderRadius: 16,
+        },
+        body: {
+          paddingTop: 12,
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+        },
+      }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          marginBottom: 20,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Avatar
-          size={88}
-          src={avatarSrc}
-          icon={<UserOutlined />}
-          style={{ background: '#1F71B8' }}
-        />
+      <div style={{ width: '100%', overflowX: 'hidden' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto',
+            gap: 14,
+            alignItems: 'center',
+            marginBottom: 14,
+          }}
+        >
+          <Avatar
+            size={74}
+            src={avatarSrc}
+            icon={<UserOutlined />}
+            style={{ background: '#1F71B8', flexShrink: 0 }}
+          />
 
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#16324F' }}>
-            {profile?.name || 'Usuário'}
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: '#16324F',
+                lineHeight: 1.2,
+                marginBottom: 6,
+              }}
+            >
+              {profile?.name || 'Usuário'}
+            </div>
+
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                <MailOutlined style={{ marginRight: 8 }} />
+                {profile?.email || '-'}
+              </Text>
+
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                <PhoneOutlined style={{ marginRight: 8 }} />
+                {profile?.phone ? formatPhone(profile.phone) : 'Sem telefone'}
+              </Text>
+
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                Cargo: {displayCargo}
+              </Text>
+            </Space>
           </div>
 
-          <Space direction="vertical" size={2} style={{ marginTop: 6 }}>
-            <Text type="secondary">
-              <MailOutlined style={{ marginRight: 8 }} />
-              {profile?.email || '-'}
-            </Text>
-
-            <Text type="secondary">
-              <PhoneOutlined style={{ marginRight: 8 }} />
-              {profile?.phone ? formatPhone(profile.phone) : 'Sem telefone'}
-            </Text>
-
-            <Text type="secondary">Cargo: {displayCargo}</Text>
-          </Space>
+          <Upload
+            accept=".jpg,.jpeg,.png,.webp"
+            showUploadList={false}
+            customRequest={customUpload}
+            disabled={uploading}
+          >
+            <Button
+              icon={<CameraOutlined />}
+              loading={uploading}
+              size="middle"
+              style={{ borderRadius: 10 }}
+            >
+              Alterar foto
+            </Button>
+          </Upload>
         </div>
 
-        <Upload
-          accept=".jpg,.jpeg,.png,.webp"
-          showUploadList={false}
-          customRequest={customUpload}
-          disabled={uploading}
-        >
-          <Button icon={<CameraOutlined />} loading={uploading}>
-            Alterar foto
-          </Button>
-        </Upload>
-      </div>
+        <Divider style={{ margin: '10px 0 14px' }} />
 
-      <Divider />
+        <Tabs
+          defaultActiveKey="perfil"
+          items={[
+            {
+              key: 'perfil',
+              label: 'Perfil',
+              children: (
+                <Card bordered={false} styles={{ body: { padding: 0 } }}>
+                  <Form form={profileForm} layout="vertical" disabled={loading}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gap: 12,
+                      }}
+                    >
+                      <Form.Item label="Nome" style={{ marginBottom: 8 }}>
+                        <Input value={profile?.name || ''} disabled size="large" />
+                      </Form.Item>
 
-      <Tabs
-        defaultActiveKey="perfil"
-        items={[
-          {
-            key: 'perfil',
-            label: 'Perfil',
-            children: (
-              <Card bordered={false} styles={{ body: { padding: 0 } }}>
-                <Form form={profileForm} layout="vertical" disabled={loading}>
-                  <Form.Item label="Nome">
-                    <Input value={profile?.name || ''} disabled />
-                  </Form.Item>
+                      <Form.Item label="E-mail" style={{ marginBottom: 8 }}>
+                        <Input value={profile?.email || ''} disabled size="large" />
+                      </Form.Item>
 
-                  <Form.Item label="E-mail">
-                    <Input value={profile?.email || ''} disabled />
-                  </Form.Item>
+                      <Form.Item label="Cargo" style={{ marginBottom: 8 }}>
+                        <Input value={displayCargo} disabled size="large" />
+                      </Form.Item>
 
-                  <Form.Item label="Cargo">
-                    <Input value={displayCargo} disabled />
-                  </Form.Item>
+                      <Form.Item
+                        label="Telefone"
+                        name="phone"
+                        style={{ marginBottom: 8 }}
+                        rules={[{ required: true, message: 'Informe o telefone' }]}
+                        getValueFromEvent={(e) => formatPhone(e?.target?.value || '')}
+                      >
+                        <Input placeholder="(11) 99999-9999" maxLength={15} size="large" />
+                      </Form.Item>
+                    </div>
 
-                  <Form.Item
-                    label="Telefone"
-                    name="phone"
-                    rules={[{ required: true, message: 'Informe o telefone' }]}
-                    getValueFromEvent={(e) => formatPhone(e?.target?.value || '')}
-                  >
-                    <Input placeholder="(11) 99999-9999" maxLength={15} />
-                  </Form.Item>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                    <Button type="primary" onClick={handleSaveProfile} loading={savingProfile}>
-                      Salvar perfil
-                    </Button>
-                  </div>
-                </Form>
-              </Card>
-            ),
-          },
-          {
-            key: 'seguranca',
-            label: 'Segurança',
-            children: (
-              <Row gutter={[16, 16]} align="top">
-                <Col xs={24} lg={15}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <Button
+                        type="primary"
+                        onClick={handleSaveProfile}
+                        loading={savingProfile}
+                        style={{ borderRadius: 10, minWidth: 150 }}
+                      >
+                        Salvar perfil
+                      </Button>
+                    </div>
+                  </Form>
+                </Card>
+              ),
+            },
+            {
+              key: 'seguranca',
+              label: 'Segurança',
+              children: (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.4fr 1fr',
+                    gap: 12,
+                    alignItems: 'start',
+                  }}
+                >
                   <Card
                     bordered={false}
                     style={{
-                      borderRadius: 16,
+                      borderRadius: 14,
                       border: '1px solid #eef2f7',
-                      boxShadow: '0 6px 24px rgba(15, 23, 42, 0.04)',
-                      height: '100%',
+                      boxShadow: '0 6px 20px rgba(15, 23, 42, 0.04)',
                     }}
+                    styles={{ body: { padding: 16 } }}
                   >
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#16324F' }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#16324F' }}>
                         Alterar senha
                       </div>
-                      <Text type="secondary">
+                      <Text type="secondary" style={{ fontSize: 13 }}>
                         Escolha uma senha forte para proteger sua conta.
                       </Text>
                     </div>
@@ -336,14 +384,16 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                       <Form.Item
                         label="Senha atual"
                         name="currentPassword"
+                        style={{ marginBottom: 12 }}
                         rules={[{ required: true, message: 'Informe a senha atual' }]}
                       >
-                        <Input.Password placeholder="Digite sua senha atual" />
+                        <Input.Password placeholder="Digite sua senha atual" size="large" />
                       </Form.Item>
 
                       <Form.Item
                         label="Nova senha"
                         name="newPassword"
+                        style={{ marginBottom: 12 }}
                         rules={[
                           { required: true, message: 'Informe a nova senha' },
                           {
@@ -359,12 +409,13 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                           },
                         ]}
                       >
-                        <Input.Password placeholder="Digite a nova senha" />
+                        <Input.Password placeholder="Digite a nova senha" size="large" />
                       </Form.Item>
 
                       <Form.Item
                         label="Confirmar nova senha"
                         name="confirmPassword"
+                        style={{ marginBottom: 12 }}
                         dependencies={['newPassword']}
                         rules={[
                           { required: true, message: 'Confirme a nova senha' },
@@ -378,10 +429,10 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                           }),
                         ]}
                       >
-                        <Input.Password placeholder="Confirme a nova senha" />
+                        <Input.Password placeholder="Confirme a nova senha" size="large" />
                       </Form.Item>
 
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
                         <Button
                           type="primary"
                           icon={<LockOutlined />}
@@ -389,7 +440,7 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                           loading={savingPassword}
                           style={{
                             borderRadius: 10,
-                            minWidth: 170,
+                            minWidth: 160,
                           }}
                         >
                           Alterar senha
@@ -397,26 +448,25 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                       </div>
                     </Form>
                   </Card>
-                </Col>
 
-                <Col xs={24} lg={9}>
                   <Card
                     bordered={false}
                     style={{
                       background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
                       border: '1px solid #dbeafe',
-                      borderRadius: 16,
-                      boxShadow: '0 6px 24px rgba(37, 99, 235, 0.06)',
+                      borderRadius: 14,
+                      boxShadow: '0 6px 20px rgba(37, 99, 235, 0.06)',
                     }}
+                    styles={{ body: { padding: 16 } }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                      <SafetyCertificateOutlined style={{ fontSize: 20, color: '#2563eb' }} />
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#16324F' }}>
+                      <SafetyCertificateOutlined style={{ fontSize: 18, color: '#2563eb' }} />
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#16324F' }}>
                         Regras da senha
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
                       <Requirement ok={passwordChecks.minLength} text="Pelo menos 8 caracteres" />
                       <Requirement ok={passwordChecks.upper} text="1 letra maiúscula" />
                       <Requirement ok={passwordChecks.lower} text="1 letra minúscula" />
@@ -440,23 +490,28 @@ export default function ProfileModal({ open, onClose, currentUser, onUpdated }) 
                           marginBottom: 8,
                         }}
                       >
-                        <Text strong>Força</Text>
-                        <Text type="secondary">{passwordStrength.label}</Text>
+                        <Text strong style={{ fontSize: 13 }}>
+                          Força
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 13 }}>
+                          {passwordStrength.label}
+                        </Text>
                       </div>
 
                       <Progress
                         percent={passwordStrength.percent}
                         showInfo={false}
                         strokeLinecap="round"
+                        size="small"
                       />
                     </div>
                   </Card>
-                </Col>
-              </Row>
-            ),
-          },
-        ]}
-      />
+                </div>
+              ),
+            },
+          ]}
+        />
+      </div>
     </Modal>
   );
 }
