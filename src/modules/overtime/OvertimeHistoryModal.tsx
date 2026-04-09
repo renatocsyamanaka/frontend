@@ -47,7 +47,7 @@ export default function OvertimeHistoryModal({ open, onClose, month, user }: Pro
   });
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} title="Alterações" width={720} destroyOnClose>
+    <Modal open={open} onCancel={onClose} footer={null} title="Alterações" width={720} destroyOnHidden>
       {!user ? (
         <Empty description="Selecione um técnico" />
       ) : isLoading ? (

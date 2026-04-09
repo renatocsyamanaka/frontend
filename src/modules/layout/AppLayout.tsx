@@ -15,6 +15,7 @@ import {
   MenuOutlined,
   EnvironmentOutlined,
   UserOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -111,7 +112,8 @@ export function AppLayout() {
 
   const siderWidth = 280;
   const siderCollapsedWidth = 84;
-  const collapsedSidebar = !sidebarHovered;
+
+  const collapsedSidebar = !isMobile && !sidebarHovered;
 
   getUserLevel(user);
 
@@ -134,12 +136,6 @@ export function AppLayout() {
       setDrawerOpen(false);
     }
   }, [location.pathname, isMobile]);
-
-  useEffect(() => {
-    if (collapsedSidebar && !isMobile) {
-      setOpenMenuKeys([]);
-    }
-  }, [collapsedSidebar, isMobile]);
 
   const menuConfig: MenuConfigGroup[] = [
     {
@@ -174,6 +170,19 @@ export function AppLayout() {
       ],
     },
     {
+      key: 'group-prospeccao',
+      label: 'Prospecção',
+      icon: <FileSearchOutlined />,
+      children: [
+        {
+          key: '/requisicoes',
+          label: 'Prospecção / Homologação',
+          icon: <FileSearchOutlined />,
+          permission: 'NEEDS_VIEW',
+        },
+      ],
+    },
+    {
       key: 'group-planejamento',
       label: 'Planejamento',
       icon: <ProfileOutlined />,
@@ -197,9 +206,24 @@ export function AppLayout() {
       label: 'Pessoas',
       icon: <TeamOutlined />,
       children: [
-        { key: '/colaboradores', label: 'Usuários', icon: <TeamOutlined />, permission: 'USERS_VIEW' },
-        { key: '/organograma', label: 'Organograma', icon: <ClusterOutlined />, permission: 'ORG_VIEW' },
-        { key: '/clientes', label: 'Clientes', icon: <ToolOutlined />, permission: 'CLIENTS_VIEW' },
+        {
+          key: '/colaboradores',
+          label: 'Usuários',
+          icon: <TeamOutlined />,
+          permission: 'USERS_VIEW',
+        },
+        {
+          key: '/organograma',
+          label: 'Organograma',
+          icon: <ClusterOutlined />,
+          permission: 'ORG_VIEW',
+        },
+        {
+          key: '/clientes',
+          label: 'Clientes',
+          icon: <ToolOutlined />,
+          permission: 'CLIENTS_VIEW',
+        },
       ],
     },
     {
@@ -226,7 +250,12 @@ export function AppLayout() {
           icon: <DatabaseOutlined />,
           permission: 'DELIVERY_REPORTS_VIEW',
         },
-        { key: '/noticias', label: 'Notícias', icon: <NotificationOutlined />, permission: 'NEWS_VIEW' },
+        {
+          key: '/noticias',
+          label: 'Notícias',
+          icon: <NotificationOutlined />,
+          permission: 'NEWS_VIEW',
+        },
         {
           key: '/noticias-admin',
           label: 'Administração de Notícias',
@@ -247,6 +276,46 @@ export function AppLayout() {
   }, [user]);
 
   const groupKeys = useMemo(() => visibleMenuConfig.map((group) => group.key), [visibleMenuConfig]);
+
+  const selectedKey = useMemo(() => {
+    const pathname = location.pathname;
+    const childKeys = visibleMenuConfig.flatMap((group) => group.children.map((item) => item.key));
+    const dashboardKeys = hasPermission(user, 'DASHBOARD_VIEW') ? ['/'] : [];
+    const allKeys = [...dashboardKeys, ...childKeys];
+
+    const found = allKeys
+      .sort((a, b) => b.length - a.length)
+      .find((key) => (key === '/' ? pathname === '/' : pathname.startsWith(key)));
+
+    return found ? [found] : [];
+  }, [location.pathname, visibleMenuConfig, user]);
+
+  const parentGroupKey = useMemo(() => {
+    const pathname = location.pathname;
+
+    const foundGroup = visibleMenuConfig.find((group) =>
+      group.children.some((item) => (item.key === '/' ? pathname === '/' : pathname.startsWith(item.key)))
+    );
+
+    return foundGroup?.key ? [foundGroup.key] : [];
+  }, [location.pathname, visibleMenuConfig]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setOpenMenuKeys(parentGroupKey);
+      return;
+    }
+
+    if (collapsedSidebar) {
+      setOpenMenuKeys([]);
+      return;
+    }
+
+    setOpenMenuKeys((prev) => {
+      if (prev.length > 0) return prev;
+      return parentGroupKey;
+    });
+  }, [isMobile, collapsedSidebar, parentGroupKey]);
 
   const menuItems = useMemo<MenuProps['items']>(() => {
     const dashboardItem = hasPermission(user, 'DASHBOARD_VIEW')
@@ -291,35 +360,29 @@ export function AppLayout() {
     return [...dashboardItem, ...groupedItems];
   }, [visibleMenuConfig, isMobile, user]);
 
-  const selectedKey = useMemo(() => {
-    const pathname = location.pathname;
-    const childKeys = visibleMenuConfig.flatMap((group) => group.children.map((item) => item.key));
-    const dashboardKeys = hasPermission(user, 'DASHBOARD_VIEW') ? ['/'] : [];
-    const allKeys = [...dashboardKeys, ...childKeys];
-
-    const found = allKeys
-      .sort((a, b) => b.length - a.length)
-      .find((key) => (key === '/' ? pathname === '/' : pathname.startsWith(key)));
-
-    return found ? [found] : [];
-  }, [location.pathname, visibleMenuConfig, user]);
-
   const handleMenuOpenChange: MenuProps['onOpenChange'] = (keys) => {
-    if (collapsedSidebar && !isMobile) {
+    const normalizedKeys = keys.map(String);
+
+    if (!isMobile && collapsedSidebar) {
       return;
     }
 
-    const latest = keys.find((key) => !openMenuKeys.includes(String(key)));
+    if (isMobile) {
+      setOpenMenuKeys(normalizedKeys);
+      return;
+    }
+
+    const latest = normalizedKeys.find((key) => !openMenuKeys.includes(key));
 
     if (!latest) {
-      setOpenMenuKeys(keys.map(String));
+      setOpenMenuKeys(normalizedKeys);
       return;
     }
 
-    if (groupKeys.includes(String(latest))) {
-      setOpenMenuKeys([String(latest)]);
+    if (groupKeys.includes(latest)) {
+      setOpenMenuKeys([latest]);
     } else {
-      setOpenMenuKeys(keys.map(String));
+      setOpenMenuKeys(normalizedKeys);
     }
   };
 
@@ -353,19 +416,23 @@ export function AppLayout() {
       overflow: hidden;
       transition: all 0.22s ease;
     }
+
     .brand-sidebar.is-collapsed .brand-sidebar-logo-text,
     .brand-sidebar.is-collapsed .brand-sidebar-section-title,
     .brand-sidebar.is-collapsed .brand-sidebar-footer-text {
       display: none !important;
     }
+
     .brand-sidebar.is-collapsed .brand-sidebar-header {
       justify-content: center !important;
       padding-inline: 10px !important;
     }
+
     .brand-sidebar.is-collapsed .brand-scroll {
       padding-left: 6px;
       padding-right: 6px;
     }
+
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title,
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-item {
       padding-inline: 0 !important;
@@ -373,31 +440,40 @@ export function AppLayout() {
       align-items: center !important;
       justify-content: center !important;
     }
+
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-title-content {
       opacity: 0;
       width: 0;
       overflow: hidden;
       display: none !important;
     }
+
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-arrow {
       display: none !important;
     }
+
     .brand-sidebar.is-collapsed .logout-menu .ant-menu-item {
       padding-inline: 0 !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
     }
+
     .brand-sidebar.is-collapsed .logout-menu .ant-menu-title-content {
       display: none !important;
     }
+
     .brand-sidebar.is-collapsed .logout-menu .ant-menu-item .ant-menu-item-icon,
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-item .ant-menu-item-icon,
     .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
       margin-inline-end: 0 !important;
       font-size: 20px !important;
     }
-    .brand-menu .ant-menu-submenu { margin: 6px 0 !important; }
+
+    .brand-menu .ant-menu-submenu {
+      margin: 6px 0 !important;
+    }
+
     .brand-menu .ant-menu-submenu-title {
       height: 48px !important;
       line-height: 48px !important;
@@ -408,13 +484,16 @@ export function AppLayout() {
       padding-inline: 14px !important;
       transition: all 0.2s ease;
     }
+
     .brand-menu .ant-menu-submenu-title:hover {
       background: ${HOVER_BG} !important;
       color: #ffffff !important;
     }
+
     .brand-menu .ant-menu-sub {
       background: transparent !important;
     }
+
     .brand-menu .ant-menu-sub .ant-menu-item {
       height: 42px !important;
       line-height: 42px !important;
@@ -423,12 +502,15 @@ export function AppLayout() {
       font-size: 14px;
       font-weight: 600;
     }
+
     .brand-menu .ant-menu-submenu-arrow {
       color: ${TEXT_SECONDARY} !important;
     }
+
     .brand-menu .ant-menu-submenu-open > .ant-menu-submenu-title {
       background: rgba(255,255,255,0.05) !important;
     }
+
     .brand-scroll {
       flex: 1;
       overflow-y: auto;
@@ -436,22 +518,33 @@ export function AppLayout() {
       scrollbar-width: thin;
       scrollbar-color: rgba(31, 113, 184, 0.75) transparent;
     }
-    .brand-scroll::-webkit-scrollbar { width: 8px; }
-    .brand-scroll::-webkit-scrollbar-track { background: transparent; margin: 10px 0; }
+
+    .brand-scroll::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .brand-scroll::-webkit-scrollbar-track {
+      background: transparent;
+      margin: 10px 0;
+    }
+
     .brand-scroll::-webkit-scrollbar-thumb {
       background: linear-gradient(180deg, rgba(31, 113, 184, 0.85), rgba(31, 113, 184, 0.45));
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.08);
     }
+
     .brand-scroll::-webkit-scrollbar-thumb:hover {
       background: linear-gradient(180deg, rgba(31, 113, 184, 1), rgba(31, 113, 184, 0.65));
     }
+
     .brand-menu.ant-menu {
       background: transparent !important;
       border-inline-end: none !important;
       color: ${TEXT_SECONDARY} !important;
       padding: 0 !important;
     }
+
     .brand-menu .ant-menu-item {
       height: 48px;
       line-height: 48px;
@@ -463,34 +556,42 @@ export function AppLayout() {
       transition: all 0.2s ease;
       padding-inline: 14px !important;
     }
+
     .brand-menu .ant-menu-item .ant-menu-title-content a {
       color: inherit !important;
     }
+
     .brand-menu .ant-menu-item .ant-menu-item-icon,
     .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
       color: ${TEXT_SECONDARY} !important;
       font-size: 18px;
     }
+
     .brand-menu .ant-menu-item:hover {
       background: ${HOVER_BG} !important;
       color: ${TEXT_PRIMARY} !important;
     }
+
     .brand-menu .ant-menu-item:hover .ant-menu-item-icon,
     .brand-menu .ant-menu-submenu-title:hover .ant-menu-item-icon {
       color: #ffffff !important;
     }
+
     .brand-menu .ant-menu-item-selected {
       background: linear-gradient(135deg, ${ACTIVE_BG} 0%, #2f89d8 100%) !important;
       color: #ffffff !important;
       box-shadow: 0 10px 24px rgba(31, 113, 184, 0.32);
     }
+
     .brand-menu .ant-menu-item-selected .ant-menu-item-icon {
       color: #ffffff !important;
     }
+
     .logout-menu.ant-menu {
       background: transparent !important;
       border-inline-end: none !important;
     }
+
     .logout-menu .ant-menu-item {
       height: 48px;
       line-height: 48px;
@@ -500,13 +601,16 @@ export function AppLayout() {
       font-weight: 700;
       padding-inline: 14px !important;
     }
+
     .logout-menu .ant-menu-item:hover {
       background: rgba(239, 68, 68, 0.16) !important;
       color: #ffffff !important;
     }
+
     .logout-menu .ant-menu-item .ant-menu-item-icon {
       color: inherit !important;
     }
+
     .header-bell-wrap {
       height: 40px;
       padding: 0 12px;
@@ -520,15 +624,18 @@ export function AppLayout() {
       transition: all 0.2s ease;
       user-select: none;
     }
+
     .header-bell-wrap:hover {
       background: #e5f1ff;
       border-color: #bdd8f7;
     }
+
     .header-bell-text {
       font-size: 13px;
       font-weight: 700;
       color: #16324F;
     }
+
     .header-profile-btn {
       height: 40px !important;
       border-radius: 999px !important;
@@ -536,15 +643,18 @@ export function AppLayout() {
       background: #ffffff !important;
       box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
     }
+
     .header-profile-btn:hover {
       border-color: #c5d9ec !important;
       background: #f9fcff !important;
     }
+
     .header-logout-btn {
       height: 40px !important;
       border-radius: 999px !important;
       box-shadow: 0 6px 14px rgba(239, 68, 68, 0.12);
     }
+
     .app-layout-content-scroll {
       min-height: 0;
     }
@@ -597,7 +707,7 @@ export function AppLayout() {
             theme="dark"
             mode="inline"
             selectedKeys={selectedKey}
-            openKeys={collapsedSidebar && !isMobile ? [] : openMenuKeys}
+            openKeys={collapsedSidebar ? [] : openMenuKeys}
             onOpenChange={handleMenuOpenChange}
             inlineCollapsed={collapsedSidebar}
             items={menuItems}
@@ -665,6 +775,8 @@ export function AppLayout() {
           onClose={() => setDrawerOpen(false)}
           placement="left"
           width={300}
+          maskClosable
+          closable={false}
           styles={{
             body: { padding: 0, background: SIDEBAR_BG },
             header: { display: 'none' },

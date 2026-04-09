@@ -277,7 +277,7 @@ function SummaryCard({
 }) {
   return (
     <Card
-      bordered={false}
+      variant={false}
       style={{
         borderRadius: 22,
         background: bg,
@@ -969,7 +969,7 @@ const tabItems = [
       }}
     >
       <Card
-        bordered={false}
+        variant={false}
         style={{
           borderRadius: 26,
           background: 'linear-gradient(135deg, #0f172a 0%, #1d4ed8 58%, #3b82f6 100%)',
@@ -1119,7 +1119,7 @@ const tabItems = [
       </div>
 
       <Card
-        bordered={false}
+        variant={false}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div
@@ -1603,7 +1603,7 @@ const tabItems = [
         </Space.Compact>
 
         <List
-          bordered
+          variant
           locale={{ emptyText: geoLoading ? 'Buscando...' : 'Nenhum resultado' }}
           dataSource={geoResults}
           renderItem={(item: GeocodeResult) => (

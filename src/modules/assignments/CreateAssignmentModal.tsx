@@ -51,7 +51,7 @@ export default function CreateAssignmentModal({ open, onClose, onCreated, defaul
       onCancel={() => { form.resetFields(); onClose(); }}
       onOk={() => form.submit()}
       okText="Salvar"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         layout="vertical"

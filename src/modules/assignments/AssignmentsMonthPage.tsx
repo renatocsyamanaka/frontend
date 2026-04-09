@@ -154,7 +154,7 @@ const { data: assignments = [], isLoading, refetch } = useQuery<Assignment[]>({
           onChange={(v) => v && setMonth(v.startOf('month'))}
           fullscreen
           headerRender={() => null}
-          dateCellRender={(value) => {
+          cellRender={(value) => {
             const key = value.format('YYYY-MM-DD');
             const items = byDay.get(key) || [];
             if (!items.length) {

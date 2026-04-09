@@ -24,7 +24,7 @@ export default function ProjectWhatsAppModal({
         const values = await form.validateFields();
         onSave({ name: values.name || '', link: values.link || '' });
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical" form={form} initialValues={{ name: initial.name, link: initial.link }}>
         <Form.Item name="name" label="Nome do grupo">

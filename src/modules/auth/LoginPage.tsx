@@ -257,7 +257,7 @@ export function LoginPage() {
         okText="Enviar solicitação"
         cancelText="Cancelar"
         confirmLoading={sendingSignup}
-        destroyOnClose
+        destroyOnHidden
         width={isMobile ? '100%' : 760}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >

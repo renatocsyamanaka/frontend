@@ -177,7 +177,7 @@ export default function HeaderTasksBell({
       open={open}
       onOpenChange={setOpen}
       trigger={['click']}
-      dropdownRender={() => menuContent}
+      popupRender={() => menuContent}
       placement="bottomRight"
       overlayStyle={{
         paddingTop: 8,

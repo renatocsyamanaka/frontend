@@ -132,7 +132,7 @@ export default function SetOvertimeBalanceModal({
       okText="Salvar"
       cancelText="Cancelar"
       confirmLoading={loading}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item name="userId" label="Técnico" rules={[{ required: true, message: 'Selecione um técnico' }]}>

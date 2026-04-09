@@ -959,19 +959,21 @@ export function UsersPage() {
         overflowX: 'clip',
       }}
     >
-      <Card
-        style={{
-          borderRadius: 24,
-          border: '1px solid #e5e7eb',
-          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
-          width: '100%',
-          maxWidth: '100%',
-          overflow: 'hidden',
-        }}
-        bodyStyle={{
-          padding: isMobile ? 16 : 24,
-        }}
-      >
+        <Card
+          style={{
+            borderRadius: 24,
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
+          }}
+          styles={{
+            body: {
+              padding: isMobile ? 16 : 24,
+            },
+          }}
+        >
         <Row
           gutter={[16, 16]}
           align="middle"
@@ -1129,7 +1131,7 @@ export function UsersPage() {
           boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)',
           overflow: 'hidden',
         }}
-        bodyStyle={{ padding: 16 }}
+        styles={{ body: { padding: 16 } }}
       >
         <Row gutter={[12, 12]} style={{ margin: 0 }}>
           <Col xs={24} md={8} lg={7}>
@@ -1239,11 +1241,13 @@ export function UsersPage() {
                       boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
                       height: '100%',
                     }}
-                    bodyStyle={{
-                      padding: 18,
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
+                    styles={{
+                      body: {
+                        padding: 18,
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                      },
                     }}
                   >
                     <div
@@ -3213,7 +3217,14 @@ export function UsersPage() {
               rowKey={(r) => r.id}
               renderItem={(req) => (
                 <List.Item style={{ paddingInline: 0 }}>
-                  <Card style={{ width: '100%' }} bodyStyle={{ padding: 16 }}>
+                  <Card
+                    style={{ width: '100%' }}
+                    styles={{
+                      body: {
+                        padding: 16,
+                      },
+                    }}
+                  >
                     <Row gutter={[16, 16]}>
                       <Col xs={24} lg={14}>
                         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>

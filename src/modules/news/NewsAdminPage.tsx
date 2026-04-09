@@ -363,7 +363,7 @@ export default function NewsAdminPage() {
         open={open}
         onCancel={handleCloseModal}
         onOk={() => form.submit()}
-        destroyOnClose
+        destroyOnHidden
         okText={isEditing ? 'Salvar' : 'Publicar'}
         width={isMobile ? '96vw' : 720}
         style={isMobile ? { maxWidth: '96vw' } : {}}

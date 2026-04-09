@@ -724,7 +724,7 @@ export default function PublicPartRequestPage() {
         onOk={() => createForm.submit()}
         width={isMobile ? '96vw' : 980}
         confirmLoading={createRequest.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={createForm}

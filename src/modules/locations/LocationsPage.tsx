@@ -222,7 +222,7 @@ export default function LocationsPage() {
         open={openNew}
         onCancel={() => setOpenNew(false)}
         onOk={() => formNew.submit()}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           layout="vertical"
@@ -277,7 +277,7 @@ export default function LocationsPage() {
         open={openEdit}
         onCancel={() => { setOpenEdit(false); setEditing(null); }}
         onOk={() => formEdit.submit()}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           layout="vertical"
