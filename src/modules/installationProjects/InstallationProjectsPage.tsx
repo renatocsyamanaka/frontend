@@ -35,7 +35,6 @@ import {
   SearchOutlined,
   SwapOutlined,
   UploadOutlined,
-  AppstoreOutlined,
   ProjectOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -260,6 +259,15 @@ function getTechnicianLabel(r: InstallationProject) {
   return r.technician?.name || (r.technicianId ? `#${r.technicianId}` : '-');
 }
 
+function getProgressPercent(r: InstallationProject) {
+  const total = Number(r.trucksTotal || 0);
+  const done = Number(r.trucksDone || 0);
+
+  if (!total || total <= 0) return 0;
+
+  return Math.min(100, Math.round((done / total) * 100));
+}
+
 function SummaryCard({
   title,
   value,
@@ -382,30 +390,30 @@ export default function InstallationProjectsPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [allUsers, supervisorSearch]);
 
- const projectsQuery = useQuery<InstallationProject[]>({
-  queryKey: [
-    'installation-projects',
-    activeTab,
-    status,
-    saleDateRange?.[0]?.format('YYYY-MM-DD') || null,
-    saleDateRange?.[1]?.format('YYYY-MM-DD') || null,
-  ],
-  queryFn: async () => {
-    const params: any = {
-      recordType: activeTab, // PROJECT ou BASE
-    };
+  const projectsQuery = useQuery<InstallationProject[]>({
+    queryKey: [
+      'installation-projects',
+      activeTab,
+      status,
+      saleDateRange?.[0]?.format('YYYY-MM-DD') || null,
+      saleDateRange?.[1]?.format('YYYY-MM-DD') || null,
+    ],
+    queryFn: async () => {
+      const params: any = {
+        recordType: activeTab,
+      };
 
-    if (status !== 'TODOS') params.status = status;
-    if (saleDateRange?.[0]) params.saleDateFrom = saleDateRange[0].format('YYYY-MM-DD');
-    if (saleDateRange?.[1]) params.saleDateTo = saleDateRange[1].format('YYYY-MM-DD');
+      if (status !== 'TODOS') params.status = status;
+      if (saleDateRange?.[0]) params.saleDateFrom = saleDateRange[0].format('YYYY-MM-DD');
+      if (saleDateRange?.[1]) params.saleDateTo = saleDateRange[1].format('YYYY-MM-DD');
 
-    const res = await api.get('/installation-projects', { params });
-    return unwrap<InstallationProject[]>(res.data);
-  },
-  retry: false,
-  refetchOnWindowFocus: false,
-  staleTime: 20_000,
-});
+      const res = await api.get('/installation-projects', { params });
+      return unwrap<InstallationProject[]>(res.data);
+    },
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 20_000,
+  });
 
   const createProject = useMutation({
     mutationFn: async (payload: CreateDTO) =>
@@ -691,6 +699,13 @@ export default function InstallationProjectsPage() {
       render: (v) => v || '-',
     },
     {
+      title: 'Data de compra',
+      dataIndex: 'saleDate',
+      key: 'saleDate',
+      width: 130,
+      render: (value) => formatDate(value),
+    },
+    {
       title: 'Produtos',
       key: 'items',
       width: 260,
@@ -706,18 +721,110 @@ export default function InstallationProjectsPage() {
         ) : (
           '-'
         ),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 110,
-      render: (s: Status) => statusTag(s),
-    },
+    },{
+        title: 'Status',
+        dataIndex: 'status',
+        key: 'status',
+        width: 160,
+        render: (s: Status) => {
+          const map = {
+            A_INICIAR: {
+              label: 'À iniciar',
+              bg: '#f8fafc',
+              color: '#475569',
+              border: '#e2e8f0',
+              dot: '#94a3b8',
+            },
+            INICIADO: {
+              label: 'Iniciado',
+              bg: '#eff6ff',
+              color: '#1d4ed8',
+              border: '#bfdbfe',
+              dot: '#2563eb',
+            },
+            FINALIZADO: {
+              label: 'Finalizado',
+              bg: '#f0fdf4',
+              color: '#166534',
+              border: '#bbf7d0',
+              dot: '#22c55e',
+            },
+          } as const;
+
+          const item = map[s];
+
+          return (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                color: item.color,
+                background: item.bg,
+                border: `1px solid ${item.border}`,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: item.dot,
+                }}
+              />
+              {item.label}
+            </div>
+          );
+        },
+      },
   ];
 
   const projectColumns: ColumnsType<InstallationProject> = [
     ...commonColumns,
+        {
+          title: 'Progresso',
+          key: 'progress',
+          width: 220,
+          render: (_, r) => {
+            const percent = getProgressPercent(r);
+
+            return (
+              <div style={{ minWidth: 160 }}>
+                <Typography.Text style={{ fontSize: 12 }}>
+                  {r.trucksDone || 0}/{r.trucksTotal || 0} ({percent}%)
+                </Typography.Text>
+
+                <div
+                  style={{
+                    marginTop: 6,
+                    width: '100%',
+                    height: 8,
+                    background: '#e5e7eb',
+                    borderRadius: 999,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${percent}%`,
+                      height: '100%',
+                      background:
+                        percent >= 100
+                          ? 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)'
+                          : 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+                      borderRadius: 999,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          },
+        },
   ];
 
   const baseColumns: ColumnsType<InstallationProject> = [
@@ -756,204 +863,207 @@ export default function InstallationProjectsPage() {
     },
   ];
 
-const tabItems = [
-  {
-    key: 'PROJECT',
-    label: <span style={{ fontWeight: 700 }}>Projetos</span>,
-    children: isMobile ? (
-      <div style={{ display: 'grid', gap: 12 }}>
-        {projectsQuery.isLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-            <Spin />
-          </div>
-        ) : filteredRows.length ? (
-          <>
-            {pagedRows.map((r) => (
-              <Card
-                key={r.id}
-                size="small"
-                style={{
-                  borderRadius: 18,
-                  border: '1px solid #e2e8f0',
-                  boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <Typography.Text strong>
-                      <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
-                    </Typography.Text>
-                    <div style={{ marginTop: 8 }}>
-                      <Space size={[6, 6]} wrap>
-                        {recordTypeTag(r.recordType)}
-                        {statusTag(r.status)}
-                      </Space>
+  const tabItems = [
+    {
+      key: 'PROJECT',
+      label: <span style={{ fontWeight: 700 }}>Projetos</span>,
+      children: isMobile ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {projectsQuery.isLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+              <Spin />
+            </div>
+          ) : filteredRows.length ? (
+            <>
+              {pagedRows.map((r) => (
+                <Card
+                  key={r.id}
+                  size="small"
+                  style={{
+                    borderRadius: 18,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <Typography.Text strong>
+                        <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                      </Typography.Text>
+                      <div style={{ marginTop: 8 }}>
+                        <Space size={[6, 6]} wrap>
+                          {recordTypeTag(r.recordType)}
+                          {statusTag(r.status)}
+                        </Space>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>AF:</b> {r.af || '-'}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Cliente:</b> {r.client?.name || '-'}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Venda:</b> {formatDate(r.saleDate)}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Técnico:</b> {getTechnicianLabel(r)}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Início:</b> {formatDate(r.startPlannedAt)} {' • '}
-                    <b>Fim:</b> {formatDate(r.endPlannedAt)}
-                  </Typography.Text>
-                </div>
+                  <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>AF:</b> {r.af || '-'}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Cliente:</b> {r.client?.name || '-'}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Data de compra:</b> {formatDate(r.saleDate)}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Técnico:</b> {getTechnicianLabel(r)}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Início:</b> {formatDate(r.startPlannedAt)} {' • '}
+                      <b>Fim:</b> {formatDate(r.endPlannedAt)}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Progresso:</b> {r.trucksDone || 0}/{r.trucksTotal || 0} ({getProgressPercent(r)}%)
+                    </Typography.Text>
+                  </div>
 
-                <div style={{ marginTop: 14 }}>
+                  <div style={{ marginTop: 14 }}>
+                    <Button
+                      block
+                      type="primary"
+                      onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                      style={{ borderRadius: 12 }}
+                    >
+                      Abrir projeto
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+
+              {hasMoreRows && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
                   <Button
-                    block
-                    type="primary"
-                    onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                    onClick={() => setVisibleCount((prev) => prev + 6)}
                     style={{ borderRadius: 12 }}
                   >
-                    Abrir projeto
+                    Carregar mais
                   </Button>
                 </div>
-              </Card>
-            ))}
-
-            {hasMoreRows && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-                <Button
-                  onClick={() => setVisibleCount((prev) => prev + 6)}
-                  style={{ borderRadius: 12 }}
+              )}
+            </>
+          ) : (
+            <Typography.Text type="secondary">Nenhum projeto encontrado.</Typography.Text>
+          )}
+        </div>
+      ) : (
+        <Table
+          rowKey="id"
+          sticky
+          size="small"
+          loading={projectsQuery.isLoading}
+          dataSource={filteredRows}
+          columns={projectColumns}
+          scroll={{ x: 1450 }}
+          pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
+        />
+      ),
+    },
+    {
+      key: 'BASE',
+      label: <span style={{ fontWeight: 700 }}>Base</span>,
+      children: isMobile ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {projectsQuery.isLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+              <Spin />
+            </div>
+          ) : filteredRows.length ? (
+            <>
+              {pagedRows.map((r) => (
+                <Card
+                  key={r.id}
+                  size="small"
+                  style={{
+                    borderRadius: 18,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
+                  }}
                 >
-                  Carregar mais
-                </Button>
-              </div>
-            )}
-          </>
-        ) : (
-          <Typography.Text type="secondary">Nenhum projeto encontrado.</Typography.Text>
-        )}
-      </div>
-    ) : (
-      <Table
-        rowKey="id"
-        sticky
-        size="small"
-        loading={projectsQuery.isLoading}
-        dataSource={filteredRows}
-        columns={projectColumns}
-        scroll={{ x: 1280 }}
-        pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
-      />
-    ),
-  },
-  {
-    key: 'BASE',
-    label: <span style={{ fontWeight: 700 }}>Base</span>,
-    children: isMobile ? (
-      <div style={{ display: 'grid', gap: 12 }}>
-        {projectsQuery.isLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-            <Spin />
-          </div>
-        ) : filteredRows.length ? (
-          <>
-            {pagedRows.map((r) => (
-              <Card
-                key={r.id}
-                size="small"
-                style={{
-                  borderRadius: 18,
-                  border: '1px solid #e2e8f0',
-                  boxShadow: '0 8px 20px rgba(15,23,42,0.05)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <Typography.Text strong>
-                      <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
-                    </Typography.Text>
-                    <div style={{ marginTop: 8 }}>
-                      <Space size={[6, 6]} wrap>
-                        {recordTypeTag(r.recordType)}
-                        {statusTag(r.status)}
-                      </Space>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <Typography.Text strong>
+                        <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                      </Typography.Text>
+                      <div style={{ marginTop: 8 }}>
+                        <Space size={[6, 6]} wrap>
+                          {recordTypeTag(r.recordType)}
+                          {statusTag(r.status)}
+                        </Space>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>AF:</b> {r.af || '-'}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Venda:</b> {formatDate(r.saleDate)}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Lote:</b> {r.importBatch || '-'}
-                  </Typography.Text>
-                  <Typography.Text style={{ fontSize: 12 }}>
-                    <b>Produtos:</b>{' '}
-                    {r.items?.length
-                      ? r.items.map((item) => `${item.equipmentName} (${item.qty})`).join(', ')
-                      : '-'}
-                  </Typography.Text>
-                </div>
+                  <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>AF:</b> {r.af || '-'}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Data de compra:</b> {formatDate(r.saleDate)}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Lote:</b> {r.importBatch || '-'}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Produtos:</b>{' '}
+                      {r.items?.length
+                        ? r.items.map((item) => `${item.equipmentName} (${item.qty})`).join(', ')
+                        : '-'}
+                    </Typography.Text>
+                  </div>
 
-                <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                  <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                    <Button
+                      style={{ borderRadius: 12 }}
+                      onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
+                    >
+                      Abrir
+                    </Button>
+                    <Button
+                      type="primary"
+                      icon={<SwapOutlined />}
+                      loading={convertBase.isPending}
+                      style={{ borderRadius: 12 }}
+                      onClick={() => convertBase.mutate(r.id)}
+                    >
+                      Mover para Projetos
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+
+              {hasMoreRows && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
                   <Button
+                    onClick={() => setVisibleCount((prev) => prev + 6)}
                     style={{ borderRadius: 12 }}
-                    onClick={() => navigate(`/projetos-instalacao/${r.id}`)}
                   >
-                    Abrir
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<SwapOutlined />}
-                    loading={convertBase.isPending}
-                    style={{ borderRadius: 12 }}
-                    onClick={() => convertBase.mutate(r.id)}
-                  >
-                    Mover para Projetos
+                    Carregar mais
                   </Button>
                 </div>
-              </Card>
-            ))}
-
-            {hasMoreRows && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
-                <Button
-                  onClick={() => setVisibleCount((prev) => prev + 6)}
-                  style={{ borderRadius: 12 }}
-                >
-                  Carregar mais
-                </Button>
-              </div>
-            )}
-          </>
-        ) : (
-          <Typography.Text type="secondary">Nenhum registro de base encontrado.</Typography.Text>
-        )}
-      </div>
-    ) : (
-      <Table
-        rowKey="id"
-        sticky
-        size="small"
-        loading={projectsQuery.isLoading}
-        dataSource={filteredRows}
-        columns={baseColumns}
-        scroll={{ x: 1380 }}
-        pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
-      />
-    ),
-  },
-];
+              )}
+            </>
+          ) : (
+            <Typography.Text type="secondary">Nenhum registro de base encontrado.</Typography.Text>
+          )}
+        </div>
+      ) : (
+        <Table
+          rowKey="id"
+          sticky
+          size="small"
+          loading={projectsQuery.isLoading}
+          dataSource={filteredRows}
+          columns={baseColumns}
+          scroll={{ x: 1380 }}
+          pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
+        />
+      ),
+    },
+  ];
 
   return (
     <div
@@ -1199,7 +1309,7 @@ const tabItems = [
               setSaleDateRange((dates as [Dayjs | null, Dayjs | null]) || null);
               setVisibleCount(6);
             }}
-            placeholder={['Venda de', 'Venda até']}
+            placeholder={['Compra de', 'Compra até']}
           />
         </div>
 
@@ -1371,12 +1481,13 @@ const tabItems = [
                   </Form.Item>
 
                   <Form.Item
-                    label="Data da venda"
+                    label="Data da compra"
                     name="saleDate"
-                    rules={[{ required: true, message: 'Informe a data da venda' }]}
+                    rules={[{ required: true, message: 'Informe a data da compra' }]}
                   >
                     <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                   </Form.Item>
+
                   <Form.Item
                     label="Data prevista de início"
                     name="startPlannedAt"

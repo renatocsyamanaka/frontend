@@ -291,7 +291,27 @@ function unwrap<T>(resData: any): T {
     ? (resData.data as T)
     : (resData as T);
 }
+function parseExcelDateFront(value: any) {
+  if (value == null || value === "") return null;
 
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (!parsed) return null;
+    return dayjs(new Date(parsed.y, parsed.m - 1, parsed.d)).format("YYYY-MM-DD");
+  }
+
+  const str = String(value).trim();
+
+  const formats = ["YYYY-MM-DD", "DD/MM/YYYY", "D/M/YYYY", "MM/DD/YYYY", "M/D/YYYY"];
+
+  for (const fmt of formats) {
+    const d = dayjs(str, fmt, true);
+    if (d.isValid()) return d.format("YYYY-MM-DD");
+  }
+
+  const d = dayjs(str);
+  return d.isValid() ? d.format("YYYY-MM-DD") : null;
+}
 function normalizeZip(value?: string | null) {
   const digits = String(value || "")
     .replace(/\D/g, "")
@@ -593,6 +613,15 @@ export default function InstallationProjectDetailPage() {
 
   const [progressForm] = Form.useForm();
 
+  const handleDownloadProgressTemplate = () => {
+    const link = document.createElement("a");
+    link.href = "/modelos/modelo-importacao-progresso.xlsx";
+    link.download = "modelo-importacao-progresso.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   const handleExportProgressDayExcel = (progress: ProjectProgress) => {
     const vehicles = progress?.vehicles || [];
 
@@ -1051,55 +1080,63 @@ export default function InstallationProjectDetailPage() {
       message.error(e?.response?.data?.error || "Falha ao atualizar item"),
   });
 
-  async function extractVehiclesFromExcelRows(rows: any[]) {
+  async function extractProgressFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
       return {
-        vehicles: [] as { plate: string; serial: string }[],
-
+        grouped: [] as { date: string; vehicles: { plate: string; serial: string }[]; notes?: string | null }[],
         duplicatesInFile: [] as string[],
-
         alreadyPublished: [] as string[],
-
         invalidRows: 0,
       };
     }
 
-    const unique = new Map<string, { plate: string; serial: string }>();
+    const groupedMap = new Map<
+      string,
+      {
+        date: string;
+        vehicles: { plate: string; serial: string }[];
+        notes?: string | null;
+      }
+    >();
 
     const duplicatePlatesInFile = new Set<string>();
-
     const alreadyPublishedSet = new Set<string>();
+    const globalUnique = new Set<string>();
 
     let invalidRows = 0;
-
     const total = rows.length;
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i];
-
       const normalizedRow: Record<string, any> = {};
 
       Object.keys(row || {}).forEach((key) => {
         normalizedRow[normalizeHeader(key)] = row[key];
       });
 
+      const dateRaw = normalizedRow["DATA"];
       const plateRaw = normalizedRow["PLACA"] ?? normalizedRow["PLATE"];
-
       const serialRaw =
         normalizedRow["SERIE/ SERIAL"] ??
         normalizedRow["SERIE/SERIAL"] ??
         normalizedRow["SERIE"] ??
         normalizedRow["SERIAL"] ??
         normalizedRow["N SERIE"];
+      const notesRaw =
+        normalizedRow["OBSERVACAO"] ??
+        normalizedRow["OBSERVAÇÃO"] ??
+        normalizedRow["OBS"] ??
+        "";
 
+      const date = parseExcelDateFront(dateRaw);
       const plate = normalizePlate(String(plateRaw || ""));
-
       const serial = String(serialRaw || "").trim();
+      const notes = String(notesRaw || "").trim();
 
-      if (!plate || !serial || !isValidPlate(plate)) {
+      if (!date || !plate || !serial || !isValidPlate(plate)) {
         invalidRows += 1;
       } else {
-        const key = `${plate}__${serial}`;
+        const uniqueKey = `${date}__${plate}__${serial}`;
 
         if (
           existingPublishedPlates.has(plate) &&
@@ -1111,10 +1148,22 @@ export default function InstallationProjectDetailPage() {
           alreadyPublishedSet.add(plate);
         }
 
-        if (unique.has(key)) {
+        if (globalUnique.has(uniqueKey)) {
           duplicatePlatesInFile.add(plate);
         } else {
-          unique.set(key, { plate, serial });
+          globalUnique.add(uniqueKey);
+
+          if (!groupedMap.has(date)) {
+            groupedMap.set(date, {
+              date,
+              vehicles: [],
+              notes: notes || null,
+            });
+          }
+
+          const bucket = groupedMap.get(date)!;
+          if (!bucket.notes && notes) bucket.notes = notes;
+          bucket.vehicles.push({ plate, serial });
         }
       }
 
@@ -1122,11 +1171,8 @@ export default function InstallationProjectDetailPage() {
 
       setImportSummary((prev) => ({
         ...prev,
-
         loading: true,
-
         percent,
-
         totalRows: total,
       }));
 
@@ -1136,16 +1182,116 @@ export default function InstallationProjectDetailPage() {
     }
 
     return {
-      vehicles: Array.from(unique.values()),
-
+      grouped: Array.from(groupedMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
       duplicatesInFile: Array.from(duplicatePlatesInFile),
-
       alreadyPublished: Array.from(alreadyPublishedSet),
-
       invalidRows,
     };
   }
+const importProgressesFromExcel = async (file: File) => {
+  try {
+    setImportSummary({
+      loading: true,
+      percent: 5,
+      totalRows: 0,
+      validRows: 0,
+      importedCount: 0,
+      duplicatesInFile: [],
+      alreadyPublished: [],
+      invalidRows: 0,
+    });
 
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+      setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
+      message.error("Arquivo Excel sem abas.");
+      return;
+    }
+
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+    const { grouped, duplicatesInFile, alreadyPublished, invalidRows } =
+      await extractProgressFromExcelRows(rows);
+
+    if (!grouped.length) {
+      setImportSummary({
+        loading: false,
+        percent: 100,
+        totalRows: Array.isArray(rows) ? rows.length : 0,
+        validRows: 0,
+        importedCount: 0,
+        duplicatesInFile,
+        alreadyPublished,
+        invalidRows,
+      });
+
+      message.warning(
+        'Nenhuma linha válida encontrada. Use as colunas "DATA", "PLACA" e "SERIE".',
+      );
+      return;
+    }
+
+    let importedCount = 0;
+
+    for (let i = 0; i < grouped.length; i += 1) {
+      const item = grouped[i];
+
+      await api.post(`/installation-projects/${projectId}/progress`, {
+        date: item.date,
+        notes: item.notes ?? null,
+        vehicles: item.vehicles,
+      });
+
+      importedCount += item.vehicles.length;
+
+      const percent = Math.min(
+        100,
+        Math.round(50 + ((i + 1) / grouped.length) * 50),
+      );
+
+      setImportSummary((prev) => ({
+        ...prev,
+        loading: true,
+        percent,
+        importedCount,
+        validRows: importedCount,
+      }));
+    }
+
+    setImportSummary({
+      loading: false,
+      percent: 100,
+      totalRows: Array.isArray(rows) ? rows.length : 0,
+      validRows: importedCount,
+      importedCount,
+      duplicatesInFile,
+      alreadyPublished,
+      invalidRows,
+    });
+
+    message.success(
+      `Importação concluída: ${grouped.length} dia(s) e ${importedCount} veículo(s).`,
+    );
+
+    await qc.invalidateQueries({
+      queryKey: ["installation-project", projectId],
+    });
+
+    setProgressOpen(false);
+    setEditingProgress(null);
+    progressForm.resetFields();
+  } catch (error: any) {
+    console.error(error);
+    setImportSummary((prev) => ({ ...prev, loading: false, percent: 0 }));
+    message.error(
+      error?.response?.data?.error || "Falha ao importar progresso pelo Excel.",
+    );
+  }
+};
   const importVehiclesFromExcel = async (file: File) => {
     try {
       setImportSummary({
@@ -3461,21 +3607,54 @@ export default function InstallationProjectDetailPage() {
               style={{ display: "none" }}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
-
                 if (!file) return;
 
-                await importVehiclesFromExcel(file);
+                await importProgressesFromExcel(file);
 
                 e.currentTarget.value = "";
               }}
             />
 
-            <Button
-              icon={<UploadOutlined />}
-              onClick={() => excelInputRef.current?.click()}
-            >
-              Importar Excel
-            </Button>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 12,
+              flexWrap: "wrap",
+            }}
+          >
+
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+
+                if (!file) return;
+
+                await importProgressesFromExcel(file);
+
+                e.currentTarget.value = "";
+              }}
+            />
+
+            <Space wrap>
+              <Button onClick={handleDownloadProgressTemplate}>
+                Baixar modelo
+              </Button>
+
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => excelInputRef.current?.click()}
+              >
+                Importar Excel
+              </Button>
+            </Space>
+          </div>
           </div>
 
           {(importSummary.loading || importSummary.totalRows > 0) && (

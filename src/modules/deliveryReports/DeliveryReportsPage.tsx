@@ -214,11 +214,13 @@ type ImportStartResponse = {
   message?: string;
   jobId: string;
   status?: string;
+  version?: string;
 };
 
 type ImportStatusResponse = {
   jobId: string;
   fileName?: string;
+  version?: string;
   status: 'queued' | 'processing' | 'done' | 'error';
   createdAt?: string;
   startedAt?: string | null;
@@ -236,6 +238,7 @@ type ImportStatusResponse = {
   currentLine?: number | null;
   message?: string;
   errors?: string[];
+  warnings?: string[];
 };
 
 type ImportLogItem = {
@@ -243,6 +246,16 @@ type ImportLogItem = {
   type: 'info' | 'success' | 'warning' | 'error';
   text: string;
   at: string;
+};
+
+type ImportPreviewRow = {
+  key: string;
+  cte?: string;
+  notaFiscal?: string;
+  transportadora?: string;
+  operacao?: string;
+  operacaoResumo?: string;
+  status?: string;
 };
 
 const STATUS_ENTREGA_OPTIONS = [
@@ -975,6 +988,9 @@ export default function DeliveryReportsPage() {
   const [importJobId, setImportJobId] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<ImportStatusResponse | null>(null);
   const [importLogs, setImportLogs] = useState<ImportLogItem[]>([]);
+  const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([]);
+  const [importPreviewHeaders, setImportPreviewHeaders] = useState<string[]>([]);
+  const [readingPreview, setReadingPreview] = useState(false);
   const [showResumo, setShowResumo] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -1033,6 +1049,45 @@ export default function DeliveryReportsPage() {
     });
   };
 
+  const buildPreviewFromFile = async (file: File) => {
+    setReadingPreview(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, raw: true });
+      const sheetName = workbook.SheetNames[0];
+
+      if (!sheetName) {
+        setImportPreviewRows([]);
+        setImportPreviewHeaders([]);
+        appendImportLog('A planilha selecionada não possui abas válidas.', 'warning');
+        return;
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '', raw: false });
+      const headers = Object.keys(rows[0] || {}).slice(0, 8);
+      const previewRows = rows.slice(0, 6).map((row, index) => ({
+        key: String(index + 1),
+        cte: String(row['CTE'] ?? row['cte'] ?? row['Cte'] ?? ''),
+        notaFiscal: String(row['Nota Fiscal'] ?? row['NOTA FISCAL'] ?? row['notaFiscal'] ?? row['nota_fiscal'] ?? ''),
+        transportadora: String(row['Transportadora'] ?? row['transportadora'] ?? ''),
+        operacao: String(row['Operação'] ?? row['Operacao'] ?? row['operacao'] ?? ''),
+        operacaoResumo: String(row['Resumo Operação'] ?? row['Resumo Operacao'] ?? row['operacaoResumo'] ?? row['operacao_resumo'] ?? ''),
+        status: String(row['Status'] ?? row['status'] ?? row['Status Entrega'] ?? row['statusEntrega'] ?? ''),
+      }));
+
+      setImportPreviewHeaders(headers);
+      setImportPreviewRows(previewRows);
+      appendImportLog(`Amostra carregada: ${rows.length.toLocaleString('pt-BR')} linha(s) encontradas na planilha.`, 'info');
+    } catch (error: any) {
+      setImportPreviewRows([]);
+      setImportPreviewHeaders([]);
+      appendImportLog(error?.message || 'Não foi possível ler a amostra do arquivo.', 'error');
+    } finally {
+      setReadingPreview(false);
+    }
+  };
+
   const resetImportState = () => {
     setImportFile(null);
     setUploadProgress(0);
@@ -1040,6 +1095,9 @@ export default function DeliveryReportsPage() {
     setImportJobId(null);
     setImportStatus(null);
     setImportLogs([]);
+    setImportPreviewRows([]);
+    setImportPreviewHeaders([]);
+    setReadingPreview(false);
   };
 
   useEffect(() => {
@@ -1275,7 +1333,7 @@ const queryParams = useMemo(
       setUploadProgress(100);
       setImportJobId(data.jobId);
       setImportStage('queued');
-      appendImportLog(`Importação iniciada com sucesso. Job ${data.jobId}`, 'success');
+      appendImportLog(`Importação iniciada com sucesso. Job ${data.jobId}${data.version ? ` (${data.version})` : ''}`, 'success');
       appendImportLog('Aguardando processamento do servidor...', 'info');
       message.success(data?.message || 'Importação iniciada com sucesso');
     },
@@ -1298,6 +1356,7 @@ const queryParams = useMemo(
     let lastMessage = '';
     let lastProcessed = -1;
     let lastErrorsCount = 0;
+    let lastWarningsCount = 0;
 
     const applyStatus = (data: ImportStatusResponse) => {
       if (cancelled) return;
@@ -1341,17 +1400,17 @@ const queryParams = useMemo(
         lastProcessed = data.processed;
       }
 
+      const currentWarningsCount = data.warnings?.length || 0;
+      if (currentWarningsCount > lastWarningsCount) {
+        const newWarnings = data.warnings?.slice(lastWarningsCount) || [];
+        newWarnings.forEach((warn) => appendImportLog(warn, 'warning'));
+        lastWarningsCount = currentWarningsCount;
+      }
+
       const currentErrorsCount = data.errors?.length || 0;
       if (currentErrorsCount > lastErrorsCount) {
         const newErrors = data.errors?.slice(lastErrorsCount) || [];
-        newErrors.forEach((err) => {
-          const lower = err.toLowerCase();
-          const type: ImportLogItem['type'] =
-            lower.includes('sem alterações') || lower.includes('ignorada') || lower.includes('excluído')
-              ? 'warning'
-              : 'error';
-          appendImportLog(err, type);
-        });
+        newErrors.forEach((err) => appendImportLog(err, 'error'));
         lastErrorsCount = currentErrorsCount;
       }
     };
@@ -2425,10 +2484,20 @@ const queryParams = useMemo(
   const importUpdated = Number(importStatus?.updated || 0);
   const importIgnored = Number(importStatus?.ignored || 0);
   const importProcessed = Number(importStatus?.processed || 0);
+  const shouldShowImportSelector = importStage === 'idle';
   const importTotalLinhas = Number(importStatus?.totalLinhas || 0);
   const importErrorsCount = Number(importStatus?.errors?.length || 0);
 
   const yearFilterLabel = yearFilter === 'all' ? 'Total' : yearFilter;
+
+  const importPreviewColumns: ColumnsType<ImportPreviewRow> = [
+    { title: 'CTE', dataIndex: 'cte', key: 'cte', width: 110, render: (value) => value || '-' },
+    { title: 'NF', dataIndex: 'notaFiscal', key: 'notaFiscal', width: 110, render: (value) => value || '-' },
+    { title: 'Transportadora', dataIndex: 'transportadora', key: 'transportadora', width: 150, render: (value) => value || '-' },
+    { title: 'Operação', dataIndex: 'operacao', key: 'operacao', width: 180, render: (value) => value || '-' },
+    { title: 'Resumo operação', dataIndex: 'operacaoResumo', key: 'operacaoResumo', width: 180, render: (value) => value || '-' },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 150, render: (value) => value || '-' },
+  ];
 
   return (
     <div style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
@@ -3566,20 +3635,36 @@ const queryParams = useMemo(
             setOpenImport(false);
             resetImportState();
           }}
-          onOk={() => {
-            if (!importFile) {
-              message.warning('Selecione um arquivo .xlsx para importar');
-              return;
-            }
-            if (!importJobId && !importMutation.isPending) {
-              importMutation.mutate(importFile);
-            }
-          }}
-          okText={importJobId ? 'Importação iniciada' : 'Importar'}
-          cancelText="Fechar"
-          okButtonProps={{ disabled: !!importJobId || importMutation.isPending }}
-          confirmLoading={importMutation.isPending}
-          width={1080}
+          footer={[
+            <Button
+              key="nova"
+              onClick={() => resetImportState()}
+              disabled={importMutation.isPending || importStage === 'processing' || importStage === 'queued'}
+            >
+              Nova importação
+            </Button>,
+            <Button key="fechar" onClick={() => { setOpenImport(false); resetImportState(); }}>
+              Fechar
+            </Button>,
+            <Button
+              key="importar"
+              type="primary"
+              loading={importMutation.isPending}
+              disabled={!importFile || !!importJobId || importMutation.isPending}
+              onClick={() => {
+                if (!importFile) {
+                  message.warning('Selecione um arquivo .xlsx para importar');
+                  return;
+                }
+                if (!importJobId && !importMutation.isPending) {
+                  importMutation.mutate(importFile);
+                }
+              }}
+            >
+              {importJobId ? 'Importação iniciada' : 'Importar'}
+            </Button>,
+          ]}
+          width={1360}
           destroyOnHidden
         >
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -3591,7 +3676,7 @@ const queryParams = useMemo(
             />
 
             <Row gutter={[16, 16]}>
-              <Col xs={24} md={14}>
+              <Col xs={24} md={15}>
                 <Card
                   size="small"
                   style={{
@@ -3603,62 +3688,129 @@ const queryParams = useMemo(
                   styles={{ body: { padding: 18 } }}
                 >
                   <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                    <div>
-                      <Text strong style={{ fontSize: 15 }}>
-                        Arquivo da importação
-                      </Text>
-                      <div style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
-                        Selecione um arquivo .xlsx. Depois do envio, a tela acompanha o job e mostra quantos registros foram inseridos, atualizados ou ignorados.
-                      </div>
-                    </div>
+                    {shouldShowImportSelector ? (
+                      <>
+                        <div>
+                          <Text strong style={{ fontSize: 15 }}>
+                            Arquivo da importação
+                          </Text>
+                          <div style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
+                            Selecione um arquivo .xlsx. Antes do envio, a tela lê uma pequena amostra da planilha. Depois do envio, os totais de inseridos, atualizados, ignorados e erros são atualizados em tempo real durante o processamento.
+                          </div>
+                        </div>
 
-                    <Dragger
-                      multiple={false}
-                      maxCount={1}
-                      disabled={importMutation.isPending || !!importJobId}
-                      style={{ minHeight: 240, borderRadius: 14 }}
-                      beforeUpload={(file) => {
-                        const isExcel =
-                          file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                          file.name.toLowerCase().endsWith('.xlsx');
+                        <Dragger
+                          multiple={false}
+                          maxCount={1}
+                          disabled={importMutation.isPending || !!importJobId}
+                          style={{ minHeight: 260, borderRadius: 14 }}
+                          beforeUpload={(file) => {
+                            const isExcel =
+                              file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                              file.name.toLowerCase().endsWith('.xlsx');
 
-                        if (!isExcel) {
-                          message.error('Envie um arquivo .xlsx');
-                          return Upload.LIST_IGNORE;
-                        }
+                            if (!isExcel) {
+                              message.error('Envie um arquivo .xlsx');
+                              return Upload.LIST_IGNORE;
+                            }
 
-                        setImportFile(file as File);
-                        setUploadProgress(0);
-                        setImportStage('idle');
-                        setImportJobId(null);
-                        setImportStatus(null);
-                        setImportLogs([]);
-                        appendImportLog(`Arquivo pronto para importação: ${file.name}`, 'info');
-                        return false;
-                      }}
-                      onRemove={() => {
-                        if (importMutation.isPending || !!importJobId) return false;
-                        resetImportState();
-                        return true;
-                      }}
-                      fileList={
-                        importFile
-                          ? [
-                              {
-                                uid: '1',
-                                name: importFile.name,
-                                status: importMutation.isPending || importStage === 'uploading' ? 'uploading' : 'done',
-                              } as any,
-                            ]
-                          : []
-                      }
+                            setImportFile(file as File);
+                            setUploadProgress(0);
+                            setImportStage('idle');
+                            setImportJobId(null);
+                            setImportStatus(null);
+                            setImportLogs([]);
+                            appendImportLog(`Arquivo pronto para importação: ${file.name}`, 'info');
+                            void buildPreviewFromFile(file as File);
+                            return false;
+                          }}
+                          onRemove={() => {
+                            if (importMutation.isPending || !!importJobId) return false;
+                            resetImportState();
+                            return true;
+                          }}
+                          fileList={
+                            importFile
+                              ? [
+                                  {
+                                    uid: '1',
+                                    name: importFile.name,
+                                    status: importMutation.isPending || importStage === 'uploading' ? 'uploading' : 'done',
+                                  } as any,
+                                ]
+                              : []
+                          }
+                        >
+                          <p className="ant-upload-drag-icon">
+                            <InboxOutlined />
+                          </p>
+                          <p className="ant-upload-text">Clique ou arraste o arquivo Excel para esta área</p>
+                          <p className="ant-upload-hint">Formato suportado: .xlsx</p>
+                        </Dragger>
+                      </>
+                    ) : null}
+
+                    {!shouldShowImportSelector ? (
+                      <Card
+                        variant={false}
+                        size="small"
+                        styles={{ body: { padding: 12 } }}
+                        style={{ border: '1px solid #eef2f7', background: '#fafcff' }}
+                      >
+                        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                          <Row justify="space-between" align="middle">
+                            <Col>
+                              <Text strong style={{ fontSize: 15 }}>Amostra da validação</Text>
+                            </Col>
+                            <Col>
+                              {readingPreview ? <Tag color="processing">Lendo amostra...</Tag> : null}
+                              {!readingPreview && importPreviewRows.length > 0 ? <Tag color="blue">{importPreviewRows.length} linha(s) em prévia</Tag> : null}
+                            </Col>
+                          </Row>
+
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {importPreviewHeaders.length > 0
+                              ? `Cabeçalhos identificados: ${importPreviewHeaders.join(' | ')}`
+                              : 'Ao importar, será exibida aqui uma pequena amostra do que está sendo validado.'}
+                          </Text>
+
+                          {importPreviewRows.length > 0 ? (
+                            <Table
+                              rowKey="key"
+                              columns={importPreviewColumns}
+                              dataSource={importPreviewRows}
+                              pagination={false}
+                              size="small"
+                              scroll={{ x: 1120, y: 360 }}
+                            />
+                          ) : (
+                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhuma amostra carregada ainda" />
+                          )}
+                        </Space>
+                      </Card>
+                    ) : null}
+
+                    <Card
+                      variant={false}
+                      size="small"
+                      styles={{ body: { padding: 12 } }}
+                      style={{ background: '#fafafa', border: '1px solid #f0f0f0' }}
                     >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text">Clique ou arraste o arquivo Excel para esta área</p>
-                      <p className="ant-upload-hint">Formato suportado: .xlsx</p>
-                    </Dragger>
+                      <Row gutter={[12, 12]}>
+                        <Col span={12}>
+                          <Text type="secondary">Versão</Text>
+                          <div style={{ fontWeight: 700, marginTop: 4, color: '#0f172a' }}>
+                            {importStatus?.version || '-'}
+                          </div>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Warnings</Text>
+                          <div style={{ fontWeight: 700, marginTop: 4, color: '#d97706' }}>
+                            {Number(importStatus?.warnings?.length || 0).toLocaleString('pt-BR')}
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card>
 
                     <Row gutter={[12, 12]}>
                       <Col xs={24} sm={12}>
@@ -3682,7 +3834,7 @@ const queryParams = useMemo(
                 </Card>
               </Col>
 
-              <Col xs={24} md={10}>
+              <Col xs={24} md={9}>
                 <Card
                   size="small"
                   style={{
@@ -3696,14 +3848,22 @@ const queryParams = useMemo(
                   <Space direction="vertical" size={16} style={{ width: '100%' }}>
                     <Row justify="space-between" align="middle">
                       <Col>
-                        <Text strong style={{ fontSize: 15 }}>
-                          Retorno da importação
-                        </Text>
+                        <Space direction="vertical" size={0}>
+                          <Text strong style={{ fontSize: 15 }}>
+                            Retorno da importação
+                          </Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            Totais atualizados automaticamente durante o processamento
+                          </Text>
+                        </Space>
                       </Col>
                       <Col>
-                        <Tag color={getImportStageTagColor(importStage)}>
-                          {getImportStageLabel(importStage)}
-                        </Tag>
+                        <Space>
+                          {(importStage === 'processing' || importStage === 'queued') ? <Tag color="processing">Tempo real</Tag> : null}
+                          <Tag color={getImportStageTagColor(importStage)}>
+                            {getImportStageLabel(importStage)}
+                          </Tag>
+                        </Space>
                       </Col>
                     </Row>
 
@@ -3729,7 +3889,10 @@ const queryParams = useMemo(
                     <Row gutter={[12, 12]}>
                       <Col xs={12}>
                         <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
-                          <Text type="secondary">Inseridos</Text>
+                          <Space align="center" size={8}>
+                            <PlusOutlined style={{ color: '#16a34a' }} />
+                            <Text type="secondary">Inseridos</Text>
+                          </Space>
                           <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>
                             {importInserted.toLocaleString('pt-BR')}
                           </div>
@@ -3737,7 +3900,10 @@ const queryParams = useMemo(
                       </Col>
                       <Col xs={12}>
                         <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
-                          <Text type="secondary">Atualizados</Text>
+                          <Space align="center" size={8}>
+                            <EditOutlined style={{ color: '#2563eb' }} />
+                            <Text type="secondary">Atualizados</Text>
+                          </Space>
                           <div style={{ fontSize: 24, fontWeight: 800, color: '#2563eb', marginTop: 4 }}>
                             {importUpdated.toLocaleString('pt-BR')}
                           </div>
@@ -3745,7 +3911,10 @@ const queryParams = useMemo(
                       </Col>
                       <Col xs={12}>
                         <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
-                          <Text type="secondary">Ignorados</Text>
+                          <Space align="center" size={8}>
+                            <FileTextOutlined style={{ color: '#f59e0b' }} />
+                            <Text type="secondary">Ignorados</Text>
+                          </Space>
                           <div style={{ fontSize: 24, fontWeight: 800, color: '#f59e0b', marginTop: 4 }}>
                             {importIgnored.toLocaleString('pt-BR')}
                           </div>
@@ -3753,7 +3922,10 @@ const queryParams = useMemo(
                       </Col>
                       <Col xs={12}>
                         <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
-                          <Text type="secondary">Erros</Text>
+                          <Space align="center" size={8}>
+                            <DeleteOutlined style={{ color: '#ef4444' }} />
+                            <Text type="secondary">Erros</Text>
+                          </Space>
                           <div style={{ fontSize: 24, fontWeight: 800, color: '#ef4444', marginTop: 4 }}>
                             {importErrorsCount.toLocaleString('pt-BR')}
                           </div>
