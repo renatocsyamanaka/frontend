@@ -1,30 +1,35 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
-  Form,
-  Input,
-  Typography,
-  message,
-  Grid,
-  Divider,
-  Space,
-  Modal,
-  Select,
-  Upload,
-  Row,
   Col,
+  Divider,
+  Form,
+  Grid,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Typography,
+  Upload,
+  message,
 } from 'antd';
 import {
-  MailOutlined,
-  LockOutlined,
   EyeInvisibleOutlined,
   EyeTwoTone,
-  ToolOutlined,
-  UserAddOutlined,
-  UploadOutlined,
-  UserOutlined,
+  LockOutlined,
+  MailOutlined,
   PhoneOutlined,
+  ToolOutlined,
+  UploadOutlined,
+  UserAddOutlined,
+  UserOutlined,
+  CheckCircleOutlined,
+  AppstoreOutlined,
+  FileTextOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import { useAuth } from './AuthProvider';
 import { api } from '../../lib/api';
@@ -65,19 +70,42 @@ export function LoginPage() {
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
 
-  const [signupOpen, setSignupOpen] = useState(false);
+  const [loginForm] = Form.useForm();
   const [signupForm] = Form.useForm();
+
+  const [signupOpen, setSignupOpen] = useState(false);
   const [signupAvatarFile, setSignupAvatarFile] = useState<File | null>(null);
   const [sendingSignup, setSendingSignup] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
   const signupPhone = Form.useWatch('phone', signupForm);
+
+  const brandPrimary = '#2F5DAA';
+  const brandSecondary = '#2D74BF';
+  const brandAccent = '#F4A62A';
+  const bgPage = '#F5F7FA';
+  const bgCard = '#FFFFFF';
+  const bgSoft = '#F9FAFB';
+  const borderColor = '#E5E7EB';
+  const borderBlue = '#D6E4FF';
+  const textPrimary = '#1F2937';
+  const textSecondary = '#6B7280';
 
   const onFinish = async (values: any) => {
     try {
+      setLoggingIn(true);
+      setLoginError('');
+
       await login(values.email, values.password);
       message.success('Bem-vindo!');
       location.href = '/';
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Falha no login');
+      const errorMessage = e?.response?.data?.error || 'Falha no login';
+      setLoginError(errorMessage);
+      message.error(errorMessage);
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -111,138 +139,462 @@ export function LoginPage() {
     }
   };
 
-  const brandStart = '#1e40af';
-  const brandEnd = '#22d3ee';
+  const infoItems = [
+    {
+      icon: <InboxOutlined />,
+      title: 'Acompanhamento de pedidos',
+      description: 'Consulte solicitações e acompanhe o andamento operacional.',
+    },
+    {
+      icon: <FileTextOutlined />,
+      title: 'Solicitação de peças',
+      description: 'Abra e acompanhe pedidos de peças com mais rapidez.',
+    },
+    {
+      icon: <AppstoreOutlined />,
+      title: 'Gestão e apoio operacional',
+      description: 'Centralize acessos e informações do portal em um só lugar.',
+    },
+  ];
 
   return (
     <>
       <div
         style={{
           minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          padding: isMobile ? 16 : 24,
-          background: `radial-gradient(1200px 600px at 10% 10%, ${brandEnd}1a, transparent 60%),
-                       radial-gradient(1000px 500px at 90% 80%, ${brandStart}1a, transparent 55%),
-                       linear-gradient(135deg, ${brandStart} 0%, ${brandEnd} 100%)`,
+          background: bgPage,
+          padding: isMobile ? 16 : 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        <Card
-          style={{
-            width: '100%',
-            maxWidth: 420,
-            borderRadius: isMobile ? 14 : 16,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-            backdropFilter: 'blur(6px)',
-          }}
-          styles={{
-            body: {
-              padding: isMobile ? 20 : 28,
-            },
-          }}
-        >
-          <div style={{ textAlign: 'center', marginBottom: 8 }}>
-            <img
-              src="/logo.png"
-              alt="Omnilink"
-              style={{
-                height: isMobile ? '78px' : '96px',
-                maxWidth: '85%',
-                objectFit: 'contain',
-                display: 'block',
-                margin: '0 auto',
-              }}
-            />
-            <Typography.Text type="secondary">Acesse sua conta</Typography.Text>
-          </div>
+        <div style={{ width: '100%', maxWidth: 1180 }}>
+          <Row gutter={isMobile ? [0, 16] : [32, 32]} align="middle">
+            {!isMobile && (
+              <Col xs={24} md={12} lg={13}>
+                <div style={{ paddingRight: 12 }}>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '8px 16px',
+                      borderRadius: 999,
+                      background: '#FFFFFF',
+                      border: `1px solid ${borderColor}`,
+                      marginBottom: 22,
+                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: brandAccent,
+                      }}
+                    />
+                    <Typography.Text
+                      style={{
+                        color: brandPrimary,
+                        fontWeight: 600,
+                        fontSize: 14,
+                      }}
+                    >
+                      Portal de Supply Chain
+                    </Typography.Text>
+                  </div>
 
-          <Form layout="vertical" onFinish={onFinish} style={{ marginTop: 16 }}>
-            <Form.Item
-              name="email"
-              label="E-mail"
-              rules={[{ required: true, type: 'email', message: 'Informe um e-mail válido' }]}
-            >
-              <Input
-                size="large"
-                placeholder="seuemail@empresa.com"
-                prefix={<MailOutlined />}
-                autoComplete="email"
-              />
-            </Form.Item>
+                  <Typography.Title
+                    level={1}
+                    style={{
+                      color: brandPrimary,
+                      margin: 0,
+                      lineHeight: 1.1,
+                      fontSize: 48,
+                      maxWidth: 620,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Acesse o portal de forma simples e organizada.
+                  </Typography.Title>
 
-            <Form.Item
-              name="password"
-              label="Senha"
-              rules={[{ required: true, message: 'Informe sua senha' }]}
-            >
-              <Input.Password
-                size="large"
-                placeholder="••••••••"
-                autoComplete="current-password"
-                prefix={<LockOutlined />}
-                iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-              />
-            </Form.Item>
+                  <div
+                    style={{
+                      width: 90,
+                      height: 5,
+                      background: brandAccent,
+                      borderRadius: 999,
+                      margin: '18px 0 22px',
+                    }}
+                  />
 
-            <Space direction="vertical" size={10} style={{ width: '100%' }}>
-              <Button
-                type="primary"
-                htmlType="submit"
-                size="large"
-                block
+                  <Typography.Paragraph
+                    style={{
+                      color: textSecondary,
+                      fontSize: 18,
+                      lineHeight: 1.7,
+                      maxWidth: 640,
+                      marginBottom: 28,
+                    }}
+                  >
+                    Acompanhe pedidos, consulte solicitações, acesse o portal de peças
+                    e encontre informações importantes para o suporte às operações
+                    logísticas da empresa.
+                  </Typography.Paragraph>
+
+                  <Space direction="vertical" size={16} style={{ width: '100%', maxWidth: 640 }}>
+                    {infoItems.map((item) => (
+                      <Card
+                        key={item.title}
+                        style={{
+                          borderRadius: 16,
+                          border: `1px solid ${borderColor}`,
+                          background: '#FFFFFF',
+                          boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+                        }}
+                        styles={{
+                          body: {
+                            padding: 18,
+                          },
+                        }}
+                      >
+                        <Space align="start" size={14}>
+                          <div
+                            style={{
+                              width: 46,
+                              height: 46,
+                              borderRadius: 12,
+                              background: '#EEF4FF',
+                              color: brandPrimary,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 20,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {item.icon}
+                          </div>
+
+                          <div>
+                            <Typography.Text
+                              style={{
+                                display: 'block',
+                                color: textPrimary,
+                                fontWeight: 700,
+                                fontSize: 16,
+                                marginBottom: 4,
+                              }}
+                            >
+                              {item.title}
+                            </Typography.Text>
+
+                            <Typography.Text
+                              style={{
+                                color: textSecondary,
+                                fontSize: 14,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              {item.description}
+                            </Typography.Text>
+                          </div>
+                        </Space>
+                      </Card>
+                    ))}
+                  </Space>
+                </div>
+              </Col>
+            )}
+
+            <Col xs={24} md={12} lg={11}>
+              <Card
                 style={{
-                  border: 'none',
-                  borderRadius: 10,
-                  background: `linear-gradient(135deg, ${brandStart}, ${brandEnd})`,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                  width: '100%',
+                  maxWidth: 460,
+                  margin: '0 auto',
+                  borderRadius: 22,
+                  border: `1px solid ${borderColor}`,
+                  background: bgCard,
+                  boxShadow: '0 16px 42px rgba(15, 23, 42, 0.08)',
+                }}
+                styles={{
+                  body: {
+                    padding: isMobile ? 22 : 30,
+                  },
                 }}
               >
-                Entrar
-              </Button>
+                <div style={{ textAlign: 'center', marginBottom: 22 }}>
+                  <img
+                    src="/logo.png"
+                    alt="Omnilink"
+                    style={{
+                      height: isMobile ? 58 : 70,
+                      maxWidth: '80%',
+                      objectFit: 'contain',
+                      display: 'block',
+                      margin: '0 auto 12px',
+                    }}
+                  />
 
-              <Button
-                size="large"
-                block
-                icon={<UserAddOutlined />}
-                onClick={() => setSignupOpen(true)}
-                style={{ borderRadius: 10 }}
-              >
-                Cadastre-se
-              </Button>
-            </Space>
+                  <Typography.Title
+                    level={2}
+                    style={{
+                      margin: 0,
+                      color: brandPrimary,
+                      fontSize: isMobile ? 28 : 32,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Portal de Supply Chain
+                  </Typography.Title>
 
-            <Divider style={{ margin: '18px 0 14px' }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                ou
-              </Typography.Text>
-            </Divider>
+                  <div
+                    style={{
+                      width: 60,
+                      height: 4,
+                      background: brandAccent,
+                      borderRadius: 999,
+                      margin: '10px auto 14px',
+                    }}
+                  />
 
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Button
-                size="large"
-                block
-                icon={<ToolOutlined />}
-                onClick={() => {
-                  location.href = '/solicitar-peca';
-                }}
-                style={{ borderRadius: 10 }}
-              >
-                Acessar portal de peças
-              </Button>
+                  <Typography.Text
+                    style={{
+                      color: textSecondary,
+                      fontSize: 15,
+                      lineHeight: 1.6,
+                      display: 'block',
+                    }}
+                  >
+                    Acesse o portal para acompanhar pedidos, solicitações,
+                    status operacionais e recursos de apoio logístico.
+                  </Typography.Text>
+                </div>
 
-              <Typography.Text
-                type="secondary"
-                style={{
-                  display: 'block',
-                  textAlign: 'center',
-                  fontSize: 12,
-                }}
-              >
-                Faça uma solicitação ou acompanhe um pedido sem precisar entrar no sistema.
-              </Typography.Text>
-            </Space>
-          </Form>
-        </Card>
+                {loginError ? (
+                  <Alert
+                    showIcon
+                    type="error"
+                    message="Erro ao acessar"
+                    description={loginError}
+                    style={{
+                      marginBottom: 18,
+                      borderRadius: 10,
+                      background: '#FEF2F2',
+                      border: '1px solid #FCA5A5',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      marginBottom: 18,
+                      borderRadius: 12,
+                      padding: '12px 14px',
+                      background: '#F8FBFF',
+                      border: `1px solid ${borderBlue}`,
+                    }}
+                  >
+                    <Typography.Text
+                      style={{
+                        color: textSecondary,
+                        fontSize: 13,
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      Utilize seu e-mail corporativo para entrar no sistema com segurança.
+                    </Typography.Text>
+                  </div>
+                )}
+
+                <Form
+                  form={loginForm}
+                  layout="vertical"
+                  onFinish={onFinish}
+                  onValuesChange={() => {
+                    if (loginError) setLoginError('');
+                  }}
+                >
+                  <Form.Item
+                    name="email"
+                    label={<span style={{ color: textPrimary, fontWeight: 600 }}>E-mail</span>}
+                    rules={[
+                      { required: true, message: 'Informe seu e-mail' },
+                      { type: 'email', message: 'Informe um e-mail válido' },
+                    ]}
+                  >
+                    <Input
+                      size="large"
+                      placeholder="seuemail@empresa.com"
+                      prefix={<MailOutlined style={{ color: textSecondary }} />}
+                      autoComplete="email"
+                      style={{
+                        borderRadius: 10,
+                        height: 46,
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="password"
+                    label={<span style={{ color: textPrimary, fontWeight: 600 }}>Senha</span>}
+                    rules={[{ required: true, message: 'Informe sua senha' }]}
+                    style={{ marginBottom: 12 }}
+                  >
+                    <Input.Password
+                      size="large"
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      prefix={<LockOutlined style={{ color: textSecondary }} />}
+                      iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+                      style={{
+                        borderRadius: 10,
+                        height: 46,
+                      }}
+                    />
+                  </Form.Item>
+
+                  <Space direction="vertical" size={10} style={{ width: '100%', marginTop: 10 }}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      size="large"
+                      block
+                      loading={loggingIn}
+                      disabled={loggingIn}
+                      style={{
+                        height: 46,
+                        border: 'none',
+                        borderRadius: 10,
+                        background: brandPrimary,
+                        boxShadow: '0 8px 20px rgba(47, 93, 170, 0.18)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {loggingIn ? 'Entrando...' : 'Entrar'}
+                    </Button>
+
+                    <Button
+                      size="large"
+                      block
+                      icon={<UserAddOutlined />}
+                      onClick={() => setSignupOpen(true)}
+                      style={{
+                        height: 46,
+                        borderRadius: 10,
+                        fontWeight: 500,
+                        borderColor: borderColor,
+                      }}
+                    >
+                      Cadastre-se
+                    </Button>
+                  </Space>
+
+                  <Divider style={{ margin: '18px 0 16px' }}>
+                    <Typography.Text style={{ color: textSecondary, fontSize: 12 }}>
+                      acesso rápido
+                    </Typography.Text>
+                  </Divider>
+
+                  <Card
+                    size="small"
+                    style={{
+                      borderRadius: 14,
+                      border: `1px solid ${borderColor}`,
+                      background: bgSoft,
+                    }}
+                    styles={{
+                      body: {
+                        padding: 14,
+                      },
+                    }}
+                  >
+                    <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                      <Button
+                        size="large"
+                        block
+                        icon={<ToolOutlined />}
+                        onClick={() => {
+                          location.href = '/solicitar-peca';
+                        }}
+                        style={{
+                          height: 44,
+                          borderRadius: 10,
+                        }}
+                      >
+                        Acessar portal de peças
+                      </Button>
+
+                      <Typography.Text
+                        style={{
+                          display: 'block',
+                          textAlign: 'center',
+                          fontSize: 12,
+                          color: textSecondary,
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        Faça uma solicitação ou acompanhe um pedido sem precisar entrar no sistema.
+                      </Typography.Text>
+                    </Space>
+                  </Card>
+
+                  {isMobile && (
+                    <Card
+                      size="small"
+                      style={{
+                        marginTop: 16,
+                        borderRadius: 14,
+                        border: `1px solid ${borderColor}`,
+                        background: '#FFFFFF',
+                      }}
+                      styles={{
+                        body: {
+                          padding: 14,
+                        },
+                      }}
+                    >
+                      <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                        <Typography.Text
+                          style={{
+                            color: brandPrimary,
+                            fontWeight: 700,
+                            fontSize: 14,
+                          }}
+                        >
+                          O que você encontra aqui
+                        </Typography.Text>
+
+                        <Space size={10} align="start">
+                          <CheckCircleOutlined style={{ color: brandAccent, marginTop: 3 }} />
+                          <Typography.Text style={{ color: textSecondary }}>
+                            Acompanhamento de pedidos e solicitações
+                          </Typography.Text>
+                        </Space>
+
+                        <Space size={10} align="start">
+                          <CheckCircleOutlined style={{ color: brandAccent, marginTop: 3 }} />
+                          <Typography.Text style={{ color: textSecondary }}>
+                            Acesso rápido ao portal de peças
+                          </Typography.Text>
+                        </Space>
+
+                        <Space size={10} align="start">
+                          <CheckCircleOutlined style={{ color: brandAccent, marginTop: 3 }} />
+                          <Typography.Text style={{ color: textSecondary }}>
+                            Informações de apoio às operações logísticas
+                          </Typography.Text>
+                        </Space>
+                      </Space>
+                    </Card>
+                  )}
+                </Form>
+              </Card>
+            </Col>
+          </Row>
+        </div>
       </div>
 
       <Modal
@@ -261,9 +613,18 @@ export function LoginPage() {
         width={isMobile ? '100%' : 760}
         style={isMobile ? { top: 0, padding: 0 } : undefined}
       >
-        <div style={{ marginBottom: 16 }}>
-          <Typography.Text type="secondary">
-            Preencha seus dados. Sua solicitação será enviada para aprovação. Cargo e gestor serão definidos no momento da aprovação.
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 10,
+            background: '#F8FBFF',
+            border: `1px solid ${borderBlue}`,
+          }}
+        >
+          <Typography.Text style={{ color: textSecondary }}>
+            Preencha seus dados. Sua solicitação será enviada para aprovação.
+            Cargo e gestor serão definidos no momento da aprovação.
           </Typography.Text>
         </div>
 
@@ -273,7 +634,11 @@ export function LoginPage() {
             label="Nome completo"
             rules={[{ required: true, message: 'Informe seu nome completo' }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="Digite seu nome completo" />
+            <Input
+              prefix={<UserOutlined />}
+              placeholder="Digite seu nome completo"
+              style={{ borderRadius: 10, height: 42 }}
+            />
           </Form.Item>
 
           <Form.Item
@@ -285,7 +650,11 @@ export function LoginPage() {
               { validator: validateCorporateEmail },
             ]}
           >
-            <Input prefix={<MailOutlined />} placeholder="seunome@omnilink.com.br" />
+            <Input
+              prefix={<MailOutlined />}
+              placeholder="seunome@omnilink.com.br"
+              style={{ borderRadius: 10, height: 42 }}
+            />
           </Form.Item>
 
           <Form.Item
@@ -300,6 +669,7 @@ export function LoginPage() {
               placeholder="Crie uma senha"
               prefix={<LockOutlined />}
               iconRender={(visible) => (visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
+              style={{ borderRadius: 10, height: 42 }}
             />
           </Form.Item>
 
@@ -344,7 +714,9 @@ export function LoginPage() {
               onRemove={() => setSignupAvatarFile(null)}
               listType="picture"
             >
-              <Button icon={<UploadOutlined />}>Selecionar foto</Button>
+              <Button icon={<UploadOutlined />} style={{ borderRadius: 10 }}>
+                Selecionar foto
+              </Button>
             </Upload>
           </Form.Item>
         </Form>

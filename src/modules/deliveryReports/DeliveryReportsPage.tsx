@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useAuth } from '../auth/AuthProvider';
 import { getUserLevel } from '../auth/access';
+import ptBR from 'antd/es/date-picker/locale/pt_BR';
+import 'dayjs/locale/pt-br';
 import {
   Alert,
   Button,
@@ -55,6 +57,7 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
 
+dayjs.locale('pt-br');
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Dragger } = Upload;
@@ -142,6 +145,7 @@ type FiltersState = {
   notaFiscal?: string;
   transportadora?: string;
   statusEntrega?: string;
+  quarter?: string;
   operacao?: string;
   deletedFilter?: 'active' | 'all' | 'only';
   cancelledMode?: 'all' | 'hide' | 'only';
@@ -251,6 +255,12 @@ const STATUS_ENTREGA_OPTIONS = [
   'ATRASADA',
   'DEVOLVIDA',
   'CANCELADA',
+];
+const QUARTER_OPTIONS = [
+  { label: '1º Trimestre', value: 'Q1' },
+  { label: '2º Trimestre', value: 'Q2' },
+  { label: '3º Trimestre', value: 'Q3' },
+  { label: '4º Trimestre', value: 'Q4' },
 ];
 
 const OPERACAO_OPTIONS = [
@@ -440,6 +450,21 @@ function formatDate(value?: string | null) {
   if (!value) return '-';
   const d = dayjs(value);
   return d.isValid() ? d.format('DD/MM/YYYY') : '-';
+}
+function getQuarterRange(year: number, quarter: string) {
+  if (quarter === 'Q1') {
+    return [dayjs(`${year}-01-01`), dayjs(`${year}-03-31`)];
+  }
+  if (quarter === 'Q2') {
+    return [dayjs(`${year}-04-01`), dayjs(`${year}-06-30`)];
+  }
+  if (quarter === 'Q3') {
+    return [dayjs(`${year}-07-01`), dayjs(`${year}-09-30`)];
+  }
+  if (quarter === 'Q4') {
+    return [dayjs(`${year}-10-01`), dayjs(`${year}-12-31`)];
+  }
+  return null;
 }
 
 function formatDateTime(value?: string | null) {
@@ -950,7 +975,7 @@ export default function DeliveryReportsPage() {
   const [importJobId, setImportJobId] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<ImportStatusResponse | null>(null);
   const [importLogs, setImportLogs] = useState<ImportLogItem[]>([]);
-
+  const [showResumo, setShowResumo] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const currentYear = dayjs().year();
@@ -1043,42 +1068,44 @@ export default function DeliveryReportsPage() {
     return filters.cancelledMode || 'all';
   }, [quickView, filters.cancelledMode]);
 
-  const queryParams = useMemo(
-    () =>
-      cleanObject({
-        page,
-        limit: pageSize,
-        search: filters.search,
-        cte: filters.cte,
-        notaFiscal: filters.notaFiscal,
-        transportadora: filters.transportadora,
-        statusEntrega: effectiveStatusEntrega,
-        operacao: filters.operacao,
-        deletedFilter: effectiveDeletedFilter,
-        cancelledMode: effectiveCancelledMode,
-        includeCancelled: effectiveCancelledMode === 'hide' ? 'false' : 'true',
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        yearMode,
-        years: selectedYearValue,
-      }),
-    [
-      filters.search,
-      filters.cte,
-      filters.notaFiscal,
-      filters.transportadora,
-      filters.operacao,
-      filters.startDate,
-      filters.endDate,
-      effectiveStatusEntrega,
-      effectiveDeletedFilter,
-      effectiveCancelledMode,
+const queryParams = useMemo(
+  () =>
+    cleanObject({
       page,
-      pageSize,
+      limit: pageSize,
+      search: filters.search,
+      cte: filters.cte,
+      notaFiscal: filters.notaFiscal,
+      transportadora: filters.transportadora,
+      statusEntrega: effectiveStatusEntrega,
+      operacao: filters.operacao,
+      quarter: filters.quarter,
+      deletedFilter: effectiveDeletedFilter,
+      cancelledMode: effectiveCancelledMode,
+      includeCancelled: effectiveCancelledMode === 'hide' ? 'false' : 'true',
+      startDate: filters.startDate,
+      endDate: filters.endDate,
       yearMode,
-      selectedYearValue,
-    ]
-  );
+      years: selectedYearValue,
+    }),
+  [
+    filters.search,
+    filters.cte,
+    filters.notaFiscal,
+    filters.transportadora,
+    filters.operacao,
+    filters.quarter,
+    filters.startDate,
+    filters.endDate,
+    effectiveStatusEntrega,
+    effectiveDeletedFilter,
+    effectiveCancelledMode,
+    page,
+    pageSize,
+    yearMode,
+    selectedYearValue,
+  ]
+);
 
   const baseFilterParams = useMemo(
     () =>
@@ -1089,6 +1116,7 @@ export default function DeliveryReportsPage() {
         transportadora: filters.transportadora,
         statusEntrega: effectiveStatusEntrega,
         operacao: filters.operacao,
+        quarter: filters.quarter,
         deletedFilter: effectiveDeletedFilter,
         cancelledMode: effectiveCancelledMode,
         includeCancelled: effectiveCancelledMode === 'hide' ? 'false' : 'true',
@@ -1117,6 +1145,9 @@ export default function DeliveryReportsPage() {
     queryKey: ['delivery-reports', queryParams],
     queryFn: async () => (await api.get('/delivery-reports', { params: queryParams })).data,
     placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 30000,
   });
 
   const summaryQuery = useQuery<DeliveryReportListResponse>({
@@ -1132,6 +1163,9 @@ export default function DeliveryReportsPage() {
         })
       ).data,
     placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 30000,
   });
 
   const detailsQuery = useQuery<DeliveryReport>({
@@ -1277,10 +1311,16 @@ export default function DeliveryReportsPage() {
 
       if (data.status !== lastStatus) {
         lastStatus = data.status;
-        if (data.status === 'queued') appendImportLog('Job entrou na fila de processamento.', 'info');
-        else if (data.status === 'processing') appendImportLog('Servidor começou a processar a planilha.', 'info');
-        else if (data.status === 'done') appendImportLog('Importação concluída com sucesso.', 'success');
-        else if (data.status === 'error') appendImportLog(data.message || 'Erro durante a importação.', 'error');
+
+        if (data.status === 'queued') {
+          appendImportLog('Job entrou na fila de processamento.', 'info');
+        } else if (data.status === 'processing') {
+          appendImportLog('Servidor começou a processar a planilha.', 'info');
+        } else if (data.status === 'done') {
+          appendImportLog('Importação concluída com sucesso.', 'success');
+        } else if (data.status === 'error') {
+          appendImportLog(data.message || 'Erro durante a importação.', 'error');
+        }
       }
 
       if (data.message && data.message !== lastMessage) {
@@ -1293,7 +1333,10 @@ export default function DeliveryReportsPage() {
 
       if (typeof data.processed === 'number' && data.processed !== lastProcessed) {
         if (data.processed > 0 && data.totalLinhas) {
-          appendImportLog(`Progresso: ${data.processed}/${data.totalLinhas} linha(s) processada(s).`, 'info');
+          appendImportLog(
+            `Progresso: ${data.processed}/${data.totalLinhas} linha(s) processada(s).`,
+            'info'
+          );
         }
         lastProcessed = data.processed;
       }
@@ -1315,13 +1358,11 @@ export default function DeliveryReportsPage() {
 
     const fetchStatus = async () => {
       try {
-        const response = await api.get<ImportStatusResponse>(`/delivery-reports/import/status/${importJobId}`);
+        const response = await api.get<ImportStatusResponse>(
+          `/delivery-reports/import/status/${importJobId}`
+        );
         if (cancelled) return;
         applyStatus(response.data);
-        if (response.data.status === 'done') {
-          qc.invalidateQueries({ queryKey: ['delivery-reports'] });
-          qc.invalidateQueries({ queryKey: ['delivery-reports-summary-all'] });
-        }
       } catch {
         if (!cancelled) {
           setImportStage('error');
@@ -1334,8 +1375,12 @@ export default function DeliveryReportsPage() {
 
     const interval = setInterval(async () => {
       try {
-        const response = await api.get<ImportStatusResponse>(`/delivery-reports/import/status/${importJobId}`);
+        const response = await api.get<ImportStatusResponse>(
+          `/delivery-reports/import/status/${importJobId}`
+        );
+
         if (cancelled) return;
+
         const data = response.data;
         applyStatus(data);
 
@@ -1352,12 +1397,13 @@ export default function DeliveryReportsPage() {
         if (!cancelled) {
           setImportStage('error');
           clearInterval(interval);
-          const msg = error?.response?.data?.message || 'Falha ao consultar status da importação';
+          const msg =
+            error?.response?.data?.message || 'Falha ao consultar status da importação';
           appendImportLog(msg, 'error');
           message.error(msg);
         }
       }
-    }, 1500);
+    }, 4000);
 
     return () => {
       cancelled = true;
@@ -1368,7 +1414,27 @@ export default function DeliveryReportsPage() {
   const rows = listQuery.data?.rows || [];
   const total = listQuery.data?.total || 0;
   const summaryRows = summaryQuery.data?.rows || [];
+  const resumoPeso = useMemo(() => {
+    const activeRows = summaryRows.filter((r) => !r.deletedAt);
 
+    const totalPeso = activeRows.reduce(
+      (acc, item) => acc + normalizeCurrency(item.pesoReal),
+      0
+    );
+
+    const totalVolumes = activeRows.reduce(
+      (acc, item) => acc + normalizeCurrency(item.volume),
+      0
+    );
+
+    const totalRegistros = activeRows.length;
+
+    return {
+      totalPeso,
+      totalVolumes,
+      totalRegistros,
+    };
+  }, [summaryRows]);
   const summary = useMemo(() => {
     const activeRows = summaryRows.filter((r) => !r.deletedAt);
 
@@ -2248,8 +2314,25 @@ export default function DeliveryReportsPage() {
   const handleSearch = () => {
     const values = filterForm.getFieldsValue();
 
-    const startDate = values.period?.[0] ? dayjs(values.period[0]).startOf('day').toISOString() : undefined;
-    const endDate = values.period?.[1] ? dayjs(values.period[1]).endOf('day').toISOString() : undefined;
+    let startDate = values.period?.[0]
+      ? dayjs(values.period[0]).startOf('day').toISOString()
+      : undefined;
+
+    let endDate = values.period?.[1]
+      ? dayjs(values.period[1]).endOf('day').toISOString()
+      : undefined;
+
+    if (values.quarter) {
+      const selectedYear =
+        yearFilter !== 'all' ? Number(yearFilter) : dayjs().year();
+
+      const quarterRange = getQuarterRange(selectedYear, values.quarter);
+
+      if (quarterRange) {
+        startDate = quarterRange[0].startOf('day').toISOString();
+        endDate = quarterRange[1].endOf('day').toISOString();
+      }
+    }
 
     let deletedFilter: 'active' | 'all' | 'only' = 'all';
     if (values.deletedFilter === 'active') deletedFilter = 'active';
@@ -2258,19 +2341,25 @@ export default function DeliveryReportsPage() {
     setPage(1);
     setQuickView('all');
 
-    setFilters((prev) => ({
-      ...prev,
-      search: values.search?.trim() || undefined,
-      cte: values.cte?.trim() || undefined,
-      notaFiscal: values.notaFiscal?.trim() || undefined,
-      transportadora: values.transportadora || undefined,
-      statusEntrega: values.statusEntrega || undefined,
-      operacao: values.operacao || undefined,
-      deletedFilter,
-      cancelledMode: 'all',
-      startDate,
-      endDate,
-    }));
+  setFilters((prev) => ({
+    ...prev,
+    search: values.search?.trim() || undefined,
+    cte: values.cte?.trim() || undefined,
+    notaFiscal: values.notaFiscal?.trim() || undefined,
+    transportadora: values.transportadora || undefined,
+    statusEntrega: values.statusEntrega || undefined,
+    operacao: values.operacao || undefined,
+    quarter: values.quarter || undefined,
+    deletedFilter,
+    cancelledMode: 'all',
+    startDate,
+    endDate,
+  }));
+
+  setTimeout(() => {
+    qc.invalidateQueries({ queryKey: ['delivery-reports'] });
+    qc.invalidateQueries({ queryKey: ['delivery-reports-summary-all'] });
+  }, 0);
   };
 
   const handleResetFilters = () => {
@@ -2288,6 +2377,7 @@ export default function DeliveryReportsPage() {
       transportadora: undefined,
       statusEntrega: undefined,
       operacao: undefined,
+      quarter: undefined,
       startDate: undefined,
       endDate: undefined,
     });
@@ -2299,6 +2389,7 @@ export default function DeliveryReportsPage() {
       transportadora: undefined,
       statusEntrega: undefined,
       operacao: undefined,
+      quarter: undefined,
       period: undefined,
       deletedFilter: 'all',
     });
@@ -2329,6 +2420,13 @@ export default function DeliveryReportsPage() {
 
   const importProgress =
     importStatus?.progress ?? (importStage === 'uploading' ? uploadProgress : importStage === 'done' ? 100 : 0);
+
+  const importInserted = Number(importStatus?.inserted || 0);
+  const importUpdated = Number(importStatus?.updated || 0);
+  const importIgnored = Number(importStatus?.ignored || 0);
+  const importProcessed = Number(importStatus?.processed || 0);
+  const importTotalLinhas = Number(importStatus?.totalLinhas || 0);
+  const importErrorsCount = Number(importStatus?.errors?.length || 0);
 
   const yearFilterLabel = yearFilter === 'all' ? 'Total' : yearFilter;
 
@@ -2439,7 +2537,12 @@ export default function DeliveryReportsPage() {
                 <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => setOpenExport(true)}>
                   Exportar
                 </Button>
-
+              <Button
+                icon={<BarChartOutlined />}
+                onClick={() => setShowResumo((prev) => !prev)}
+              >
+                {showResumo ? 'Ocultar Indicadores' : 'Mostrar Indicadores'}
+              </Button>
                 <Button icon={<GlobalOutlined />} onClick={() => setOpenResumoModal(true)}>
                   Resumo
                 </Button>
@@ -2461,169 +2564,429 @@ export default function DeliveryReportsPage() {
             </Col>
           </Row>
         </Card>
-        <Spin spinning={summaryQuery.isLoading || summaryQuery.isFetching}>
-          <Row gutter={[16, 16]}>
-
-              {/* 🔵 ENTREGA (ATIVAS + EXCLUÍDAS) */}
-              <Col xs={24} sm={12} lg={8} xl={4}>
-                <Card
-                  variant={false}
-                  style={{
-                    borderRadius: 18,
-                    height: '100%',
-                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
-                    border: '1px solid #eef2f7',
-                  }}
-                  styles={{ body: { padding: 16 } }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <Text type="secondary">Entrega</Text>
-
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: '#2563eb22',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#2563eb',
-                        fontSize: 18,
-                      }}
-                    >
-                      <FileTextOutlined />
-                    </div>
+        {showResumo && (
+        <Row gutter={[18, 18]}>
+          <Col xs={24} md={12} xl={8}>
+            <Card
+              variant={false}
+              style={{
+                borderRadius: 22,
+                border: '1px solid #e8edf5',
+                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                background: '#fff',
+                height: '100%',
+              }}
+              styles={{ body: { padding: 22 } }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: '#64748b',
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Carga Transportada
                   </div>
 
-                  <Row>
-                    <Col span={12}>
-                      <Text type="secondary">Ativas</Text>
-                      <div style={{ fontSize: 20, fontWeight: 700 }}>
-                        {summary.totalCteAtivas}
-                      </div>
-                    </Col>
-
-                    <Col span={12} style={{ textAlign: 'right' }}>
-                      <Text type="secondary">Excluídas</Text>
-                      <div style={{ fontSize: 20, fontWeight: 700 }}>
-                        {summary.totalExcluidos}
-                      </div>
-                    </Col>
-                  </Row>
-
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Ano: {yearFilterLabel}
-                  </Text>
-                </Card>
-              </Col>
-
-              {/* 🟢 SLA DE ENTREGA */}
-              <Col xs={24} sm={12} lg={8} xl={4}>
-                <Card
-                  variant={false}
-                  style={{
-                    borderRadius: 18,
-                    height: '100%',
-                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
-                    border: '1px solid #eef2f7',
-                  }}
-                  styles={{ body: { padding: 16 } }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <Text type="secondary">SLA de Entrega</Text>
-
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: '#16a34a22',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#16a34a',
-                        fontSize: 18,
-                      }}
-                    >
-                      <CheckCircleOutlined />
-                    </div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {formatNumber(resumoPeso.totalPeso, 0)} kg
                   </div>
 
-                  <Row>
-                    <Col span={12}>
-                      <Text type="secondary">No prazo</Text>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: '#16a34a' }}>
-                        {summary.delivered}
-                      </div>
-                    </Col>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 13,
+                      color: '#94a3b8',
+                    }}
+                  >
+                    Peso total transportado
+                  </div>
+                </div>
 
-                    <Col span={12} style={{ textAlign: 'right' }}>
-                      <Text type="secondary">Fora do prazo</Text>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626' }}>
-                        {summary.delayed}
-                      </div>
-                    </Col>
-                  </Row>
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#e0f2fe',
+                    color: '#0ea5e9',
+                    border: '1px solid #bae6fd',
+                    fontSize: 24,
+                    flexShrink: 0,
+                  }}
+                >
+                  <CarOutlined />
+                </div>
+              </div>
 
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Performance de entrega
-                  </Text>
-                </Card>
-              </Col>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 16,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      Volumes
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>
+                      {resumoPeso.totalVolumes.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                </Col>
 
-            {/* 🔽 RESTO NORMAL */}
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="Valor Total NF"
-                value={summary.totalValorNF}
-                prefix="R$"
-                precision={2}
-                subtitle="Soma total das notas"
-                icon={<DollarCircleOutlined />}
-                accent="#0f766e"
-              />
-            </Col>
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 16,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      Registros
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>
+                      {resumoPeso.totalRegistros.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
 
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="Valor TotalFrete"
-                value={summary.totalFrete}
-                prefix="R$"
-                precision={2}
-                subtitle="Soma total do frete"
-                icon={<CarOutlined />}
-                accent="#7c3aed"
-              />
-            </Col>
+              <div
+                style={{
+                  marginTop: 18,
+                  height: 6,
+                  borderRadius: 999,
+                  background: '#e0f2fe',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 999,
+                    background: 'linear-gradient(90deg, #0ea5e9, #38bdf8)',
+                  }}
+                />
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} md={12} xl={8}>
+            <Card
+              variant={false}
+              style={{
+                borderRadius: 22,
+                border: '1px solid #e8edf5',
+                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                background: '#fff',
+                height: '100%',
+              }}
+              styles={{ body: { padding: 22 } }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: '#64748b',
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    SLA de Entrega
+                  </div>
 
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="Frete Médio"
-                value={summary.freteMedio}
-                prefix="R$"
-                precision={2}
-                subtitle="Média por CTE ativa"
-                icon={<CheckCircleOutlined />}
-                accent="#f59e0b"
-              />
-            </Col>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: '#94a3b8',
+                    }}
+                  >
+                    Performance logística
+                  </div>
+                </div>
 
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <SummaryCard
-                title="% Frete sobre NF"
-                value={summary.percentualFreteSobreNF}
-                suffix="%"
-                precision={2}
-                subtitle="Custo do frete sobre a nota"
-                icon={<PercentageOutlined />}
-                accent="#db2777"
-              />
-            </Col>
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#dcfce7',
+                    color: '#16a34a',
+                    border: '1px solid #bbf7d0',
+                    fontSize: 24,
+                    flexShrink: 0,
+                  }}
+                >
+                  <CheckCircleOutlined />
+                </div>
+              </div>
 
-          </Row>
-        </Spin>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderRadius: 16,
+                      background: '#f0fdf4',
+                      border: '1px solid #dcfce7',
+                      height: '100%',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      No prazo
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: '#16a34a' }}>
+                      {summary.delivered.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                </Col>
 
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderRadius: 16,
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      height: '100%',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      Fora do prazo
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: '#dc2626' }}>
+                      {summary.delayed.toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+
+              <div
+                style={{
+                  marginTop: 18,
+                  height: 6,
+                  borderRadius: 999,
+                  background: '#dcfce7',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 999,
+                    background: 'linear-gradient(90deg, #16a34a, #22c55e)',
+                  }}
+                />
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} md={12} xl={8}>
+            <Card
+              variant={false}
+              style={{
+                borderRadius: 22,
+                border: '1px solid #e8edf5',
+                boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                background: '#fff',
+                height: '100%',
+              }}
+              styles={{ body: { padding: 22 } }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: '#64748b',
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Valor NF
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {formatMoney(summary.totalValorNF)}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 13,
+                      color: '#94a3b8',
+                    }}
+                  >
+                    Total das notas fiscais
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#dff7f4',
+                    color: '#0f766e',
+                    border: '1px solid #b7e4dd',
+                    fontSize: 24,
+                    flexShrink: 0,
+                  }}
+                >
+                  <DollarCircleOutlined />
+                </div>
+              </div>
+
+              <Row gutter={16}>
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 16,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      Frete Total
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#7c3aed' }}>
+                      {formatMoney(summary.totalFrete)}
+                    </div>
+                  </div>
+                </Col>
+
+                <Col span={12}>
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 16,
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                      % Frete
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#db2777' }}>
+                      {formatPercent(summary.percentualFreteSobreNF, 2)}
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+
+              <div
+                style={{
+                  marginTop: 18,
+                  height: 6,
+                  borderRadius: 999,
+                  background: '#dff7f4',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 999,
+                    background: 'linear-gradient(90deg, #0f766e, #14b8a6)',
+                  }}
+                />
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} md={12} xl={8}>
+            <SummaryCard
+              title="Frete Médio"
+              value={summary.freteMedio}
+              prefix="R$"
+              precision={2}
+              subtitle="Média por CTE"
+              icon={<CheckCircleOutlined />}
+              accent="#f59e0b"
+            />
+          </Col>
+          <Col xs={24} md={12} xl={8}>
+            <SummaryCard
+              title="Frete Total"
+              value={summary.totalFrete}
+              prefix="R$"
+              precision={2}
+              subtitle="Total transporte"
+              icon={<CarOutlined />}
+              accent="#7c3aed"
+            />
+          </Col>
+          <Col xs={24} md={12} xl={8}>
+            <SummaryCard
+              title="% Frete sobre NF"
+              value={summary.percentualFreteSobreNF}
+              suffix="%"
+              precision={2}
+              subtitle="Custo sobre NF"
+              icon={<PercentageOutlined />}
+              accent="#db2777"
+            />
+          </Col>
+        </Row>
+        )}
         <Card variant={false} title="Filtros">
           <Form
             form={filterForm}
@@ -2660,22 +3023,40 @@ export default function DeliveryReportsPage() {
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={8} lg={2}>
-                <Form.Item name="operacao" label="Operação">
-                  <Select
-                    placeholder="Selecione"
-                    allowClear
-                    options={OPERACAO_OPTIONS.map((value) => ({ label: value, value }))}
-                  />
-                </Form.Item>
-              </Col>
 
               <Col xs={24} md={10} lg={5}>
                 <Form.Item name="period" label="Período de emissão">
-                  <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+                  <RangePicker
+                    style={{ width: '100%' }}
+                    format="DD/MM/YYYY"
+                    locale={ptBR}
+                    placeholder={['Data inicial', 'Data final']}
+                  />
                 </Form.Item>
               </Col>
+              <Col xs={24} md={8} lg={3}>
+                <Form.Item name="quarter" label="Trimestre">
+                  <Select
+                    placeholder="Selecione"
+                    allowClear
+                    options={QUARTER_OPTIONS}
+                    onChange={(value) => {
+                      if (!value) return;
 
+                      const selectedYear =
+                        yearFilter !== 'all' ? Number(yearFilter) : dayjs().year();
+
+                      const quarterRange = getQuarterRange(selectedYear, value);
+
+                      if (quarterRange) {
+                        filterForm.setFieldsValue({
+                          period: quarterRange,
+                        });
+                      }
+                    }}
+                  />
+                </Form.Item>
+              </Col>
               <Col xs={24} md={8} lg={3}>
                 <Form.Item name="deletedFilter" label="Registros">
                   <Select
@@ -3176,7 +3557,8 @@ export default function DeliveryReportsPage() {
           </Spin>
         </Modal>
 
-        <Modal
+        
+<Modal
           title="Importar CTEs por Excel"
           open={openImport}
           onCancel={() => {
@@ -3197,137 +3579,248 @@ export default function DeliveryReportsPage() {
           cancelText="Fechar"
           okButtonProps={{ disabled: !!importJobId || importMutation.isPending }}
           confirmLoading={importMutation.isPending}
-          width={980}
+          width={1080}
           destroyOnHidden
         >
-          <Row gutter={[16, 16]} align="stretch">
-            <Col xs={24} md={13}>
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Alert
-                  type="info"
-                  showIcon
-                  message="Importação por planilha"
-                  description="Envie um arquivo .xlsx com a estrutura do relatório de entregas."
-                />
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Alert
+              type="info"
+              showIcon
+              message="Importação otimizada"
+              description="O arquivo é enviado uma única vez. O processamento pesado acontece no servidor, em lotes internos de 100 registros, para reduzir travamentos e melhorar o retorno."
+            />
 
-                <Dragger
-                  multiple={false}
-                  maxCount={1}
-                  disabled={importMutation.isPending || !!importJobId}
-                  style={{ minHeight: 250 }}
-                  beforeUpload={(file) => {
-                    const isExcel =
-                      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                      file.name.toLowerCase().endsWith('.xlsx');
-
-                    if (!isExcel) {
-                      message.error('Envie um arquivo .xlsx');
-                      return Upload.LIST_IGNORE;
-                    }
-
-                    setImportFile(file as File);
-                    setUploadProgress(0);
-                    setImportStage('idle');
-                    setImportJobId(null);
-                    setImportStatus(null);
-                    setImportLogs([]);
-                    return false;
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={14}>
+                <Card
+                  size="small"
+                  style={{
+                    height: '100%',
+                    borderRadius: 16,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
                   }}
-                  onRemove={() => {
-                    if (importMutation.isPending || !!importJobId) return false;
-                    resetImportState();
-                    return true;
-                  }}
-                  fileList={
-                    importFile
-                      ? [
-                          {
-                            uid: '1',
-                            name: importFile.name,
-                            status: importMutation.isPending || importStage === 'uploading' ? 'uploading' : 'done',
-                          } as any,
-                        ]
-                      : []
-                  }
+                  styles={{ body: { padding: 18 } }}
                 >
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">Clique ou arraste o arquivo Excel para esta área</p>
-                  <p className="ant-upload-hint">Formato suportado: .xlsx</p>
-                </Dragger>
-              </Space>
-            </Col>
-
-            <Col xs={24} md={11}>
-              <Card size="small" style={{ height: '100%', minHeight: 430, borderRadius: 12 }}>
-                <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                  <Row justify="space-between" align="middle">
-                    <Col>
+                  <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <div>
                       <Text strong style={{ fontSize: 15 }}>
-                        Status da importação
+                        Arquivo da importação
                       </Text>
-                    </Col>
-                    <Col>
-                      <Tag color={getImportStageTagColor(importStage)}>{getImportStageLabel(importStage)}</Tag>
-                    </Col>
-                  </Row>
+                      <div style={{ color: '#64748b', marginTop: 4, fontSize: 13 }}>
+                        Selecione um arquivo .xlsx. Depois do envio, a tela acompanha o job e mostra quantos registros foram inseridos, atualizados ou ignorados.
+                      </div>
+                    </div>
 
-                  <Progress
-                    percent={importProgress}
-                    status={
-                      importStage === 'error' ? 'exception' : importStage === 'done' ? 'success' : 'active'
-                    }
-                  />
+                    <Dragger
+                      multiple={false}
+                      maxCount={1}
+                      disabled={importMutation.isPending || !!importJobId}
+                      style={{ minHeight: 240, borderRadius: 14 }}
+                      beforeUpload={(file) => {
+                        const isExcel =
+                          file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                          file.name.toLowerCase().endsWith('.xlsx');
 
-                  <Text type="secondary">
-                    {importStage === 'idle' && 'Selecione um arquivo e clique em importar.'}
-                    {importStage === 'uploading' && 'Enviando arquivo para o servidor...'}
-                    {importStage === 'queued' && 'Importação iniciada. Aguardando processamento...'}
-                    {importStage === 'processing' &&
-                      (importStatus?.message ||
-                        `Processando ${importStatus?.processed || 0} de ${importStatus?.totalLinhas || 0} linhas...`)}
-                    {importStage === 'done' && (importStatus?.message || 'Importação concluída.')}
-                    {importStage === 'error' && (importStatus?.message || 'Falha ao importar planilha.')}
-                  </Text>
+                        if (!isExcel) {
+                          message.error('Envie um arquivo .xlsx');
+                          return Upload.LIST_IGNORE;
+                        }
 
-                  <div
-                    ref={logsContainerRef}
-                    style={{
-                      maxHeight: 150,
-                      overflowY: 'auto',
-                      border: '1px solid #f0f0f0',
-                      borderRadius: 8,
-                      padding: 8,
-                      background: '#fafafa',
-                    }}
-                  >
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      {importLogs.length === 0 ? (
-                        <Text type="secondary">Nenhum log ainda.</Text>
-                      ) : (
-                        importLogs.map((log) => (
-                          <Text
-                            key={log.id}
-                            type={
-                              log.type === 'error'
-                                ? 'danger'
-                                : log.type === 'warning'
-                                ? 'warning'
-                                : undefined
-                            }
-                            style={{ fontSize: 12 }}
-                          >
-                            [{log.at}] {log.text}
-                          </Text>
-                        ))
-                      )}
-                    </Space>
-                  </div>
-                </Space>
-              </Card>
-            </Col>
-          </Row>
+                        setImportFile(file as File);
+                        setUploadProgress(0);
+                        setImportStage('idle');
+                        setImportJobId(null);
+                        setImportStatus(null);
+                        setImportLogs([]);
+                        appendImportLog(`Arquivo pronto para importação: ${file.name}`, 'info');
+                        return false;
+                      }}
+                      onRemove={() => {
+                        if (importMutation.isPending || !!importJobId) return false;
+                        resetImportState();
+                        return true;
+                      }}
+                      fileList={
+                        importFile
+                          ? [
+                              {
+                                uid: '1',
+                                name: importFile.name,
+                                status: importMutation.isPending || importStage === 'uploading' ? 'uploading' : 'done',
+                              } as any,
+                            ]
+                          : []
+                      }
+                    >
+                      <p className="ant-upload-drag-icon">
+                        <InboxOutlined />
+                      </p>
+                      <p className="ant-upload-text">Clique ou arraste o arquivo Excel para esta área</p>
+                      <p className="ant-upload-hint">Formato suportado: .xlsx</p>
+                    </Dragger>
+
+                    <Row gutter={[12, 12]}>
+                      <Col xs={24} sm={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Arquivo</Text>
+                          <div style={{ fontWeight: 700, marginTop: 6, color: '#0f172a' }}>
+                            {importFile?.name || 'Nenhum arquivo selecionado'}
+                          </div>
+                        </Card>
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Job</Text>
+                          <div style={{ fontWeight: 700, marginTop: 6, color: '#0f172a' }}>
+                            {importJobId || '-'}
+                          </div>
+                        </Card>
+                      </Col>
+                    </Row>
+                  </Space>
+                </Card>
+              </Col>
+
+              <Col xs={24} md={10}>
+                <Card
+                  size="small"
+                  style={{
+                    height: '100%',
+                    borderRadius: 16,
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                  }}
+                  styles={{ body: { padding: 18 } }}
+                >
+                  <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                    <Row justify="space-between" align="middle">
+                      <Col>
+                        <Text strong style={{ fontSize: 15 }}>
+                          Retorno da importação
+                        </Text>
+                      </Col>
+                      <Col>
+                        <Tag color={getImportStageTagColor(importStage)}>
+                          {getImportStageLabel(importStage)}
+                        </Tag>
+                      </Col>
+                    </Row>
+
+                    <Progress
+                      percent={importProgress}
+                      strokeColor={importStage === 'error' ? '#ef4444' : '#1677ff'}
+                      status={
+                        importStage === 'error' ? 'exception' : importStage === 'done' ? 'success' : 'active'
+                      }
+                    />
+
+                    <Text type="secondary">
+                      {importStage === 'idle' && 'Selecione um arquivo e clique em importar.'}
+                      {importStage === 'uploading' && 'Enviando o arquivo para o servidor...'}
+                      {importStage === 'queued' && 'Arquivo recebido. Aguardando o job começar a processar.'}
+                      {importStage === 'processing' &&
+                        (importStatus?.message ||
+                          `Processando ${importProcessed.toLocaleString('pt-BR')} de ${importTotalLinhas.toLocaleString('pt-BR')} linhas...`)}
+                      {importStage === 'done' && (importStatus?.message || 'Importação concluída com sucesso.')}
+                      {importStage === 'error' && (importStatus?.message || 'Falha ao importar a planilha.')}
+                    </Text>
+
+                    <Row gutter={[12, 12]}>
+                      <Col xs={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Inseridos</Text>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>
+                            {importInserted.toLocaleString('pt-BR')}
+                          </div>
+                        </Card>
+                      </Col>
+                      <Col xs={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Atualizados</Text>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: '#2563eb', marginTop: 4 }}>
+                            {importUpdated.toLocaleString('pt-BR')}
+                          </div>
+                        </Card>
+                      </Col>
+                      <Col xs={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Ignorados</Text>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: '#f59e0b', marginTop: 4 }}>
+                            {importIgnored.toLocaleString('pt-BR')}
+                          </div>
+                        </Card>
+                      </Col>
+                      <Col xs={12}>
+                        <Card variant={false} size="small" styles={{ body: { padding: 14 } }}>
+                          <Text type="secondary">Erros</Text>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: '#ef4444', marginTop: 4 }}>
+                            {importErrorsCount.toLocaleString('pt-BR')}
+                          </div>
+                        </Card>
+                      </Col>
+                    </Row>
+
+                    <Card
+                      variant={false}
+                      size="small"
+                      styles={{ body: { padding: 12 } }}
+                      style={{ background: '#fafafa', border: '1px solid #f0f0f0' }}
+                    >
+                      <Row gutter={[12, 12]}>
+                        <Col span={12}>
+                          <Text type="secondary">Linhas processadas</Text>
+                          <div style={{ fontWeight: 700, marginTop: 4 }}>
+                            {importProcessed.toLocaleString('pt-BR')}
+                          </div>
+                        </Col>
+                        <Col span={12}>
+                          <Text type="secondary">Linhas do arquivo</Text>
+                          <div style={{ fontWeight: 700, marginTop: 4 }}>
+                            {importTotalLinhas.toLocaleString('pt-BR')}
+                          </div>
+                        </Col>
+                      </Row>
+                    </Card>
+
+                    <div
+                      ref={logsContainerRef}
+                      style={{
+                        maxHeight: 180,
+                        overflowY: 'auto',
+                        border: '1px solid #f0f0f0',
+                        borderRadius: 10,
+                        padding: 10,
+                        background: '#fafafa',
+                      }}
+                    >
+                      <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                        {importLogs.length === 0 ? (
+                          <Text type="secondary">Nenhum log ainda.</Text>
+                        ) : (
+                          importLogs.map((log) => (
+                            <Text
+                              key={log.id}
+                              type={
+                                log.type === 'error'
+                                  ? 'danger'
+                                  : log.type === 'warning'
+                                  ? 'warning'
+                                  : undefined
+                              }
+                              style={{ fontSize: 12 }}
+                            >
+                              [{log.at}] {log.text}
+                            </Text>
+                          ))
+                        )}
+                      </Space>
+                    </div>
+                  </Space>
+                </Card>
+              </Col>
+            </Row>
+          </Space>
         </Modal>
 
         <Modal

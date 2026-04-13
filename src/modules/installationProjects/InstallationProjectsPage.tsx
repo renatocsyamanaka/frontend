@@ -1370,14 +1370,16 @@ const tabItems = [
                     <InputNumber min={1} style={{ width: '100%' }} />
                   </Form.Item>
 
-                  <Form.Item label="Data da venda" name="saleDate">
+                  <Form.Item
+                    label="Data da venda"
+                    name="saleDate"
+                    rules={[{ required: true, message: 'Informe a data da venda' }]}
+                  >
                     <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                   </Form.Item>
-
                   <Form.Item
                     label="Data prevista de início"
                     name="startPlannedAt"
-                    rules={[{ required: true, message: 'Selecione a data de início' }]}
                   >
                     <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                   </Form.Item>
