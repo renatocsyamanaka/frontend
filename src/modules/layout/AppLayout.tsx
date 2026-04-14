@@ -232,6 +232,12 @@ export function AppLayout() {
       icon: <EnvironmentOutlined />,
       children: [
         {
+          key: '/mapa-tecnicos',
+          label: 'Mapa de Técnicos',
+          icon: <EnvironmentOutlined />,
+          permission: 'TECHS_MAP_VIEW',
+        },
+        {
           key: '/projetos-instalacao/geolocalizacao',
           label: 'Validar geolocalização',
           icon: <EnvironmentOutlined />,
@@ -258,7 +264,7 @@ export function AppLayout() {
         },
         {
           key: '/noticias-admin',
-          label: 'Administração de Notícias',
+          label: 'Central de Conteúdo',
           icon: <NotificationOutlined />,
           permission: 'NEWS_ADMIN_VIEW',
         },

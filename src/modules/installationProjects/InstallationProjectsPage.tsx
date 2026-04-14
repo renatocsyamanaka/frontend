@@ -699,7 +699,7 @@ export default function InstallationProjectsPage() {
       render: (v) => v || '-',
     },
     {
-      title: 'Data de compra',
+      title: 'Data da venda',
       dataIndex: 'saleDate',
       key: 'saleDate',
       width: 130,

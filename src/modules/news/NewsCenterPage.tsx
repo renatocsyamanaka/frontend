@@ -1,142 +1,237 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { Badge, Button, Card, Checkbox, Input, List, Space, Tag, Typography } from 'antd';
+import {
+  Button,
+  Card,
+  Empty,
+  Grid,
+  Image,
+  Input,
+  List,
+  Space,
+  Tag,
+  Typography,
+} from 'antd';
+import {
+  ArrowLeftOutlined,
+  NotificationOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthProvider';
+import { hasPermission } from '../auth/access';
 
-type Author = { id: number; name: string };
+type Sector = {
+  id: number;
+  name: string;
+};
+
 type News = {
   id: number;
   title: string;
-  body: string;
-  publishedAt: string;
-  expiresAt?: string | null;
-  pinned?: boolean;
-  author?: Author | null;
-  readAt?: string | null;
+  content: string;
+  category?: string | null;
+  imageUrl?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  targetAllSectors?: boolean;
+  sectors?: Sector[];
 };
+
+const { Title, Text, Paragraph } = Typography;
 
 export default function NewsCenterPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
+  const { user } = useAuth() as { user: any };
 
-  const [q, setQ] = useState('');
-  const [onlyUnread, setOnlyUnread] = useState(false);
-  const [includeExpired, setIncludeExpired] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const { data = [], isFetching } = useQuery<News[]>({
-    queryKey: ['news', { includeExpired }],
-    queryFn: async () => (await api.get('/news', { params: { includeExpired } })).data,
-    keepPreviousData: true,
+  const newsQuery = useQuery<News[]>({
+    queryKey: ['news', 'center'],
+    queryFn: async () => {
+      const res = await api.get('/news');
+      return res.data?.data ?? res.data ?? [];
+    },
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 
-  const markRead = useMutation({
-    mutationFn: async (id: number) => (await api.post(`/news/${id}/read`)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['news'] }),
-  });
+  const rows = useMemo(() => {
+    const base = [...(newsQuery.data || [])]
+      .filter((item) => item.isActive !== false)
+      .sort((a, b) => dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf());
 
-  const list = useMemo(() => {
-    let rows = [...data];
-    if (q.trim()) {
-      const term = q.toLowerCase();
-      rows = rows.filter(n =>
-        n.title.toLowerCase().includes(term) ||
-        n.body.toLowerCase().includes(term) ||
-        (n.author?.name || '').toLowerCase().includes(term)
+    const term = search.trim().toLowerCase();
+    if (!term) return base;
+
+    return base.filter((item) => {
+      const title = String(item.title || '').toLowerCase();
+      const content = String(item.content || '').toLowerCase();
+      const category = String(item.category || '').toLowerCase();
+      const sectors = (item.sectors || []).map((s) => s.name.toLowerCase()).join(' ');
+
+      return (
+        title.includes(term) ||
+        content.includes(term) ||
+        category.includes(term) ||
+        sectors.includes(term)
       );
-    }
-    if (onlyUnread) rows = rows.filter(n => !n.readAt);
-    // fixadas em cima, depois por data
-    rows.sort((a, b) => {
-      if ((b.pinned ? 1 : 0) !== (a.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-      return dayjs(b.publishedAt).valueOf() - dayjs(a.publishedAt).valueOf();
     });
-    return rows;
-  }, [data, q, onlyUnread]);
+  }, [newsQuery.data, search]);
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>Notícias</Typography.Title>
-        <Space>
-          <Button onClick={() => navigate('/')}>Voltar</Button>
-          <Button onClick={() => qc.invalidateQueries({ queryKey: ['news'] })} loading={isFetching}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          gap: 12,
+        }}
+      >
+        <div>
+          <Space align="center" style={{ marginBottom: 6 }}>
+            <NotificationOutlined style={{ fontSize: 22, color: '#1F71B8' }} />
+            <Title level={3} style={{ margin: 0 }}>
+              Notícias
+            </Title>
+          </Space>
+
+          <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+            Comunicados, avisos e novidades internas do portal.
+          </Text>
+        </div>
+
+        <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate('/')}
+            block={isMobile}
+          >
+            Voltar
+          </Button>
+
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => qc.invalidateQueries({ queryKey: ['news'] })}
+            loading={newsQuery.isFetching}
+            block={isMobile}
+          >
             Atualizar
           </Button>
+
+          {hasPermission(user, 'NEWS_ADMIN_VIEW') && (
+            <Link to="/noticias-admin">
+              <Button icon={<SettingOutlined />} type="primary" block={isMobile}>
+                Central de conteúdo
+              </Button>
+            </Link>
+          )}
         </Space>
       </div>
 
-      <Card>
-        <Space wrap>
-          <Input
-            allowClear
-            placeholder="Buscar por título, texto ou autor"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ width: 360 }}
-          />
-          <Checkbox checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)}>
-            Somente não lidas
-          </Checkbox>
-          <Checkbox checked={includeExpired} onChange={(e) => setIncludeExpired(e.target.checked)}>
-            Incluir expiradas
-          </Checkbox>
-          <Button
-            onClick={async () => {
-              const unread = list.filter(n => !n.readAt);
-              await Promise.all(unread.map(n => api.post(`/news/${n.id}/read`)));
-              qc.invalidateQueries({ queryKey: ['news'] });
-            }}
-          >
-            Marcar todas como lidas
-          </Button>
-        </Space>
+      <Card
+        style={{ borderRadius: 20 }}
+        styles={{ body: { padding: isMobile ? 12 : 20 } }}
+      >
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="Buscar por título, conteúdo, categoria ou setor"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          size="large"
+        />
       </Card>
 
-      <Card>
-        <List
-          itemLayout="vertical"
-          dataSource={list}
-          renderItem={(n) => {
-            const unread = !n.readAt;
-            return (
-              <List.Item
-                key={n.id}
-                actions={[
-                  <Button key="open" onClick={() => navigate(`/news#${n.id}`)}>
-                    Abrir
-                  </Button>,
-                  unread && (
-                    <Button key="read" type="primary" onClick={() => markRead.mutate(n.id)}>
-                      Marcar como lida
-                    </Button>
-                  ),
-                ].filter(Boolean)}
-              >
-                <List.Item.Meta
-                  title={
-                    <Space wrap>
-                      {n.pinned && <Tag color="gold">Fixado</Tag>}
-                      <span style={{ fontWeight: 600 }}>{n.title}</span>
-                      {unread && <Badge status="processing" text="novo" />}
+      <Card
+        style={{ borderRadius: 20 }}
+        styles={{ body: { padding: isMobile ? 12 : 20 } }}
+      >
+        {newsQuery.isLoading ? (
+          <Text type="secondary">Carregando notícias...</Text>
+        ) : rows.length === 0 ? (
+          <Empty description="Nenhuma notícia encontrada." />
+        ) : (
+          <List
+            itemLayout="vertical"
+            dataSource={rows}
+            renderItem={(item) => (
+              <List.Item key={item.id} style={{ paddingBlock: 18 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns:
+                      item.imageUrl && !isMobile ? '240px 1fr' : '1fr',
+                    gap: 18,
+                    alignItems: 'start',
+                  }}
+                >
+                  {item.imageUrl ? (
+                    <Image
+                      src={item.imageUrl}
+                      alt={item.title}
+                      preview={false}
+                      style={{
+                        width: '100%',
+                        borderRadius: 14,
+                        objectFit: 'cover',
+                        maxHeight: isMobile ? 220 : 160,
+                      }}
+                    />
+                  ) : null}
+
+                  <div style={{ minWidth: 0 }}>
+                    <Space wrap style={{ marginBottom: 8 }}>
+                      {item.category ? <Tag color="blue">{item.category}</Tag> : null}
+
+                      {item.targetAllSectors ? (
+                        <Tag color="geekblue">Todos os setores</Tag>
+                      ) : (
+                        (item.sectors || []).map((sector) => (
+                          <Tag key={sector.id} color="purple">
+                            {sector.name}
+                          </Tag>
+                        ))
+                      )}
+
+                      <Text type="secondary">
+                        {dayjs(item.createdAt).format('DD/MM/YYYY HH:mm')}
+                      </Text>
                     </Space>
-                  }
-                  description={
-                    <span style={{ color: '#64748b' }}>
-                      {n.author?.name ? `${n.author.name} • ` : ''}
-                      {dayjs(n.publishedAt).format('DD/MM/YYYY HH:mm')}
-                      {n.expiresAt && ` • expira ${dayjs(n.expiresAt).fromNow()}`}
-                    </span>
-                  }
-                />
-                <div style={{ whiteSpace: 'pre-wrap', color: '#111827' }}>{n.body}</div>
+
+                    <Title
+                      level={4}
+                      style={{ marginTop: 0, marginBottom: 8 }}
+                    >
+                      {item.title}
+                    </Title>
+
+                    <Paragraph
+                      style={{
+                        marginBottom: 0,
+                        whiteSpace: 'pre-wrap',
+                        color: '#111827',
+                      }}
+                    >
+                      {item.content}
+                    </Paragraph>
+                  </div>
+                </div>
               </List.Item>
-            );
-          }}
-        />
-        {list.length === 0 && <div style={{ color: '#94a3b8' }}>Nenhuma notícia encontrada.</div>}
+            )}
+          />
+        )}
       </Card>
     </div>
   );
