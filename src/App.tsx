@@ -32,6 +32,10 @@ import MyPartRequestsPage from './modules/PartRequests/MyPartRequestsPage';
 import PublicPartRequestPage from './modules/PartRequests/PublicPartRequestPage';
 import DeliveryReportsPage from './modules/deliveryReports/DeliveryReportsPage';
 import ApprovedProvidersPage from './modules/needs/ApprovedProvidersPage';
+import InstallationProjectsByClientPage from './modules/installationProjects/installationProjectsByClientPage';
+
+import { ConfigProvider } from 'antd';
+import ptBR from 'antd/es/locale/pt_BR';
 
 export default function App() {
   return (
@@ -67,7 +71,14 @@ export default function App() {
             </RequireAccess>
           }
         />
-
+        <Route
+          path="projetos-instalacao/visao-cliente"
+          element={
+            <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
+              <InstallationProjectsByClientPage />
+            </RequireAccess>
+          }
+        />
         <Route
           path="projetos-instalacao/dashboard"
           element={

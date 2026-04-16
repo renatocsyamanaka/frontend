@@ -54,6 +54,8 @@ type DashboardOverview = {
   pending: number;
   delayedProjects: number;
   percentDone: number;
+  finishedProjects?: number;
+  pendingProjects?: number;
 };
 
 type DelayedProjectRow = {
@@ -81,6 +83,28 @@ type DelayedProjectRow = {
   }[];
   equipmentsLabel?: string | null;
   projectUrl: string;
+};
+
+type ProductivityDetailVehicle = {
+  plate: string;
+  serial: string;
+  date?: string;
+};
+
+type ProductivityDetailProject = {
+  projectId: number;
+  title: string;
+  clientName: string;
+  supervisorName: string;
+  vehiclesCount: number;
+  vehicles: ProductivityDetailVehicle[];
+  projectUrl: string;
+};
+
+type ProductivityDetailResponse = {
+  totalProjects: number;
+  totalVehicles: number;
+  data: ProductivityDetailProject[];
 };
 
 type ProductivityDay = { date: string; installed: number };
@@ -236,6 +260,13 @@ function statusPill(value: string) {
   return { bg: '#fafafa', border: '#d9d9d9', color: '#434343' };
 }
 
+function getHeatLevel(heat: number) {
+  if (heat <= 25) return 'baixa';
+  if (heat <= 50) return 'media';
+  if (heat <= 75) return 'alta';
+  return 'muito_alta';
+}
+
 function buildParams(filters: {
   range?: [Dayjs | null, Dayjs | null] | null;
   clientId?: number | null;
@@ -263,7 +294,6 @@ function buildParams(filters: {
   if (filters.q?.trim()) params.q = filters.q.trim();
   if (filters.delayed) params.delayed = true;
 
-  // força somente projetos reais
   params.recordType = 'PROJECT';
 
   return params;
@@ -345,59 +375,6 @@ function KpiCard({
             justifyContent: 'center',
             fontSize: 24,
             boxShadow: '0 10px 24px rgba(15,23,42,0.10)',
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function HighlightCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  gradient,
-}: {
-  title: string;
-  value: number | string;
-  subtitle?: string;
-  icon: React.ReactNode;
-  gradient: string;
-}) {
-  return (
-    <Card
-      bordered={false}
-      style={{
-        borderRadius: 26,
-        background: gradient,
-        color: '#fff',
-        height: '100%',
-        boxShadow: '0 18px 40px rgba(15,23,42,0.18)',
-        overflow: 'hidden',
-      }}
-      styles={{ body: { padding: 22 } }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.88 }}>{title}</div>
-          <div style={{ fontSize: 38, fontWeight: 900, lineHeight: 1.05, marginTop: 10 }}>{value}</div>
-          {subtitle ? <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82 }}>{subtitle}</div> : null}
-        </div>
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 18,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(255,255,255,0.18)',
-            backdropFilter: 'blur(6px)',
-            fontSize: 24,
             flexShrink: 0,
           }}
         >
@@ -696,6 +673,37 @@ export default function InstallationProjectsDashboardPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [mapHeatFilter, setMapHeatFilter] = useState<string | null>(null);
+
+  const [delayedPage, setDelayedPage] = useState(1);
+  const [delayedPageSize, setDelayedPageSize] = useState(10);
+
+  const [clientPage, setClientPage] = useState(1);
+  const [clientPageSize, setClientPageSize] = useState(6);
+
+  const [coordinatorPage, setCoordinatorPage] = useState(1);
+  const [coordinatorPageSize, setCoordinatorPageSize] = useState(6);
+
+  const [supervisorPage, setSupervisorPage] = useState(1);
+  const [supervisorPageSize, setSupervisorPageSize] = useState(6);
+
+  const [regionPage, setRegionPage] = useState(1);
+  const [regionPageSize, setRegionPageSize] = useState(6);
+
+  const [productPage, setProductPage] = useState(1);
+  const [productPageSize, setProductPageSize] = useState(6);
+
+  const [endingSoonPage, setEndingSoonPage] = useState(1);
+  const [endingSoonPageSize, setEndingSoonPageSize] = useState(5);
+
+  const [dayModalPage, setDayModalPage] = useState(1);
+  const [dayModalPageSize, setDayModalPageSize] = useState(4);
+
+  const [weekModalPage, setWeekModalPage] = useState(1);
+  const [weekModalPageSize, setWeekModalPageSize] = useState(4);
+
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
 
   const [openDayModal, setOpenDayModal] = useState(false);
   const [openWeekModal, setOpenWeekModal] = useState(false);
@@ -744,19 +752,59 @@ export default function InstallationProjectsDashboardPage() {
         (await api.get('/installation-projects/dashboard/overview', { params: buildParams(filters) })).data
       ),
   });
-  
+
+  const dayDetailsQuery = useQuery<ProductivityDetailResponse>({
+    queryKey: ['installation-productivity-day-details', selectedDay, filters],
+    queryFn: async () => {
+      const response = await api.get('/installation-projects/dashboard/productivity/day-details', {
+        params: {
+          ...buildParams(filters),
+          date: selectedDay,
+        },
+      });
+
+      return response.data as ProductivityDetailResponse;
+    },
+    enabled: !!selectedDay && openDayModal,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const weekDetailsQuery = useQuery<ProductivityDetailResponse>({
+    queryKey: ['installation-productivity-week-details', selectedWeek, filters],
+    queryFn: async () => {
+      const response = await api.get('/installation-projects/dashboard/productivity/week-details', {
+        params: {
+          ...buildParams(filters),
+          weekStart: selectedWeek,
+        },
+      });
+
+      return response.data as ProductivityDetailResponse;
+    },
+    enabled: !!selectedWeek && openWeekModal,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
   const delayedProjectsQuery = useQuery<{ filters: Record<string, any>; data: DelayedProjectRow[] }>({
     queryKey: ['installation-projects-delayed', filters],
-    queryFn: async () =>
-      unwrap<{ filters: Record<string, any>; data: DelayedProjectRow[] }>(
-        (await api.get('/installation-projects/dashboard/delayed-projects', { params: buildParams(filters) })).data
-      ),
+    queryFn: async () => {
+      const response = await api.get('/installation-projects/dashboard/delayed-projects', {
+        params: buildParams(filters),
+      });
+
+      return response.data as { filters: Record<string, any>; data: DelayedProjectRow[] };
+    },
     retry: false,
     refetchOnWindowFocus: false,
     staleTime: 20000,
   });
 
-  const delayedProjects = useMemo(() => delayedProjectsQuery.data?.data || [], [delayedProjectsQuery.data]);
+  const delayedProjects = useMemo(
+    () => delayedProjectsQuery.data?.data || [],
+    [delayedProjectsQuery.data]
+  );
 
   const coordinators = useMemo(() => {
     const rows = usersQuery.data || [];
@@ -839,6 +887,8 @@ export default function InstallationProjectsDashboardPage() {
         pending: 0,
         delayedProjects: 0,
         percentDone: 0,
+        finishedProjects: 0,
+        pendingProjects: 0,
       };
     }
 
@@ -849,6 +899,8 @@ export default function InstallationProjectsDashboardPage() {
       pending: 0,
       delayedProjects: 0,
       percentDone: 0,
+      finishedProjects: 0,
+      pendingProjects: 0,
     };
   }, [rawOverview, noDataInPeriod]);
 
@@ -885,17 +937,32 @@ export default function InstallationProjectsDashboardPage() {
   const byCoordinator = noDataInPeriod ? [] : rawByCoordinator;
   const bySupervisor = noDataInPeriod ? [] : rawBySupervisor;
   const byRegion = noDataInPeriod ? [] : rawByRegion;
-  const byProduct = noDataInPeriod ? [] : rawByProduct;
+  const byProduct = noDataInPeriod
+    ? []
+    : rawByProduct.map((item) => ({
+        ...item,
+        planned: Math.round(Number(item.planned || 0)),
+        done: Math.round(Number(item.done || 0)),
+        pending: Math.round(Number(item.pending || 0)),
+        percentDone: Math.round(Number(item.percentDone || 0)),
+      }));
   const endingSoon = noDataInPeriod ? [] : rawEndingSoon;
 
+  const filteredMapRows = useMemo(() => {
+    if (!mapHeatFilter) return mapRows;
+    return mapRows.filter((row) => getHeatLevel(Number(row.heat || 0)) === mapHeatFilter);
+  }, [mapRows, mapHeatFilter]);
+
   const totalBase = Number(overview.planned || 0);
+  const finishedProjectsValue = Number(overview.finishedProjects || 0);
+  const pendingProjectsValue = Number(overview.pendingProjects || 0);
 
   const successSummary = useMemo(() => {
     const totalProjects = Number(overview.totalProjects || 0);
-    const delayedProjects = Number(overview.delayedProjects || 0);
-    const onTimeProjects = Math.max(totalProjects - delayedProjects, 0);
+    const delayedProjectsCount = Number(overview.delayedProjects || 0);
+    const onTimeProjects = Math.max(totalProjects - delayedProjectsCount, 0);
     const successRate = totalProjects > 0 ? Number(((onTimeProjects / totalProjects) * 100).toFixed(2)) : 0;
-    return { totalProjects, delayedProjects, onTimeProjects, successRate };
+    return { totalProjects, delayedProjects: delayedProjectsCount, onTimeProjects, successRate };
   }, [overview]);
 
   const byStatusFiltered = useMemo(
@@ -925,42 +992,82 @@ export default function InstallationProjectsDashboardPage() {
     ].filter((item) => item.value > 0);
   }, [successSummary]);
 
-  const coordinatorProjectsDonut = useMemo<DonutItem[]>(() => byCoordinator.map((item, index) => ({
-    name: item.coordinatorName,
-    value: Number(item.totalProjects ?? item.projects ?? 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [byCoordinator]);
+  const coordinatorProjectsDonut = useMemo<DonutItem[]>(
+    () =>
+      byCoordinator
+        .map((item, index) => ({
+          name: item.coordinatorName,
+          value: Number(item.totalProjects ?? item.projects ?? 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [byCoordinator]
+  );
 
-  const coordinatorDoneDonut = useMemo<DonutItem[]>(() => byCoordinator.map((item, index) => ({
-    name: item.coordinatorName,
-    value: Number(item.done || 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [byCoordinator]);
+  const coordinatorDoneDonut = useMemo<DonutItem[]>(
+    () =>
+      byCoordinator
+        .map((item, index) => ({
+          name: item.coordinatorName,
+          value: Number(item.done || 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [byCoordinator]
+  );
 
-  const supervisorProjectsDonut = useMemo<DonutItem[]>(() => bySupervisor.map((item, index) => ({
-    name: item.supervisorName,
-    value: Number(item.totalProjects || 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [bySupervisor]);
+  const supervisorProjectsDonut = useMemo<DonutItem[]>(
+    () =>
+      bySupervisor
+        .map((item, index) => ({
+          name: item.supervisorName,
+          value: Number(item.totalProjects || 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [bySupervisor]
+  );
 
-  const supervisorDoneDonut = useMemo<DonutItem[]>(() => bySupervisor.map((item, index) => ({
-    name: item.supervisorName,
-    value: Number(item.done || 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [bySupervisor]);
+  const supervisorDoneDonut = useMemo<DonutItem[]>(
+    () =>
+      bySupervisor
+        .map((item, index) => ({
+          name: item.supervisorName,
+          value: Number(item.done || 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [bySupervisor]
+  );
 
-  const productPlannedDonut = useMemo<DonutItem[]>(() => byProduct.map((item, index) => ({
-    name: item.product,
-    value: Number(item.planned || 0),
-    color: DONUT_COLORS[index % DONUT_COLORS.length],
-  })).filter((item) => item.value > 0).sort((a, b) => b.value - a.value).slice(0, 6), [byProduct]);
+  const productPlannedDonut = useMemo<DonutItem[]>(
+    () =>
+      byProduct
+        .map((item, index) => ({
+          name: item.product,
+          value: Number(item.planned || 0),
+          color: DONUT_COLORS[index % DONUT_COLORS.length],
+        }))
+        .filter((item) => item.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6),
+    [byProduct]
+  );
 
   const productDoneDonut = useMemo<DonutItem[]>(
     () =>
       byProduct
         .map((item, index) => ({
           name: item.product,
-          value: Number(item.done || 0),
+          value: Math.round(Number(item.done || 0)),
           color: DONUT_COLORS[index % DONUT_COLORS.length],
         }))
         .filter((item) => item.value > 0)
@@ -979,6 +1086,7 @@ export default function InstallationProjectsDashboardPage() {
     setProduct('');
     setStatus(null);
     setQ('');
+    setMapHeatFilter(null);
   };
 
   const clientColumns: ColumnsType<ByClientRow> = [
@@ -986,7 +1094,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Projetos', dataIndex: 'totalProjects', key: 'totalProjects', width: 100, align: 'center' },
     { title: 'Concluídos', dataIndex: 'completedProjects', key: 'completedProjects', width: 110, align: 'center' },
     { title: 'Base', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
-    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center' },
+    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center', render: (v) => Math.round(Number(v || 0)) },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 110, align: 'center' },
     { title: '% Conclusão', dataIndex: 'percentDone', key: 'percentDone', width: 140, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
   ];
@@ -995,7 +1103,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Coordenador', dataIndex: 'coordinatorName', key: 'coordinatorName' },
     { title: 'Projetos', key: 'projects', width: 90, align: 'center', render: (_, row) => Number(row.totalProjects ?? row.projects ?? 0) },
     { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
-    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
+    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center', render: (v) => Math.round(Number(v || 0)) },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
     { title: '%', dataIndex: 'percentDone', key: 'percentDone', width: 120, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
@@ -1006,7 +1114,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Projetos', dataIndex: 'totalProjects', key: 'totalProjects', width: 90, align: 'center' },
     { title: 'Concluídos', dataIndex: 'completedProjects', key: 'completedProjects', width: 100, align: 'center' },
     { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
-    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
+    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center', render: (v) => Math.round(Number(v || 0)) },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
     { title: '%', dataIndex: 'percentDone', key: 'percentDone', width: 120, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
@@ -1018,7 +1126,7 @@ export default function InstallationProjectsDashboardPage() {
     { title: 'Cidade', dataIndex: 'city', key: 'city' },
     { title: 'Projetos', dataIndex: 'projects', key: 'projects', width: 90, align: 'center' },
     { title: 'Base', dataIndex: 'planned', key: 'planned', width: 100, align: 'center' },
-    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center' },
+    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 100, align: 'center', render: (v) => Math.round(Number(v || 0)) },
     { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 100, align: 'center' },
     { title: 'Atrasados', dataIndex: 'delayedProjects', key: 'delayedProjects', width: 100, align: 'center' },
   ];
@@ -1026,30 +1134,10 @@ export default function InstallationProjectsDashboardPage() {
   const productColumns: ColumnsType<ByProductRow> = [
     { title: 'Produto / Equipamento', dataIndex: 'product', key: 'product' },
     { title: 'Código', dataIndex: 'code', key: 'code', width: 140, render: (v) => v || '-' },
-    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 110, align: 'center' },
-    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center' },
-    { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 110, align: 'center' },
+    { title: 'Base', dataIndex: 'planned', key: 'planned', width: 110, align: 'center', render: (v) => Math.round(Number(v || 0)) },
+    { title: 'Realizado', dataIndex: 'done', key: 'done', width: 110, align: 'center', render: (v) => Math.round(Number(v || 0)) },
+    { title: 'Pendente', dataIndex: 'pending', key: 'pending', width: 110, align: 'center', render: (v) => Math.round(Number(v || 0)) },
     { title: '%', dataIndex: 'percentDone', key: 'percentDone', width: 120, render: (v) => <Progress percent={Number(v || 0)} size="small" strokeColor="#1677ff" /> },
-  ];
-
-  const endingSoonColumns: ColumnsType<EndingSoonRow> = [
-    { title: 'Projeto', dataIndex: 'title', key: 'title' },
-    { title: 'Cliente', dataIndex: 'clientName', key: 'clientName', render: (v) => v || '-' },
-    { title: 'Supervisor', dataIndex: 'supervisorName', key: 'supervisorName', render: (v) => v || '-' },
-    { title: 'Fim previsto', dataIndex: 'endPlannedAt', key: 'endPlannedAt', width: 120, align: 'center', render: (v) => (v ? dayjs(v).format('DD/MM/YYYY') : '-') },
-    { title: 'Dias faltando', dataIndex: 'daysLeft', key: 'daysLeft', width: 120, align: 'center', render: (v) => <span style={{ color: Number(v) <= 2 ? '#cf1322' : Number(v) <= 5 ? '#d48806' : '#1677ff', fontWeight: 700 }}>{v}</span> },
-    { title: 'Carros restantes', dataIndex: 'pending', key: 'pending', width: 130, align: 'center', render: (v) => <b>{Number(v || 0)}</b> },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 120,
-      align: 'center',
-      render: (v) => {
-        const theme = statusPill(v);
-        return <span style={{ padding: '4px 10px', borderRadius: 10, background: theme.bg, border: `1px solid ${theme.border}`, color: theme.color, fontSize: 12, fontWeight: 700 }}>{statusLabel(v)}</span>;
-      },
-    },
   ];
 
   const delayedProjectColumns: ColumnsType<DelayedProjectRow> = [
@@ -1060,7 +1148,9 @@ export default function InstallationProjectsDashboardPage() {
       render: (_, row) => (
         <div>
           <div style={{ fontWeight: 800 }}>{row.title}</div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>{row.clientName || '-'} • {row.supervisorName || 'Sem supervisor'}</div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>
+            {row.clientName || '-'} • {row.supervisorName || 'Sem supervisor'}
+          </div>
         </div>
       ),
     },
@@ -1070,14 +1160,49 @@ export default function InstallationProjectsDashboardPage() {
       key: 'equipmentsLabel',
       render: (value) => <div style={{ fontSize: 12, whiteSpace: 'normal', lineHeight: 1.4 }}>{value || '-'}</div>,
     },
-    { title: 'Prazo', dataIndex: 'endPlannedAt', key: 'endPlannedAt', width: 120, align: 'center', render: (value) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-    { title: 'Dias atraso', dataIndex: 'daysLate', key: 'daysLate', width: 110, align: 'center', render: (value) => <span style={{ color: '#cf1322', fontWeight: 800 }}>{value}</span> },
-    { title: 'Carros restantes', dataIndex: 'pending', key: 'pending', width: 130, align: 'center', render: (value) => <b>{value}</b> },
-    { title: 'Ações', key: 'open', width: 150, align: 'center', render: (_, row) => <Button type="link" onClick={() => navigate(row.projectUrl)}>Abrir projeto</Button> },
+    {
+      title: 'Prazo',
+      dataIndex: 'endPlannedAt',
+      key: 'endPlannedAt',
+      width: 120,
+      align: 'center',
+      render: (value) => (value ? dayjs(value).format('DD/MM/YYYY') : '-'),
+    },
+    {
+      title: 'Dias atraso',
+      dataIndex: 'daysLate',
+      key: 'daysLate',
+      width: 110,
+      align: 'center',
+      render: (value) => <span style={{ color: '#cf1322', fontWeight: 800 }}>{value}</span>,
+    },
+    {
+      title: 'Carros restantes',
+      dataIndex: 'pending',
+      key: 'pending',
+      width: 130,
+      align: 'center',
+      render: (value) => <b>{value}</b>,
+    },
+    {
+      title: 'Ações',
+      key: 'open',
+      width: 150,
+      align: 'center',
+      render: (_, row) => <Button type="link" onClick={() => navigate(row.projectUrl)}>Abrir projeto</Button>,
+    },
   ];
 
   return (
-    <div style={{ display: 'grid', gap: 18, background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4fb 100%)', padding: isMobile ? 10 : 6, borderRadius: 28 }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: 18,
+        background: 'linear-gradient(180deg, #f4f8ff 0%, #eef4fb 100%)',
+        padding: isMobile ? 10 : 6,
+        borderRadius: 28,
+      }}
+    >
       <Card
         variant="outlined"
         style={{
@@ -1085,7 +1210,7 @@ export default function InstallationProjectsDashboardPage() {
           background: '#ffffff',
           boxShadow: '0 12px 32px rgba(15,23,42,0.08)',
           overflow: 'hidden',
-          border: '1px solid #e2e8f0'
+          border: '1px solid #e2e8f0',
         }}
         styles={{ body: { padding: isMobile ? 18 : 28 } }}
       >
@@ -1095,7 +1220,7 @@ export default function InstallationProjectsDashboardPage() {
             justifyContent: 'space-between',
             alignItems: isMobile ? 'flex-start' : 'center',
             gap: 16,
-            flexDirection: isMobile ? 'column' : 'row'
+            flexDirection: isMobile ? 'column' : 'row',
           }}
         >
           <div>
@@ -1110,7 +1235,7 @@ export default function InstallationProjectsDashboardPage() {
                 color: '#2563eb',
                 fontSize: 12,
                 fontWeight: 800,
-                marginBottom: 14
+                marginBottom: 14,
               }}
             >
               <BarChartOutlined />
@@ -1125,7 +1250,7 @@ export default function InstallationProjectsDashboardPage() {
               style={{
                 margin: '10px 0 0',
                 color: '#475569',
-                maxWidth: 760
+                maxWidth: 760,
               }}
             >
               Acompanhe projetos, base, produção, pendências, prazo, coordenadores,
@@ -1142,10 +1267,39 @@ export default function InstallationProjectsDashboardPage() {
                 borderRadius: 14,
                 borderColor: '#e2e8f0',
                 background: '#fff',
-                color: '#0f172a'
+                color: '#0f172a',
               }}
             >
               Voltar
+            </Button>
+
+            <Button
+              size="large"
+              icon={<FundOutlined />}
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (range?.[0]) params.set('startDate', range[0].format('YYYY-MM-DD'));
+                if (range?.[1]) params.set('endDate', range[1].format('YYYY-MM-DD'));
+                if (clientId) params.set('clientId', String(clientId));
+                if (coordinatorId) params.set('coordinatorId', String(coordinatorId));
+                if (supervisorId) params.set('supervisorId', String(supervisorId));
+                if (region) params.set('region', region);
+                if (uf) params.set('uf', uf);
+                if (product?.trim()) params.set('product', product.trim());
+                if (status) params.set('status', status);
+                if (q?.trim()) params.set('q', q.trim());
+
+                navigate(`/projetos-instalacao/visao-cliente?${params.toString()}`);
+              }}
+              style={{
+                borderRadius: 14,
+                background: '#ecfeff',
+                border: '1px solid #a5f3fc',
+                color: '#0f172a',
+                fontWeight: 600,
+              }}
+            >
+              Página visão por cliente
             </Button>
 
             <Button
@@ -1157,7 +1311,7 @@ export default function InstallationProjectsDashboardPage() {
                 background: '#f1f5f9',
                 border: '1px solid #e2e8f0',
                 color: '#0f172a',
-                fontWeight: 600
+                fontWeight: 600,
               }}
             >
               Validar geolocalização
@@ -1172,7 +1326,7 @@ export default function InstallationProjectsDashboardPage() {
                 background: '#ffffff',
                 color: '#0f172a',
                 borderColor: '#cbd5f5',
-                fontWeight: 600
+                fontWeight: 600,
               }}
             >
               Limpar filtros
@@ -1190,56 +1344,12 @@ export default function InstallationProjectsDashboardPage() {
                 borderRadius: 14,
                 background: '#2563eb',
                 borderColor: '#2563eb',
-                fontWeight: 700
+                fontWeight: 700,
               }}
             >
               Atualizar
             </Button>
           </Space>
-        </div>
-
-        <div style={{ marginTop: 22 }}>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={12} xl={6}>
-              <HighlightCard
-                title="Total projetos"
-                value={overview.totalProjects}
-                subtitle="Quantidade total de projetos no período"
-                icon={<TeamOutlined />}
-                gradient="linear-gradient(135deg, #334155 0%, #64748b 100%)"
-              />
-            </Col>
-
-            <Col xs={24} md={12} xl={6}>
-              <HighlightCard
-                title="Total base"
-                value={totalBase}
-                subtitle="Base total prevista para instalação"
-                icon={<DatabaseOutlined />}
-                gradient="linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)"
-              />
-            </Col>
-
-            <Col xs={24} md={12} xl={6}>
-              <HighlightCard
-                title="Total realizado"
-                value={overview.done}
-                subtitle="Instalações concluídas"
-                icon={<CheckCircleOutlined />}
-                gradient="linear-gradient(135deg, #16a34a 0%, #4ade80 100%)"
-              />
-            </Col>
-
-            <Col xs={24} md={12} xl={6}>
-              <HighlightCard
-                title="Total pendente"
-                value={overview.pending}
-                subtitle="Volume ainda não concluído"
-                icon={<ClockCircleOutlined />}
-                gradient="linear-gradient(135deg, #f97316 0%, #fb923c 100%)"
-              />
-            </Col>
-          </Row>
         </div>
       </Card>
 
@@ -1248,7 +1358,7 @@ export default function InstallationProjectsDashboardPage() {
         style={{
           borderRadius: 24,
           boxShadow: '0 14px 32px rgba(15,23,42,0.06)',
-          border: '1px solid #e2e8f0'
+          border: '1px solid #e2e8f0',
         }}
         styles={{ body: { padding: isMobile ? 14 : 20 } }}
       >
@@ -1259,7 +1369,7 @@ export default function InstallationProjectsDashboardPage() {
             alignItems: isMobile ? 'flex-start' : 'center',
             flexDirection: isMobile ? 'column' : 'row',
             gap: 12,
-            marginBottom: showFilters ? 18 : 0
+            marginBottom: showFilters ? 18 : 0,
           }}
         >
           <div>
@@ -1376,7 +1486,7 @@ export default function InstallationProjectsDashboardPage() {
                   { value: 'Nordeste', label: 'Nordeste' },
                   { value: 'Centro-Oeste', label: 'Centro-Oeste' },
                   { value: 'Sudeste', label: 'Sudeste' },
-                  { value: 'Sul', label: 'Sul' }
+                  { value: 'Sul', label: 'Sul' },
                 ]}
               />
             </Col>
@@ -1407,7 +1517,7 @@ export default function InstallationProjectsDashboardPage() {
                 options={[
                   { value: 'A_INICIAR', label: 'À iniciar' },
                   { value: 'INICIADO', label: 'Iniciado' },
-                  { value: 'FINALIZADO', label: 'Finalizado' }
+                  { value: 'FINALIZADO', label: 'Finalizado' },
                 ]}
               />
             </Col>
@@ -1421,13 +1531,32 @@ export default function InstallationProjectsDashboardPage() {
                 onChange={(e) => setProduct(e.target.value)}
               />
             </Col>
+
+            <Col xs={24} md={12} lg={6}>
+              <Select
+                allowClear
+                size="large"
+                placeholder="Mapa por intensidade"
+                style={{ width: '100%' }}
+                value={mapHeatFilter ?? undefined}
+                onChange={(v) => setMapHeatFilter(v ?? null)}
+                options={[
+                  { value: 'baixa', label: 'Baixa' },
+                  { value: 'media', label: 'Média' },
+                  { value: 'alta', label: 'Alta' },
+                  { value: 'muito_alta', label: 'Muito alta' },
+                ]}
+              />
+            </Col>
           </Row>
         )}
       </Card>
 
       {dashboardQuery.isLoading ? (
         <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spin size="large" /></div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+            <Spin size="large" />
+          </div>
         </Card>
       ) : !dashboardQuery.data ? (
         <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}>
@@ -1436,20 +1565,89 @@ export default function InstallationProjectsDashboardPage() {
       ) : (
         <>
           <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total base" value={totalBase} subtitle="Volume total previsto" icon={<DatabaseOutlined />} colors={{ bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)', border: '#bfdbfe', iconBg: 'linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)', iconColor: '#fff' }} />
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Total projetos"
+                value={overview.totalProjects}
+                subtitle="Quantidade total de projetos"
+                icon={<TeamOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+                  border: '#cbd5e1',
+                  iconBg: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
-            <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total realizado" value={overview.done} subtitle="Instalações já concluídas" icon={<CheckCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)', border: '#bbf7d0', iconBg: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)', iconColor: '#fff' }} />
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Projetos terminados"
+                value={finishedProjectsValue}
+                subtitle="Projetos finalizados"
+                icon={<CheckCircleOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)',
+                  border: '#bbf7d0',
+                  iconBg: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
-            <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total pendente" value={overview.pending} subtitle="Ainda falta instalar" icon={<ClockCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)', border: '#fdba74', iconBg: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)', iconColor: '#fff' }} />
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Projetos pendentes"
+                value={pendingProjectsValue}
+                subtitle="Projetos ainda não finalizados"
+                icon={<ClockCircleOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)',
+                  border: '#fdba74',
+                  iconBg: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
-            <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="% concluído" value={overview.percentDone} suffix="%" subtitle="Percentual geral de execução" icon={<TrophyOutlined />} colors={{ bg: 'linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%)', border: '#ddd6fe', iconBg: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)', iconColor: '#fff' }} />
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Total base"
+                value={totalBase}
+                subtitle="Volume total previsto"
+                icon={<DatabaseOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)',
+                  border: '#bfdbfe',
+                  iconBg: 'linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
-            <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Total projetos" value={overview.totalProjects} subtitle="Quantidade total de projetos" icon={<TeamOutlined />} colors={{ bg: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)', border: '#cbd5e1', iconBg: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)', iconColor: '#fff' }} />
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Total realizado"
+                value={overview.done}
+                subtitle="Instalações já concluídas"
+                icon={<CheckCircleOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)',
+                  border: '#bbf7d0',
+                  iconBg: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
+                  iconColor: '#fff',
+                }}
+              />
+            </Col>
+            <Col xs={24} sm={12} xl={4}>
+              <KpiCard
+                title="Total pendente"
+                value={overview.pending}
+                subtitle="Ainda falta instalar"
+                icon={<ClockCircleOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)',
+                  border: '#fdba74',
+                  iconBg: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
             <Col xs={24} sm={12} xl={6}>
               <div onClick={() => setOpenDelayedModal(true)} style={{ cursor: 'pointer' }}>
@@ -1468,36 +1666,204 @@ export default function InstallationProjectsDashboardPage() {
               </div>
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Média diária" value={productivity.averageDaily} subtitle="Produção média por dia" icon={<RiseOutlined />} colors={{ bg: 'linear-gradient(180deg, #eefbf3 0%, #ffffff 100%)', border: '#bbf7d0', iconBg: 'linear-gradient(135deg, #059669 0%, #34d399 100%)', iconColor: '#fff' }} />
+              <KpiCard
+                title="Média diária"
+                value={productivity.averageDaily}
+                subtitle="Produção média por dia"
+                icon={<RiseOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #eefbf3 0%, #ffffff 100%)',
+                  border: '#bbf7d0',
+                  iconBg: 'linear-gradient(135deg, #059669 0%, #34d399 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
             <Col xs={24} sm={12} xl={6}>
-              <KpiCard title="Taxa de sucesso" value={successSummary.successRate} suffix="%" subtitle="Baseada em projetos no prazo" icon={<CheckCircleOutlined />} colors={{ bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)', border: '#dbeafe', iconBg: 'linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)', iconColor: '#fff' }} />
+              <KpiCard
+                title="Média semanal"
+                value={productivity.averageWeekly}
+                subtitle="Produção média por semana"
+                icon={<CalendarOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%)',
+                  border: '#ddd6fe',
+                  iconBg: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)',
+                  iconColor: '#fff',
+                }}
+              />
+            </Col>
+            <Col xs={24} sm={12} xl={6}>
+              <KpiCard
+                title="Taxa de sucesso"
+                value={successSummary.successRate}
+                suffix="%"
+                subtitle="Baseada em projetos no prazo"
+                icon={<CheckCircleOutlined />}
+                colors={{
+                  bg: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)',
+                  border: '#dbeafe',
+                  iconBg: 'linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)',
+                  iconColor: '#fff',
+                }}
+              />
             </Col>
           </Row>
 
           <Row gutter={[16, 16]} align="stretch">
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<RiseOutlined />, 'Produtividade por dia', 'Top 5 períodos com instalações realizadas')} extra={byDayNoFuture.length > 5 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenDayModal(true)}>Ver mais</Button> : null}>
-                <SimpleBars data={byDayNoFuture} labelKey="label" valueKey="valor" maxItems={5} color="linear-gradient(90deg, #1677ff 0%, #60a5fa 100%)" />
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<RiseOutlined />, 'Produtividade por dia', 'Top 5 períodos com instalações realizadas')}
+                extra={
+                  byDayNoFuture.length > 0 ? (
+                    <Button
+                      type="link"
+                      icon={<EyeOutlined />}
+                      onClick={() => {
+                        setSelectedDay(byDayNoFuture[0]?.rawDate || null);
+                        setOpenDayModal(true);
+                      }}
+                    >
+                      Ver detalhes
+                    </Button>
+                  ) : null
+                }
+              >
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {byDayNoFuture.slice(0, 5).map((item, index) => {
+                    const max = Math.max(...byDayNoFuture.map((r) => Number(r.valor || 0)), 0);
+                    const percent = max ? Math.round((Number(item.valor || 0) / max) * 100) : 0;
+
+                    return (
+                      <div
+                        key={`${item.label}_${index}`}
+                        onClick={() => {
+                          setSelectedDay(item.rawDate);
+                          setOpenDayModal(true);
+                        }}
+                        style={{
+                          display: 'grid',
+                          gap: 8,
+                          padding: 14,
+                          borderRadius: 18,
+                          background: '#f8fafc',
+                          border: '1px solid #e5edf7',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: '#0f172a' }}>
+                          <span style={{ fontWeight: 700 }}>{item.label}</span>
+                          <b>{item.valor}</b>
+                        </div>
+
+                        <div style={{ width: '100%', height: 12, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${percent}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, #1677ff 0%, #60a5fa 100%)',
+                              borderRadius: 999,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
             </Col>
+
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)', height: '100%' }} title={sectionTitle(<CalendarOutlined />, 'Produtividade por semana', 'Top 5 períodos consolidados')} extra={byWeekNoFuture.length > 5 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenWeekModal(true)}>Ver mais</Button> : null}>
-                <SimpleBars data={byWeekNoFuture} labelKey="label" valueKey="valor" maxItems={5} color="linear-gradient(90deg, #7c3aed 0%, #a78bfa 100%)" />
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)', height: '100%' }}
+                title={sectionTitle(<CalendarOutlined />, 'Produtividade por semana', 'Top 5 períodos consolidados')}
+                extra={
+                  byWeekNoFuture.length > 0 ? (
+                    <Button
+                      type="link"
+                      icon={<EyeOutlined />}
+                      onClick={() => {
+                        setSelectedWeek(byWeekNoFuture[0]?.rawWeek || null);
+                        setOpenWeekModal(true);
+                      }}
+                    >
+                      Ver detalhes
+                    </Button>
+                  ) : null
+                }
+              >
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {byWeekNoFuture.slice(0, 5).map((item, index) => {
+                    const max = Math.max(...byWeekNoFuture.map((r) => Number(r.valor || 0)), 0);
+                    const percent = max ? Math.round((Number(item.valor || 0) / max) * 100) : 0;
+
+                    return (
+                      <div
+                        key={`${item.label}_${index}`}
+                        onClick={() => {
+                          setSelectedWeek(item.rawWeek);
+                          setOpenWeekModal(true);
+                        }}
+                        style={{
+                          display: 'grid',
+                          gap: 8,
+                          padding: 14,
+                          borderRadius: 18,
+                          background: '#f8fafc',
+                          border: '1px solid #e5edf7',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: '#0f172a' }}>
+                          <span style={{ fontWeight: 700 }}>{item.label}</span>
+                          <b>{item.valor}</b>
+                        </div>
+
+                        <div style={{ width: '100%', height: 12, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${percent}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, #7c3aed 0%, #a78bfa 100%)',
+                              borderRadius: 999,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </Card>
             </Col>
           </Row>
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<CheckCircleOutlined />, 'Status das instalações', 'Distribuição geral por situação')} extra={statusCardsData.length > 3 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenStatusModal(true)}>Ver mais</Button> : null} styles={{ body: { padding: 18 } }}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<CheckCircleOutlined />, 'Status das instalações', 'Distribuição geral por situação')}
+                extra={statusCardsData.length > 3 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenStatusModal(true)}>Ver mais</Button> : null}
+                styles={{ body: { padding: 18 } }}
+              >
                 <StatusSummaryCards data={statusCardsData} />
               </Card>
             </Col>
+
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)', background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)' }} title={sectionTitle(<TrophyOutlined />, 'Taxa de sucesso', 'Projetos no prazo x atrasados')} styles={{ body: { padding: 18 } }}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)', background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)' }}
+                title={sectionTitle(<TrophyOutlined />, 'Taxa de sucesso', 'Projetos no prazo x atrasados')}
+                styles={{ body: { padding: 18 } }}
+              >
                 <Row gutter={[16, 16]} align="middle">
-                  <Col xs={24} lg={12}><DonutChart data={successDonutData} centerValue={`${successSummary.successRate}%`} centerLabel="No prazo" /></Col>
+                  <Col xs={24} lg={12}>
+                    <DonutChart data={successDonutData} centerValue={`${successSummary.successRate}%`} centerLabel="No prazo" />
+                  </Col>
                   <Col xs={24} lg={12}>
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div style={{ borderRadius: 20, background: '#ffffff', border: '1px solid #dcfce7', padding: 18 }}>
@@ -1521,7 +1887,12 @@ export default function InstallationProjectsDashboardPage() {
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<WarningOutlined />, 'Projetos para acabar', 'Prazo próximo com carros ainda pendentes')} extra={endingSoon.length > 5 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenEndingSoonModal(true)}>Ver mais</Button> : null}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<WarningOutlined />, 'Projetos para acabar', 'Prazo próximo com carros ainda pendentes')}
+                extra={endingSoon.length > 5 ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenEndingSoonModal(true)}>Ver mais</Button> : null}
+              >
                 {!endingSoon.length ? (
                   <Empty description="Nenhum projeto próximo do fim" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
@@ -1563,87 +1934,321 @@ export default function InstallationProjectsDashboardPage() {
             </Col>
 
             <Col xs={24} xl={12}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<EnvironmentOutlined />, 'Mapa de calor', 'Distribuição geográfica das instalações')} extra={(mapRows.length > 0 || byRegion.length > 0) ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenMapModal(true)}>Ver mais</Button> : null}>
-                <InstallationHeatMap data={mapRows} fallbackRegions={byRegion} height={430} />
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<EnvironmentOutlined />, 'Mapa de calor', 'Distribuição geográfica das instalações')}
+                extra={(filteredMapRows.length > 0 || byRegion.length > 0) ? <Button type="link" icon={<EyeOutlined />} onClick={() => setOpenMapModal(true)}>Ver mais</Button> : null}
+              >
+                <InstallationHeatMap data={filteredMapRows} fallbackRegions={byRegion} height={430} />
               </Card>
             </Col>
           </Row>
 
           <Row gutter={[16, 16]}>
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<FundOutlined />, 'Visão por cliente', 'Total de projetos, base, concluídos, realizado e pendente')}>
-                <Table rowKey="clientId" dataSource={byClient} columns={clientColumns} pagination={{ pageSize: 6 }} scroll={{ x: 1000 }} />
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<FundOutlined />, 'Visão por cliente', 'Total de projetos, base, concluídos, realizado e pendente')}
+              >
+                <Table
+                  rowKey="clientId"
+                  dataSource={byClient}
+                  columns={clientColumns}
+                  pagination={{
+                    current: clientPage,
+                    pageSize: clientPageSize,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['6', '10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} clientes`,
+                    onChange: (page, pageSize) => {
+                      setClientPage(page);
+                      setClientPageSize(pageSize);
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setClientPage(1);
+                      setClientPageSize(size);
+                    },
+                  }}
+                  scroll={{ x: 1000 }}
+                />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por coordenador', 'Performance, base e atrasos')} styles={{ body: { padding: 18 } }}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<TeamOutlined />, 'Visão por coordenador', 'Performance, base e atrasos')}
+                styles={{ body: { padding: 18 } }}
+              >
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Projetos por coordenador" subtitle="Gráfico à esquerda e detalhamento à direita" data={coordinatorProjectsDonut} centerValue={coordinatorProjectsDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Projetos" /></Col>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por coordenador" subtitle="Gráfico à esquerda e detalhamento à direita" data={coordinatorDoneDonut} centerValue={coordinatorDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Projetos por coordenador"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={coordinatorProjectsDonut}
+                      centerValue={coordinatorProjectsDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Projetos"
+                    />
+                  </Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Realizado por coordenador"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={coordinatorDoneDonut}
+                      centerValue={coordinatorDoneDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Realizado"
+                    />
+                  </Col>
                 </Row>
-                <Table rowKey="coordinatorId" dataSource={byCoordinator} columns={coordinatorColumns} pagination={{ pageSize: 6 }} scroll={{ x: 900 }} />
+                <Table
+                  rowKey="coordinatorId"
+                  dataSource={byCoordinator}
+                  columns={coordinatorColumns}
+                  pagination={{
+                    current: coordinatorPage,
+                    pageSize: coordinatorPageSize,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['6', '10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} coordenadores`,
+                    onChange: (page, pageSize) => {
+                      setCoordinatorPage(page);
+                      setCoordinatorPageSize(pageSize);
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setCoordinatorPage(1);
+                      setCoordinatorPageSize(size);
+                    },
+                  }}
+                  scroll={{ x: 900 }}
+                />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<TeamOutlined />, 'Visão por supervisor', 'Execução, base, pendências e atrasos')} styles={{ body: { padding: 18 } }}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<TeamOutlined />, 'Visão por supervisor', 'Execução, base, pendências e atrasos')}
+                styles={{ body: { padding: 18 } }}
+              >
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Projetos por supervisor" subtitle="Gráfico à esquerda e detalhamento à direita" data={supervisorProjectsDonut} centerValue={supervisorProjectsDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Projetos" /></Col>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por supervisor" subtitle="Gráfico à esquerda e detalhamento à direita" data={supervisorDoneDonut} centerValue={supervisorDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Projetos por supervisor"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={supervisorProjectsDonut}
+                      centerValue={supervisorProjectsDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Projetos"
+                    />
+                  </Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Realizado por supervisor"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={supervisorDoneDonut}
+                      centerValue={supervisorDoneDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Realizado"
+                    />
+                  </Col>
                 </Row>
-                <Table rowKey="supervisorId" dataSource={bySupervisor} columns={supervisorColumns} pagination={{ pageSize: 6 }} scroll={{ x: 1000 }} />
+                <Table
+                  rowKey="supervisorId"
+                  dataSource={bySupervisor}
+                  columns={supervisorColumns}
+                  pagination={{
+                    current: supervisorPage,
+                    pageSize: supervisorPageSize,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['6', '10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} supervisores`,
+                    onChange: (page, pageSize) => {
+                      setSupervisorPage(page);
+                      setSupervisorPageSize(pageSize);
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setSupervisorPage(1);
+                      setSupervisorPageSize(size);
+                    },
+                  }}
+                  scroll={{ x: 1000 }}
+                />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<EnvironmentOutlined />, 'Visão por região', 'Distribuição geográfica, base e atrasos')}>
-                <Table rowKey={(r) => `${r.region}_${r.uf}_${r.city}`} dataSource={byRegion} columns={regionColumns} pagination={{ pageSize: 6 }} scroll={{ x: 900 }} />
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<EnvironmentOutlined />, 'Visão por região', 'Distribuição geográfica, base e atrasos')}
+              >
+                <Table
+                  rowKey={(r) => `${r.region}_${r.uf}_${r.city}`}
+                  dataSource={byRegion}
+                  columns={regionColumns}
+                  pagination={{
+                    current: regionPage,
+                    pageSize: regionPageSize,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['6', '10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} regiões`,
+                    onChange: (page, pageSize) => {
+                      setRegionPage(page);
+                      setRegionPageSize(pageSize);
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setRegionPage(1);
+                      setRegionPageSize(size);
+                    },
+                  }}
+                  scroll={{ x: 900 }}
+                />
               </Card>
             </Col>
 
             <Col xs={24}>
-              <Card bordered={false} style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }} title={sectionTitle(<ToolOutlined />, 'Visão por produto', 'Volume por equipamento com base e realizado')} styles={{ body: { padding: 18 } }}>
+              <Card
+                bordered={false}
+                style={{ borderRadius: 24, boxShadow: '0 14px 32px rgba(15,23,42,0.06)' }}
+                title={sectionTitle(<ToolOutlined />, 'Visão por produto', 'Volume por equipamento com base e realizado')}
+                styles={{ body: { padding: 18 } }}
+              >
                 <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Base por produto" subtitle="Gráfico à esquerda e detalhamento à direita" data={productPlannedDonut} centerValue={productPlannedDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Base" /></Col>
-                  <Col xs={24} xl={12}><PieAndDetailsCard title="Realizado por produto" subtitle="Gráfico à esquerda e detalhamento à direita" data={productDoneDonut} centerValue={productDoneDonut.reduce((acc, item) => acc + item.value, 0)} centerLabel="Realizado" /></Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Base por produto"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={productPlannedDonut}
+                      centerValue={productPlannedDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Base"
+                    />
+                  </Col>
+                  <Col xs={24} xl={12}>
+                    <PieAndDetailsCard
+                      title="Realizado por produto"
+                      subtitle="Gráfico à esquerda e detalhamento à direita"
+                      data={productDoneDonut}
+                      centerValue={productDoneDonut.reduce((acc, item) => acc + item.value, 0)}
+                      centerLabel="Realizado"
+                    />
+                  </Col>
                 </Row>
-                <Table rowKey={(r) => `${r.code || r.product}`} dataSource={byProduct} columns={productColumns} pagination={{ pageSize: 6 }} scroll={{ x: 900 }} />
+                <Table
+                  rowKey={(r) => `${r.code || r.product}`}
+                  dataSource={byProduct}
+                  columns={productColumns}
+                  pagination={{
+                    current: productPage,
+                    pageSize: productPageSize,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['6', '10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} produtos`,
+                    onChange: (page, pageSize) => {
+                      setProductPage(page);
+                      setProductPageSize(pageSize);
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setProductPage(1);
+                      setProductPageSize(size);
+                    },
+                  }}
+                  scroll={{ x: 900 }}
+                />
               </Card>
             </Col>
           </Row>
         </>
       )}
 
-      <Modal title="Projetos atrasados" open={openDelayedModal} onCancel={() => setOpenDelayedModal(false)} footer={null} width={1200} destroyOnHidden>
+      <Modal
+        title={`Projetos atrasados (${delayedProjects.length})`}
+        open={openDelayedModal}
+        onCancel={() => setOpenDelayedModal(false)}
+        footer={null}
+        width={1280}
+        destroyOnHidden
+      >
         <Table
           rowKey="id"
           loading={delayedProjectsQuery.isLoading}
           dataSource={delayedProjects}
           columns={delayedProjectColumns}
-          pagination={{ pageSize: 6 }}
-          scroll={{ x: 1200 }}
+          pagination={{
+            current: delayedPage,
+            pageSize: delayedPageSize,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} projetos`,
+            onChange: (page, pageSize) => {
+              setDelayedPage(page);
+              setDelayedPageSize(pageSize);
+            },
+            onShowSizeChange: (_, size) => {
+              setDelayedPage(1);
+              setDelayedPageSize(size);
+            },
+          }}
+          scroll={{ x: 1200, y: 560 }}
           locale={{ emptyText: 'Nenhum projeto atrasado' }}
         />
       </Modal>
 
-      <Modal title="Projetos para acabar" open={openEndingSoonModal} onCancel={() => setOpenEndingSoonModal(false)} footer={null} width={900}>
+      <Modal
+        title="Projetos para acabar"
+        open={openEndingSoonModal}
+        onCancel={() => setOpenEndingSoonModal(false)}
+        footer={null}
+        width={900}
+      >
         {!endingSoon.length ? (
           <Empty description="Nenhum projeto próximo do fim" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <List
             dataSource={endingSoon}
+            pagination={{
+              current: endingSoonPage,
+              pageSize: endingSoonPageSize,
+              showSizeChanger: true,
+              pageSizeOptions: ['5', '10', '20', '50'],
+              showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} projetos`,
+              onChange: (page, pageSize) => {
+                setEndingSoonPage(page);
+                setEndingSoonPageSize(pageSize);
+              },
+              onShowSizeChange: (_, size) => {
+                setEndingSoonPage(1);
+                setEndingSoonPageSize(size);
+              },
+              size: 'small',
+            }}
             renderItem={(item) => (
               <List.Item>
                 <div style={{ width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 800 }}>{item.title}</div>
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{item.clientName || '-'} • {item.supervisorName || 'Sem supervisor'}</div>
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Fim previsto: {item.endPlannedAt ? dayjs(item.endPlannedAt).format('DD/MM/YYYY') : '-'}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                        {item.clientName || '-'} • {item.supervisorName || 'Sem supervisor'}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+                        Fim previsto: {item.endPlannedAt ? dayjs(item.endPlannedAt).format('DD/MM/YYYY') : '-'}
+                      </div>
                     </div>
                     <Space direction="vertical" size={6} style={{ alignItems: 'flex-end' }}>
-                      <span style={{ padding: '4px 10px', borderRadius: 999, background: item.daysLeft <= 2 ? '#fff1f0' : '#e6f4ff', border: `1px solid ${item.daysLeft <= 2 ? '#ffa39e' : '#91caff'}`, color: item.daysLeft <= 2 ? '#cf1322' : '#0958d9', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          background: item.daysLeft <= 2 ? '#fff1f0' : '#e6f4ff',
+                          border: `1px solid ${item.daysLeft <= 2 ? '#ffa39e' : '#91caff'}`,
+                          color: item.daysLeft <= 2 ? '#cf1322' : '#0958d9',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {item.daysLeft} dia(s)
                       </span>
                       <span style={{ fontWeight: 800 }}>{item.pending} carro(s) restante(s)</span>
@@ -1656,34 +2261,277 @@ export default function InstallationProjectsDashboardPage() {
         )}
       </Modal>
 
-      <Modal title="Produtividade por dia" open={openDayModal} onCancel={() => setOpenDayModal(false)} footer={null} width={760}>
-        <SimpleBars data={byDayNoFuture} labelKey="label" valueKey="valor" maxItems={999} color="linear-gradient(90deg, #1677ff 0%, #60a5fa 100%)" />
-      </Modal>
+      <Modal
+        title={`Produtividade por dia${selectedDay ? ` - ${dayjs(selectedDay).format('DD/MM/YYYY')}` : ''}`}
+        open={openDayModal}
+        onCancel={() => setOpenDayModal(false)}
+        footer={null}
+        width={980}
+      >
+        {dayDetailsQuery.isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Spin size="large" />
+          </div>
+        ) : !dayDetailsQuery.data?.data?.length ? (
+          <Empty description="Nenhum projeto com veículos neste dia" />
+        ) : (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={12}>
+                <Card bordered={false} style={{ borderRadius: 18, background: '#f8fafc' }}>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Projetos no dia</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>
+                    {dayDetailsQuery.data.totalProjects}
+                  </div>
+                </Card>
+              </Col>
 
-      <Modal title="Produtividade por semana" open={openWeekModal} onCancel={() => setOpenWeekModal(false)} footer={null} width={760}>
-        <SimpleBars data={byWeekNoFuture} labelKey="label" valueKey="valor" maxItems={999} color="linear-gradient(90deg, #7c3aed 0%, #a78bfa 100%)" />
-      </Modal>
+              <Col xs={24} md={12}>
+                <Card bordered={false} style={{ borderRadius: 18, background: '#ecfdf5' }}>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Veículos feitos</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#166534' }}>
+                    {dayDetailsQuery.data.totalVehicles}
+                  </div>
+                </Card>
+              </Col>
+            </Row>
 
-      <Modal title="Status das instalações" open={openStatusModal} onCancel={() => setOpenStatusModal(false)} footer={null} width={720}>
-        <StatusSummaryCards data={statusCardsData} />
+            <List
+              dataSource={dayDetailsQuery.data.data}
+              pagination={{
+                current: dayModalPage,
+                pageSize: dayModalPageSize,
+                showSizeChanger: true,
+                pageSizeOptions: ['4', '8', '12', '20'],
+                showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} projetos`,
+                onChange: (page, pageSize) => {
+                  setDayModalPage(page);
+                  setDayModalPageSize(pageSize);
+                },
+                onShowSizeChange: (_, size) => {
+                  setDayModalPage(1);
+                  setDayModalPageSize(size);
+                },
+                size: 'small',
+              }}
+              renderItem={(item) => (
+                <List.Item
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 18,
+                    padding: 16,
+                    marginBottom: 12,
+                    background: '#fff',
+                  }}
+                  actions={[
+                    <Button type="link" onClick={() => navigate(item.projectUrl)}>
+                      Abrir projeto
+                    </Button>,
+                  ]}
+                >
+                  <div style={{ width: '100%' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                          {item.clientName} • {item.supervisorName}
+                        </div>
+                      </div>
+
+                      <div style={{ fontWeight: 800, color: '#166534' }}>
+                        {item.vehiclesCount} veículo(s)
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {item.vehicles.map((vehicle, idx) => (
+                        <span
+                          key={`${vehicle.plate}_${vehicle.serial}_${idx}`}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            fontSize: 12,
+                            color: '#1d4ed8',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {vehicle.plate} • {vehicle.serial}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </div>
+        )}
       </Modal>
 
       <Modal
-        title="Mapa de calor"
-        open={openMapModal}
-        onCancel={() => setOpenMapModal(false)}
+        title={`Produtividade por semana${selectedWeek ? ` - ${dayjs(selectedWeek).format('DD/MM/YYYY')}` : ''}`}
+        open={openWeekModal}
+        onCancel={() => setOpenWeekModal(false)}
         footer={null}
-        width={1150}
-        destroyOnHidden
-        afterOpenChange={(open) => {
-          if (open) {
-            setTimeout(() => setModalMapKey((prev) => prev + 1), 150);
-          }
-        }}
-        styles={{ body: { padding: 12 } }}
+        width={980}
       >
-        {openMapModal ? <InstallationHeatMap key={`modal-map-${modalMapKey}`} data={mapRows} fallbackRegions={byRegion} height={650} resizeKey={modalMapKey} /> : null}
+        {weekDetailsQuery.isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Spin size="large" />
+          </div>
+        ) : !weekDetailsQuery.data?.data?.length ? (
+          <Empty description="Nenhum projeto com veículos nesta semana" />
+        ) : (
+          <div style={{ display: 'grid', gap: 16 }}>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={12}>
+                <Card bordered={false} style={{ borderRadius: 18, background: '#f8fafc' }}>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Projetos na semana</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#0f172a' }}>
+                    {weekDetailsQuery.data.totalProjects}
+                  </div>
+                </Card>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Card bordered={false} style={{ borderRadius: 18, background: '#f3e8ff' }}>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>Veículos feitos</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#6b21a8' }}>
+                    {weekDetailsQuery.data.totalVehicles}
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+
+            <List
+              dataSource={weekDetailsQuery.data.data}
+              pagination={{
+                current: weekModalPage,
+                pageSize: weekModalPageSize,
+                showSizeChanger: true,
+                pageSizeOptions: ['4', '8', '12', '20'],
+                showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} projetos`,
+                onChange: (page, pageSize) => {
+                  setWeekModalPage(page);
+                  setWeekModalPageSize(pageSize);
+                },
+                onShowSizeChange: (_, size) => {
+                  setWeekModalPage(1);
+                  setWeekModalPageSize(size);
+                },
+                size: 'small',
+              }}
+              renderItem={(item) => (
+                <List.Item
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 18,
+                    padding: 16,
+                    marginBottom: 12,
+                    background: '#fff',
+                  }}
+                  actions={[
+                    <Button type="link" onClick={() => navigate(item.projectUrl)}>
+                      Abrir projeto
+                    </Button>,
+                  ]}
+                >
+                  <div style={{ width: '100%' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                          {item.clientName} • {item.supervisorName}
+                        </div>
+                      </div>
+
+                      <div style={{ fontWeight: 800, color: '#6b21a8' }}>
+                        {item.vehiclesCount} veículo(s)
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {item.vehicles.map((vehicle, idx) => (
+                        <span
+                          key={`${vehicle.plate}_${vehicle.serial}_${vehicle.date || ''}_${idx}`}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            background: '#f5f3ff',
+                            border: '1px solid #ddd6fe',
+                            fontSize: 12,
+                            color: '#7c3aed',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {vehicle.date ? `${dayjs(vehicle.date).format('DD/MM')} • ` : ''}
+                          {vehicle.plate} • {vehicle.serial}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </div>
+        )}
       </Modal>
+
+      <Modal
+        title="Status das instalações"
+        open={openStatusModal}
+        onCancel={() => setOpenStatusModal(false)}
+        footer={null}
+        width={720}
+      >
+        <StatusSummaryCards data={statusCardsData} />
+      </Modal>
+
+ <Modal
+  title="Mapa de calor"
+  open={openMapModal}
+  onCancel={() => setOpenMapModal(false)}
+  footer={null}
+  centered
+  width="90vw"
+  destroyOnHidden
+  afterOpenChange={(open) => {
+    if (open) {
+      setTimeout(() => setModalMapKey((prev) => prev + 1), 150);
+    }
+  }}
+  styles={{
+    body: {
+      padding: 0,
+      height: '85vh',
+    },
+  }}
+>
+  {openMapModal ? (
+    <InstallationHeatMap
+      key={`modal-map-${modalMapKey}`}
+      data={filteredMapRows}
+      fallbackRegions={byRegion}
+      height={window.innerHeight * 0.75}
+      resizeKey={modalMapKey}
+    />
+  ) : null}
+</Modal>
     </div>
   );
 }

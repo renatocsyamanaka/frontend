@@ -16,6 +16,7 @@ import {
   EnvironmentOutlined,
   UserOutlined,
   FileSearchOutlined,
+  FundOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -147,6 +148,12 @@ export function AppLayout() {
           key: '/projetos-instalacao',
           label: 'Projetos de Instalação',
           icon: <ProjectOutlined />,
+          permission: 'INSTALLATION_PROJECTS_VIEW',
+        },
+        {
+          key: '/projetos-instalacao/visao-cliente',
+          label: 'Visão por Cliente',
+          icon: <FundOutlined />,
           permission: 'INSTALLATION_PROJECTS_VIEW',
         },
         {
