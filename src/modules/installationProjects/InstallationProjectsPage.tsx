@@ -44,7 +44,36 @@ type Client = { id: number; name: string };
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
 type RecordType = 'BASE' | 'PROJECT';
 type RoleLite = { id: number; name: string; level: number };
-
+type ImportBaseResult = {
+  batch?: string | null;
+  uploadedAt?: string | null;
+  importedCount?: number;
+  skippedCount?: number;
+  totalProcessed?: number;
+  successCount?: number;
+  errorCount?: number;
+  lastImportedAf?: string | null;
+  skipped?: Array<{
+    af: string;
+    id?: number;
+    recordType?: RecordType | string;
+    reason?: string;
+  }>;
+  errors?: Array<{
+    af?: string;
+    error?: string;
+  }>;
+  rows?: Array<{
+    id: number;
+    af?: string | null;
+    title: string;
+    saleDate?: string | null;
+    importBatch?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    items?: InstallationProjectItem[];
+  }>;
+};
 type UserLite = {
   id: number;
   name: string;
@@ -342,8 +371,10 @@ export default function InstallationProjectsPage() {
   const [techSearch, setTechSearch] = useState('');
   const [supervisorSearch, setSupervisorSearch] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  const [importResult, setImportResult] = useState<any | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [form] = Form.useForm();
+  const [lastImportInfo, setLastImportInfo] = useState<ImportBaseResult | null>(null);
   const [visibleCount, setVisibleCount] = useState(6);
   const watchedTrucksTotal = Form.useWatch('trucksTotal', form);
   const watchedEquipmentsPerDay = Form.useWatch('equipmentsPerDay', form);
@@ -441,28 +472,31 @@ export default function InstallationProjectsPage() {
     },
   });
 
-  const importBase = useMutation({
-    mutationFn: async (file: File) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.post('/installation-projects/import-base', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return unwrap<any>(res.data);
-    },
-    onSuccess: async (data) => {
-      message.success(
-        `Importação concluída. Novos: ${data?.importedCount ?? 0} | Atualizados: ${data?.updatedCount ?? 0}`
-      );
-      setImportOpen(false);
-      setFileList([]);
-      setActiveTab('BASE');
-      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
-    },
-    onError: (e: any) => {
-      message.error(e?.response?.data?.error || 'Falha ao importar Excel');
-    },
-  });
+const importBase = useMutation({
+  mutationFn: async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await api.post('/installation-projects/import-base', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return unwrap<ImportBaseResult>(res.data);
+  },
+  onSuccess: async (data) => {
+    setImportResult(data);
+    setLastImportInfo(data);
+
+    message.success(
+      `Importação concluída. Adicionados: ${data?.importedCount ?? 0} | Ignorados: ${data?.skippedCount ?? 0}`
+    );
+
+    setFileList([]);
+    setActiveTab('BASE');
+    await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+  },
+  onError: (e: any) => {
+    message.error(e?.response?.data?.error || 'Falha ao importar Excel');
+  },
+});
 
   const rows = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
 
@@ -1159,7 +1193,11 @@ export default function InstallationProjectsPage() {
             </Button>
             <Button
               icon={<UploadOutlined />}
-              onClick={() => setImportOpen(true)}
+              onClick={() => {
+                setImportResult(null);
+                setFileList([]);
+                setImportOpen(true);
+              }}
               size={isMobile ? 'middle' : 'middle'}
               style={{ borderRadius: 14, minHeight: 38 }}
             >
@@ -1217,14 +1255,51 @@ export default function InstallationProjectsPage() {
           </>
         )}
         {activeTab === 'BASE' && (
-          <SummaryCard
-            title="Total base"
-            value={totals.totalBase}
-            subtitle="Itens importados na base"
-            icon={<DatabaseOutlined />}
-            bg="linear-gradient(180deg, #fff8e6 0%, #ffffff 100%)"
-            iconBg="linear-gradient(135deg, #d97706 0%, #f59e0b 100%)"
-          />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+              gap: 12,
+            }}
+          >
+            <SummaryCard
+              title="Total base"
+              value={totals.totalBase}
+              subtitle="Itens importados na base"
+              icon={<DatabaseOutlined />}
+              bg="linear-gradient(180deg, #fff8e6 0%, #ffffff 100%)"
+              iconBg="linear-gradient(135deg, #d97706 0%, #f59e0b 100%)"
+            />
+
+            <Card
+              variant={false}
+              style={{
+                borderRadius: 22,
+                background: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)',
+                height: '100%',
+                boxShadow: '0 12px 24px rgba(15,23,42,0.07)',
+              }}
+              styles={{ body: { padding: 14 } }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                Último upload
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>
+                {lastImportInfo?.uploadedAt
+                  ? dayjs(lastImportInfo.uploadedAt).format('DD/MM/YYYY HH:mm')
+                  : '-'}
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
+                Última AF criada: <b>{lastImportInfo?.lastImportedAf || '-'}</b>
+              </div>
+
+              <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                Lote: <b>{lastImportInfo?.batch || '-'}</b>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
 
@@ -1666,32 +1741,181 @@ export default function InstallationProjectsPage() {
           if (!importBase.isPending) {
             setImportOpen(false);
             setFileList([]);
+            setImportResult(null);
           }
         }}
-        onOk={handleImport}
-        okText="Importar"
+        onOk={
+          importResult
+            ? () => {
+                setImportOpen(false);
+                setImportResult(null);
+                setFileList([]);
+              }
+            : handleImport
+        }
+        okText={importResult ? 'Fechar' : 'Importar'}
         confirmLoading={importBase.isPending}
         destroyOnHidden
+        width={isMobile ? '100%' : 900}
       >
         <div style={{ display: 'grid', gap: 16 }}>
-          <Typography.Text type="secondary">
-            Envie um arquivo Excel com colunas como AF, DATA, CLIENTE, PRODUTO, QUANTIDADE_PRODUTO e TOTAL_EQUIPAMENTOS_AF.
-          </Typography.Text>
+          {!importResult ? (
+            <>
+              <Typography.Text type="secondary">
+                Envie um arquivo Excel com colunas como AF, DATA, CLIENTE, PRODUTO, QUANTIDADE_PRODUTO e TOTAL_EQUIPAMENTOS_AF.
+              </Typography.Text>
 
-          <Upload.Dragger
-            multiple={false}
-            accept=".xlsx,.xls"
-            maxCount={1}
-            beforeUpload={() => false}
-            fileList={fileList}
-            onChange={({ fileList: next }) => setFileList(next)}
-          >
-            <p className="ant-upload-drag-icon">
-              <InboxOutlined />
-            </p>
-            <p className="ant-upload-text">Clique ou arraste o Excel aqui</p>
-            <p className="ant-upload-hint">A importação vai alimentar a aba BASE.</p>
-          </Upload.Dragger>
+              <Upload.Dragger
+                multiple={false}
+                accept=".xlsx,.xls"
+                maxCount={1}
+                beforeUpload={() => false}
+                fileList={fileList}
+                onChange={({ fileList: next }) => setFileList(next)}
+              >
+                <p className="ant-upload-drag-icon">
+                  <InboxOutlined />
+                </p>
+                <p className="ant-upload-text">Clique ou arraste o Excel aqui</p>
+                <p className="ant-upload-hint">A importação vai alimentar a aba BASE.</p>
+              </Upload.Dragger>
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+                  gap: 12,
+                }}
+              >
+                <Card size="small" style={{ borderRadius: 16, background: '#f0fdf4', borderColor: '#bbf7d0' }}>
+                  <Typography.Text strong style={{ color: '#166534' }}>
+                    Adicionados
+                  </Typography.Text>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#166534', marginTop: 6 }}>
+                    {importResult.importedCount ?? 0}
+                  </div>
+                </Card>
+
+                <Card size="small" style={{ borderRadius: 16, background: '#fff7ed', borderColor: '#fed7aa' }}>
+                  <Typography.Text strong style={{ color: '#9a3412' }}>
+                    Ignorados
+                  </Typography.Text>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#9a3412', marginTop: 6 }}>
+                    {importResult.skippedCount ?? 0}
+                  </div>
+                </Card>
+
+                <Card size="small" style={{ borderRadius: 16, background: '#f8fafc', borderColor: '#e2e8f0' }}>
+                  <Typography.Text strong style={{ color: '#334155' }}>
+                    Erros
+                  </Typography.Text>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#334155', marginTop: 6 }}>
+                    {importResult.errorCount ?? 0}
+                  </div>
+                </Card>
+              </div>
+
+              <Card size="small" style={{ borderRadius: 16 }}>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <Typography.Text>
+                    <b>Data do upload:</b>{' '}
+                    {importResult.uploadedAt
+                      ? dayjs(importResult.uploadedAt).format('DD/MM/YYYY HH:mm:ss')
+                      : '-'}
+                  </Typography.Text>
+                  <Typography.Text>
+                    <b>Última AF criada:</b> {importResult.lastImportedAf || '-'}
+                  </Typography.Text>
+                  <Typography.Text>
+                    <b>Lote:</b> {importResult.batch || '-'}
+                  </Typography.Text>
+                </div>
+              </Card>
+
+              {!!importResult.rows?.length && (
+                <Card size="small" title="AFs adicionadas" style={{ borderRadius: 16 }}>
+                  <div style={{ maxHeight: 220, overflow: 'auto', display: 'grid', gap: 8 }}>
+                    {importResult.rows.map((row) => (
+                      <div
+                        key={row.id}
+                        style={{
+                          padding: '10px 12px',
+                          border: '1px solid #dcfce7',
+                          background: '#f0fdf4',
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: '#166534' }}>
+                          {row.af || row.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>
+                          {row.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>
+                          Último upload: {row.createdAt ? dayjs(row.createdAt).format('DD/MM/YYYY HH:mm') : '-'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>
+                          Data da AF: {row.saleDate ? dayjs(row.saleDate).format('DD/MM/YYYY') : '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {!!importResult.skipped?.length && (
+                <Card size="small" title="AFs ignoradas" style={{ borderRadius: 16 }}>
+                  <div style={{ maxHeight: 240, overflow: 'auto', display: 'grid', gap: 8 }}>
+                    {importResult.skipped.map((item, idx) => (
+                      <div
+                        key={`${item.af}-${idx}`}
+                        style={{
+                          padding: '10px 12px',
+                          border: '1px solid #fed7aa',
+                          background: '#fff7ed',
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: '#9a3412' }}>
+                          {item.af}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#9a3412', marginTop: 2 }}>
+                          {item.reason || 'AF já existente'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {!!importResult.errors?.length && (
+                <Card size="small" title="Erros encontrados" style={{ borderRadius: 16 }}>
+                  <div style={{ maxHeight: 220, overflow: 'auto', display: 'grid', gap: 8 }}>
+                    {importResult.errors.map((item, idx) => (
+                      <div
+                        key={`${item.af || 'erro'}-${idx}`}
+                        style={{
+                          padding: '10px 12px',
+                          border: '1px solid #fecaca',
+                          background: '#fef2f2',
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, color: '#991b1b' }}>
+                          {item.af || `Linha ${idx + 1}`}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#991b1b', marginTop: 2 }}>
+                          {item.error || 'Erro ao importar'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
         </div>
       </Modal>
 
