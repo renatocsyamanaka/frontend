@@ -13,10 +13,12 @@ import {
   LogoutOutlined,
   ProjectOutlined,
   MenuOutlined,
+  WhatsAppOutlined,
   EnvironmentOutlined,
   UserOutlined,
   FileSearchOutlined,
-  FundOutlined
+  FundOutlined,
+  LinkOutlined
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -173,6 +175,25 @@ export function AppLayout() {
           label: 'Agenda',
           icon: <ScheduleOutlined />,
           permission: 'ASSIGNMENTS_VIEW',
+        },
+      ],
+    },
+    {
+      key: 'group-whatsapp',
+      label: 'WhatsApp',
+      icon: <WhatsAppOutlined />,
+      children: [
+        {
+          key: '/whatsapp/conexao',
+          label: 'Conexão',
+          icon: <LinkOutlined />,
+          permission: 'WHATSAPP_VIEW',
+        },
+        {
+          key: '/whatsapp/conversas',
+          label: 'Conversas',
+          icon: <WhatsAppOutlined />,
+          permission: 'WHATSAPP_VIEW',
         },
       ],
     },

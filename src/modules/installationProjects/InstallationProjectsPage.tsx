@@ -297,6 +297,23 @@ function getProgressPercent(r: InstallationProject) {
   return Math.min(100, Math.round((done / total) * 100));
 }
 
+const numberSorter = (a?: number | null, b?: number | null) => Number(a || 0) - Number(b || 0);
+
+const textSorter = (a?: string | null, b?: string | null) =>
+  String(a || '').localeCompare(String(b || ''), 'pt-BR', { sensitivity: 'base' });
+
+const dateSorter = (a?: string | null, b?: string | null) => {
+  const aValue = a ? dayjs(a).valueOf() : 0;
+  const bValue = b ? dayjs(b).valueOf() : 0;
+  return aValue - bValue;
+};
+
+const statusOrder: Record<Status, number> = {
+  A_INICIAR: 1,
+  INICIADO: 2,
+  FINALIZADO: 3,
+};
+
 function SummaryCard({
   title,
   value,
@@ -472,31 +489,31 @@ export default function InstallationProjectsPage() {
     },
   });
 
-const importBase = useMutation({
-  mutationFn: async (file: File) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await api.post('/installation-projects/import-base', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return unwrap<ImportBaseResult>(res.data);
-  },
-  onSuccess: async (data) => {
-    setImportResult(data);
-    setLastImportInfo(data);
+  const importBase = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/installation-projects/import-base', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap<ImportBaseResult>(res.data);
+    },
+    onSuccess: async (data) => {
+      setImportResult(data);
+      setLastImportInfo(data);
 
-    message.success(
-      `Importação concluída. Adicionados: ${data?.importedCount ?? 0} | Ignorados: ${data?.skippedCount ?? 0}`
-    );
+      message.success(
+        `Importação concluída. Adicionados: ${data?.importedCount ?? 0} | Ignorados: ${data?.skippedCount ?? 0}`
+      );
 
-    setFileList([]);
-    setActiveTab('BASE');
-    await qc.invalidateQueries({ queryKey: ['installation-projects'] });
-  },
-  onError: (e: any) => {
-    message.error(e?.response?.data?.error || 'Falha ao importar Excel');
-  },
-});
+      setFileList([]);
+      setActiveTab('BASE');
+      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao importar Excel');
+    },
+  });
 
   const rows = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
 
@@ -707,6 +724,7 @@ const importBase = useMutation({
       dataIndex: 'recordType',
       key: 'recordType',
       width: 100,
+      sorter: (a, b) => textSorter(a.recordType, b.recordType),
       render: (_, r) => recordTypeTag(r.recordType),
     },
     {
@@ -714,6 +732,11 @@ const importBase = useMutation({
       dataIndex: 'title',
       key: 'title',
       width: 280,
+      sorter: (a, b) =>
+        textSorter(
+          `${a.title || ''} ${a.client?.name || ''}`,
+          `${b.title || ''} ${b.client?.name || ''}`
+        ),
       render: (_, r) => (
         <div style={{ minWidth: 0 }}>
           <div>
@@ -730,6 +753,7 @@ const importBase = useMutation({
       dataIndex: 'af',
       key: 'af',
       width: 130,
+      sorter: (a, b) => textSorter(a.af, b.af),
       render: (v) => v || '-',
     },
     {
@@ -737,12 +761,18 @@ const importBase = useMutation({
       dataIndex: 'saleDate',
       key: 'saleDate',
       width: 130,
+      sorter: (a, b) => dateSorter(a.saleDate, b.saleDate),
       render: (value) => formatDate(value),
     },
     {
       title: 'Produtos',
       key: 'items',
       width: 260,
+      sorter: (a, b) =>
+        textSorter(
+          a.items?.map((item) => item.equipmentName).join(', '),
+          b.items?.map((item) => item.equipmentName).join(', ')
+        ),
       render: (_, r) =>
         r.items?.length ? (
           <div style={{ display: 'grid', gap: 4 }}>
@@ -755,110 +785,114 @@ const importBase = useMutation({
         ) : (
           '-'
         ),
-    },{
-        title: 'Status',
-        dataIndex: 'status',
-        key: 'status',
-        width: 160,
-        render: (s: Status) => {
-          const map = {
-            A_INICIAR: {
-              label: 'À iniciar',
-              bg: '#f8fafc',
-              color: '#475569',
-              border: '#e2e8f0',
-              dot: '#94a3b8',
-            },
-            INICIADO: {
-              label: 'Iniciado',
-              bg: '#eff6ff',
-              color: '#1d4ed8',
-              border: '#bfdbfe',
-              dot: '#2563eb',
-            },
-            FINALIZADO: {
-              label: 'Finalizado',
-              bg: '#f0fdf4',
-              color: '#166534',
-              border: '#bbf7d0',
-              dot: '#22c55e',
-            },
-          } as const;
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 160,
+      sorter: (a, b) => numberSorter(statusOrder[a.status], statusOrder[b.status]),
+      render: (s: Status) => {
+        const map = {
+          A_INICIAR: {
+            label: 'À iniciar',
+            bg: '#f8fafc',
+            color: '#475569',
+            border: '#e2e8f0',
+            dot: '#94a3b8',
+          },
+          INICIADO: {
+            label: 'Iniciado',
+            bg: '#eff6ff',
+            color: '#1d4ed8',
+            border: '#bfdbfe',
+            dot: '#2563eb',
+          },
+          FINALIZADO: {
+            label: 'Finalizado',
+            bg: '#f0fdf4',
+            color: '#166534',
+            border: '#bbf7d0',
+            dot: '#22c55e',
+          },
+        } as const;
 
-          const item = map[s];
+        const item = map[s];
 
-          return (
-            <div
+        return (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 12px',
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              color: item.color,
+              background: item.bg,
+              border: `1px solid ${item.border}`,
+            }}
+          >
+            <span
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 12px',
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-                color: item.color,
-                background: item.bg,
-                border: `1px solid ${item.border}`,
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: item.dot,
               }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: item.dot,
-                }}
-              />
-              {item.label}
-            </div>
-          );
-        },
+            />
+            {item.label}
+          </div>
+        );
       },
+    },
   ];
 
   const projectColumns: ColumnsType<InstallationProject> = [
     ...commonColumns,
-        {
-          title: 'Progresso',
-          key: 'progress',
-          width: 220,
-          render: (_, r) => {
-            const percent = getProgressPercent(r);
+    {
+      title: 'Progresso',
+      key: 'progress',
+      width: 220,
+      sorter: (a, b) => numberSorter(getProgressPercent(a), getProgressPercent(b)),
+      defaultSortOrder: 'descend',
+      render: (_, r) => {
+        const percent = getProgressPercent(r);
 
-            return (
-              <div style={{ minWidth: 160 }}>
-                <Typography.Text style={{ fontSize: 12 }}>
-                  {r.trucksDone || 0}/{r.trucksTotal || 0} ({percent}%)
-                </Typography.Text>
+        return (
+          <div style={{ minWidth: 160 }}>
+            <Typography.Text style={{ fontSize: 12 }}>
+              {r.trucksDone || 0}/{r.trucksTotal || 0} ({percent}%)
+            </Typography.Text>
 
-                <div
-                  style={{
-                    marginTop: 6,
-                    width: '100%',
-                    height: 8,
-                    background: '#e5e7eb',
-                    borderRadius: 999,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${percent}%`,
-                      height: '100%',
-                      background:
-                        percent >= 100
-                          ? 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)'
-                          : 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
-                      borderRadius: 999,
-                      transition: 'width 0.3s ease',
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          },
-        },
+            <div
+              style={{
+                marginTop: 6,
+                width: '100%',
+                height: 8,
+                background: '#e5e7eb',
+                borderRadius: 999,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${percent}%`,
+                  height: '100%',
+                  background:
+                    percent >= 100
+                      ? 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)'
+                      : 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+                  borderRadius: 999,
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+        );
+      },
+    },
   ];
 
   const baseColumns: ColumnsType<InstallationProject> = [

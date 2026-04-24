@@ -33,7 +33,9 @@ import PublicPartRequestPage from './modules/PartRequests/PublicPartRequestPage'
 import DeliveryReportsPage from './modules/deliveryReports/DeliveryReportsPage';
 import ApprovedProvidersPage from './modules/needs/ApprovedProvidersPage';
 import InstallationProjectsByClientPage from './modules/installationProjects/installationProjectsByClientPage';
-
+import WhatsappConversasPage from './modules/whatsapp/WhatsappConversasPage';
+import WhatsappConnectionPage from './modules/whatsapp/WhatsappConnectionPage';
+import WhatsappConversationDetailPage from './modules/whatsapp/WhatsappConversationDetailPage'
 import { ConfigProvider } from 'antd';
 import ptBR from 'antd/es/locale/pt_BR';
 
@@ -62,7 +64,30 @@ export default function App() {
             </RequireAccess>
           }
         />
-
+        <Route
+          path="whatsapp/conversas"
+          element={
+            <RequireAccess permission="WHATSAPP_VIEW">
+              <WhatsappConversasPage />
+            </RequireAccess>
+          }
+        />
+        <Route
+          path="whatsapp/conexao"
+          element={
+            <RequireAccess permission="WHATSAPP_VIEW">
+              <WhatsappConnectionPage />
+            </RequireAccess>
+          }
+        />
+        <Route
+          path="whatsapp/conversas/:id"
+          element={
+            <RequireAccess permission="WHATSAPP_VIEW">
+              <WhatsappConversationDetailPage />
+            </RequireAccess>
+          }
+        />
         <Route
           path="projetos-instalacao"
           element={
