@@ -43,7 +43,7 @@ const DEFAULT_COLORS = {
   header: '#2f7dbd',
 };
 
-const DEFAULT_OMNILINK_LOGO = `${window.location.origin}/logo.png`;
+const DEFAULT_OMNILINK_LOGO = `https://app.projetos-rc.online/logo_branca.png`;
 
 export default function InstallationProjectDailyReport({ project, onUpdated }) {
   const [open, setOpen] = useState(false);
