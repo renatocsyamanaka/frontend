@@ -159,8 +159,8 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
         dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
         dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
         dailyReportHeaderColor: values.dailyReportHeaderColor || DEFAULT_COLORS.header,
-        dailyReportClientLogoUrl: null,
-        dailyReportOmnilinkLogoUrl: null,
+        dailyReportClientLogoUrl: values.dailyReportClientLogoUrl || null,
+        dailyReportOmnilinkLogoUrl: values.dailyReportOmnilinkLogoUrl || DEFAULT_OMNILINK_LOGO,
       });
 
       message.success(
@@ -347,7 +347,7 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
                   <Upload
                     customRequest={handleUploadLogo}
                     showUploadList={false}
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/jpg"
                   >
                     <Button icon={<UploadOutlined />} loading={uploadingLogo}>
                       Enviar logo do cliente
