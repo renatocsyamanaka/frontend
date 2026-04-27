@@ -159,7 +159,10 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
         dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
         dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
         dailyReportHeaderColor: values.dailyReportHeaderColor || DEFAULT_COLORS.header,
-        dailyReportClientLogoUrl: values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || null,
+        dailyReportClientLogoUrl:
+          (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
+            .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
+
         dailyReportOmnilinkLogoUrl:
           values.dailyReportOmnilinkLogoUrl ||
           project.dailyReportOmnilinkLogoUrl ||
