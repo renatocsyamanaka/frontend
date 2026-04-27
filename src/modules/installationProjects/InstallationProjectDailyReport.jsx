@@ -78,7 +78,7 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
 
  const handleRemoveLogo = async () => {
   try {
-    await api.delete(`/installation-projects/${project.id}/daily-report/logo`, {
+    await api.delete(`/installation-projects/${project.id}/delete-daily-report-logo`, {
       data: {
         logoUrl: form.getFieldValue('dailyReportClientLogoUrl'),
       },
@@ -118,16 +118,6 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
 
       form.setFieldValue('dailyReportClientLogoUrl', logoUrl);
 
-      // remove a logo antiga do servidor
-      if (oldLogo && oldLogo !== logoUrl) {
-        try {
-            await api.delete(`/installation-projects/${project.id}/daily-report/logo`, {
-              data: { logoUrl: clientLogoUrl },
-            });
-        } catch (e) {
-          console.warn('Não foi possível remover a logo antiga:', e);
-        }
-      }
 
       message.success('Logo enviada com sucesso');
 
