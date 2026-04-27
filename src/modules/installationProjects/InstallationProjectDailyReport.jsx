@@ -199,11 +199,33 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
         </Button>
 
         {project?.dailyReportEnabled ? (
-          <Tag color="green">
+          <Tag
+            color="green"
+            style={{
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 16px',
+              fontSize: 14,
+              borderRadius: 8,
+            }}
+          >
             Automático ativo • {project.dailyReportType === 'complete' ? 'Completo' : 'Simples'}
           </Tag>
         ) : (
-          <Tag>Automático inativo</Tag>
+          <Tag
+            color="red"
+            style={{
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 16px',
+              fontSize: 14,
+              borderRadius: 8,
+            }}
+          >
+            E-mail Diario Inativo
+          </Tag>
         )}
       </Space>
 
@@ -309,7 +331,7 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
               <Card
                 size="small"
                 title="Cores do relatório"
-                style={{ borderRadius: 12, height: '100%' }}
+                style={{ borderRadius: 12, height: '50%' }}
               >
                 <Row gutter={12}>
                   <Col xs={24} md={8}>
@@ -336,17 +358,15 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
                 </Typography.Text>
               </Card>
             </Col>
-          </Row>
-
-          <Row gutter={16} style={{ marginTop: 16 }}>
-            <Col xs={24} lg={12}>
+            
+            <Col xs={24} lg={12} style={{ marginLeft: 'auto' }}>
               <Card
                 size="small"
                 title="Logo do cliente"
                 style={{ borderRadius: 12, height: '100%' }}
               >
-                <Form.Item name="dailyReportClientLogoUrl">
-                  <Input placeholder="URL gerada após upload" disabled />
+                <Form.Item name="dailyReportClientLogoUrl" hidden>
+                  <Input />
                 </Form.Item>
 
                 <Space direction="vertical" style={{ width: '100%' }}>
@@ -388,49 +408,7 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
                 </Space>
               </Card>
             </Col>
-
-            <Col xs={24} lg={12}>
-              <Card
-                size="small"
-                title="Logo Omnilink"
-                style={{ borderRadius: 12, height: '100%' }}
-              >
-                <Form.Item
-                  name="dailyReportOmnilinkLogoUrl"
-                  tooltip="Para e-mail externo, use uma URL pública. Localhost funciona apenas localmente."
-                >
-                  <Input placeholder="Ex: https://seu-front.com/logo.png" />
-                </Form.Item>
-
-                <div
-                  style={{
-                    minHeight: 74,
-                    border: '1px dashed #d9d9d9',
-                    borderRadius: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: '#fafafa',
-                    padding: 10,
-                  }}
-                >
-                  {omnilinkLogoUrl ? (
-                    <Image
-                      src={omnilinkLogoUrl}
-                      height={54}
-                      preview={false}
-                      style={{ objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <Typography.Text type="secondary">
-                      Informe a URL da logo Omnilink.
-                    </Typography.Text>
-                  )}
-                </div>
-              </Card>
-            </Col>
           </Row>
-
           <Divider />
 
           <div
