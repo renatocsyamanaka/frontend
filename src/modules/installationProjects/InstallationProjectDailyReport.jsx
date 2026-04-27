@@ -83,7 +83,7 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
       formData.append('file', file);
 
       const { data } = await api.post(
-        `/installation-projects/${project.id}/daily-report/logo`,
+        `/installation-projects/${project.id}/upload-daily-report-logo`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
