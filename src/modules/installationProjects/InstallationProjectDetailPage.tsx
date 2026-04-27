@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
+import InstallationProjectDailyReport from '../installationProjects/InstallationProjectDailyReport';
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -2215,15 +2215,14 @@ const importProgressesFromExcel = async (file: File) => {
           WhatsApp
         </Button>
 
-        <Button
-          icon={<SendOutlined />}
-          loading={sendDailyEmail.isPending}
-          onClick={handleSendDaily}
-          block={isMobile}
-          disabled={p.status === "A_INICIAR" || !hasProjectEmails}
-        >
-          Enviar reporte diário (hoje)
-        </Button>
+        <InstallationProjectDailyReport
+          project={p}
+          onUpdated={async () => {
+            await qc.invalidateQueries({
+              queryKey: ["installation-project", projectId],
+            });
+          }}
+        />
 
         <Button
           icon={<PlayCircleOutlined />}
@@ -2249,9 +2248,10 @@ const importProgressesFromExcel = async (file: File) => {
       </div>
 
       <div style={twoCols}>
-        <div style={{ minWidth: 0 }}>
-          <SummaryContent />
-        </div>
+      <div style={{ minWidth: 0, display: 'grid', gap: 16 }}>
+        <SummaryContent />
+
+      </div>
 
         <div style={{ display: "grid", gap: isMobile ? 12 : 16, minWidth: 0 }}>
           <Card
