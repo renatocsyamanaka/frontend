@@ -159,8 +159,11 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
         dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
         dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
         dailyReportHeaderColor: values.dailyReportHeaderColor || DEFAULT_COLORS.header,
-        dailyReportClientLogoUrl: values.dailyReportClientLogoUrl || null,
-        dailyReportOmnilinkLogoUrl: values.dailyReportOmnilinkLogoUrl || DEFAULT_OMNILINK_LOGO,
+        dailyReportClientLogoUrl: values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || null,
+        dailyReportOmnilinkLogoUrl:
+          values.dailyReportOmnilinkLogoUrl ||
+          project.dailyReportOmnilinkLogoUrl ||
+          DEFAULT_OMNILINK_LOGO,
       });
 
       message.success(
