@@ -64,6 +64,17 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     );
   }, [project]);
 
+  const confirmSendReport = ({ title, content, onOk }) => {
+    Modal.confirm({
+      title,
+      content,
+      okText: 'Sim, enviar',
+      cancelText: 'Cancelar',
+      centered: true,
+      onOk,
+    });
+  };
+
   useEffect(() => {
     if (!project || !open) return;
 
@@ -237,54 +248,54 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     }
   };
 
-const handleSendFinal = async () => {
-  try {
-    const values = form.getFieldsValue(true);
+  const handleSendFinal = async () => {
+    try {
+      const values = form.getFieldsValue(true);
 
-    setSendingFinal(true);
+      setSendingFinal(true);
 
-    const headerColor =
-      values.dailyReportHeaderColor ||
-      project?.dailyReportHeaderColor ||
-      DEFAULT_COLORS.header;
+      const headerColor =
+        values.dailyReportHeaderColor ||
+        project?.dailyReportHeaderColor ||
+        DEFAULT_COLORS.header;
 
-    await api.post(`/installation-projects/${project.id}/emails/final`, {
-      ...getEmailPayloadBase(),
-      reportType: 'complete',
-      sendAll: true,
-      date: new Date().toISOString().slice(0, 10),
+      await api.post(`/installation-projects/${project.id}/emails/final`, {
+        ...getEmailPayloadBase(),
+        reportType: 'complete',
+        sendAll: true,
+        date: new Date().toISOString().slice(0, 10),
 
-      dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
-      dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
-      dailyReportHeaderColor: headerColor,
+        dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
+        dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
+        dailyReportHeaderColor: headerColor,
 
-      dailyReportClientLogoUrl:
-        (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
-          .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
+        dailyReportClientLogoUrl:
+          (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
+            .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
 
-      dailyReportOmnilinkLogoUrl:
-        values.dailyReportOmnilinkLogoUrl ||
-        project.dailyReportOmnilinkLogoUrl ||
-        DEFAULT_OMNILINK_LOGO,
+        dailyReportOmnilinkLogoUrl:
+          values.dailyReportOmnilinkLogoUrl ||
+          project.dailyReportOmnilinkLogoUrl ||
+          DEFAULT_OMNILINK_LOGO,
 
-      finalReport: true,
-      finalTitle: 'Relatório Final do Projeto',
-      finalMessage: 'Projeto finalizado. Segue abaixo o resumo completo das instalações realizadas.',
-    });
+        finalReport: true,
+        finalTitle: 'Relatório Final do Projeto',
+        finalMessage: 'Projeto finalizado. Segue abaixo o resumo completo das instalações realizadas.',
+      });
 
-    message.success('Relatório final completo enviado com sucesso');
+      message.success('Relatório final completo enviado com sucesso');
 
-    if (onUpdated) await onUpdated();
-  } catch (err) {
-    message.error(
-      err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        'Erro ao enviar relatório final'
-    );
-  } finally {
-    setSendingFinal(false);
-  }
-};
+      if (onUpdated) await onUpdated();
+    } catch (err) {
+      message.error(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Erro ao enviar relatório final'
+      );
+    } finally {
+      setSendingFinal(false);
+    }
+  };
 
   const clientLogoUrl = Form.useWatch('dailyReportClientLogoUrl', form);
 
@@ -448,6 +459,7 @@ const handleSendFinal = async () => {
                           content: email,
                           okText: 'Remover',
                           cancelText: 'Cancelar',
+                          centered: true,
                           onOk: () => handleRemoveEmail(email),
                         });
                       }}
@@ -525,7 +537,25 @@ const handleSendFinal = async () => {
                       icon={<SendOutlined />}
                       loading={sendingStart}
                       disabled={!contactEmails.length}
-                      onClick={handleSendStart}
+                      onClick={() =>
+                        confirmSendReport({
+                          title: 'Enviar e-mail de início?',
+                          content: (
+                            <div>
+                              <p>
+                                Deseja realmente enviar o e-mail de início deste projeto?
+                              </p>
+                              <p>
+                                <b>Projeto:</b> {project?.title || '-'}
+                              </p>
+                              <p>
+                                <b>Destinatários:</b> {contactEmails.length}
+                              </p>
+                            </div>
+                          ),
+                          onOk: handleSendStart,
+                        })
+                      }
                     >
                       Enviar início
                     </Button>
@@ -536,7 +566,25 @@ const handleSendFinal = async () => {
                       icon={<SendOutlined />}
                       loading={sendingDaily}
                       disabled={!contactEmails.length}
-                      onClick={handleSendDaily}
+                      onClick={() =>
+                        confirmSendReport({
+                          title: 'Enviar relatório diário completo?',
+                          content: (
+                            <div>
+                              <p>
+                                Deseja realmente enviar o relatório diário completo?
+                              </p>
+                              <p>
+                                <b>Projeto:</b> {project?.title || '-'}
+                              </p>
+                              <p>
+                                <b>Destinatários:</b> {contactEmails.length}
+                              </p>
+                            </div>
+                          ),
+                          onOk: handleSendDaily,
+                        })
+                      }
                     >
                       Enviar diário completo
                     </Button>
@@ -546,7 +594,25 @@ const handleSendFinal = async () => {
                       icon={<SendOutlined />}
                       loading={sendingFinal}
                       disabled={!contactEmails.length}
-                      onClick={handleSendFinal}
+                      onClick={() =>
+                        confirmSendReport({
+                          title: 'Enviar relatório final?',
+                          content: (
+                            <div>
+                              <p>
+                                Deseja realmente enviar o relatório final deste projeto?
+                              </p>
+                              <p>
+                                <b>Projeto:</b> {project?.title || '-'}
+                              </p>
+                              <p>
+                                <b>Destinatários:</b> {contactEmails.length}
+                              </p>
+                            </div>
+                          ),
+                          onOk: handleSendFinal,
+                        })
+                      }
                     >
                       Enviar final
                     </Button>
