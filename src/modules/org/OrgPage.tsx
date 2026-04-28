@@ -11,6 +11,8 @@ type OrgNode = {
   id: number;
   name: string;
   role?: string | null;
+  cargoDescritivo?: string | null; 
+  ocultarCargo?: boolean | null; 
   roleLevel?: number | null;
   managerId?: number | null;
   avatarUrl?: string | null;
@@ -23,6 +25,16 @@ type SectorFilter =
   | 'LOGISTICA'
   | 'SISTEMAS'
   | 'ATENDIMENTO';
+  
+function getCargo(node: OrgNode) {
+  if (!node) return 'Sem cargo';
+
+  if (node.ocultarCargo) return 'Oculto';
+
+  if (node.cargoDescritivo) return node.cargoDescritivo;
+
+  return node.role || 'Sem cargo';
+}
 
 function normalizeText(value?: string | null) {
   return String(value || '')
@@ -351,7 +363,9 @@ function OrgClassicNode({
                 wordBreak: 'break-word',
               }}
             >
-              {node.role || 'Sem cargo'}
+              {node.ocultarCargo
+                ? 'Oculto'
+                : node.cargoDescritivo?.trim() || node.role || 'Sem cargo'}
             </div>
           </div>
         </div>
