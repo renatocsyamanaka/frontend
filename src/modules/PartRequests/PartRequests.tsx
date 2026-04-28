@@ -10,6 +10,7 @@ import {
   Col,
   Descriptions,
   Divider,
+  Popconfirm,
   Form,
   Grid,
   Input,
@@ -41,6 +42,7 @@ import {
   CheckOutlined,
   EnvironmentOutlined,
   BellOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -349,7 +351,6 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function PartRequestsPage() {
-  const qc = useQueryClient();
   const { user } = useAuth();
   const { useBreakpoint } = Grid;
   const bp = useBreakpoint();
@@ -375,7 +376,25 @@ export default function PartRequestsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [batchRows, setBatchRows] = useState<BatchRow[]>([]);
   const [providerUser, setProviderUser] = useState<SimpleUser | null>(null);
+  const qc = useQueryClient();
 
+  const deletePedido = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/part-requests/${id}`);
+      return res.data;
+    },
+    onSuccess: async () => {
+      message.success('Pedido excluído com sucesso');
+      await qc.invalidateQueries({ queryKey: ['part-requests'] });
+    },
+    onError: (e: any) => {
+      message.error(
+        e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          'Erro ao excluir pedido'
+      );
+    },
+  });
   const [approveState, setApproveState] = useState<{
     open: boolean;
     item: PartRequestItem | null;
@@ -717,21 +736,38 @@ export default function PartRequestsPage() {
         width: 90,
         render: (_: any, row: PartRequest) => row.items?.length || 0,
       },
-      {
-        title: 'Ações',
-        key: 'actions',
-        width: 120,
-        render: (_: any, row: PartRequest) => (
-          <Button
-            icon={<EyeOutlined />}
-            onClick={() => {
-              openRequestDetails(row.id);
-            }}
-          >
-            Ver
-          </Button>
-        ),
-      },
+ {
+  title: 'Ações',
+  key: 'actions',
+  width: 200,
+  render: (_: any, row: PartRequest) => (
+    <Space>
+      <Button
+        icon={<EyeOutlined />}
+        onClick={() => openRequestDetails(row.id)}
+      >
+        Ver
+      </Button>
+
+      <Popconfirm
+        title="Excluir pedido"
+        description="Tem certeza que deseja excluir este pedido completo?"
+        okText="Sim"
+        cancelText="Cancelar"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => deletePedido.mutate(row.id)}
+      >
+        <Button
+          danger
+          icon={<DeleteOutlined />}
+          loading={deletePedido.isPending}
+        >
+          Excluir
+        </Button>
+      </Popconfirm>
+    </Space>
+  ),
+},
     ],
     []
   );

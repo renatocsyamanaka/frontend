@@ -170,12 +170,6 @@ export function AppLayout() {
           icon: <ProfileOutlined />,
           permission: 'MY_PART_REQUESTS_VIEW',
         },
-        {
-          key: '/agenda',
-          label: 'Agenda',
-          icon: <ScheduleOutlined />,
-          permission: 'ASSIGNMENTS_VIEW',
-        },
       ],
     },
     {
@@ -245,6 +239,12 @@ export function AppLayout() {
           label: 'Organograma',
           icon: <ClusterOutlined />,
           permission: 'ORG_VIEW',
+        },
+        {
+          key: '/agenda',
+          label: 'Agenda',
+          icon: <ScheduleOutlined />,
+          permission: 'ASSIGNMENTS_VIEW',
         },
         {
           key: '/clientes',

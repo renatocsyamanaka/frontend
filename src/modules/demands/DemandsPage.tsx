@@ -601,10 +601,10 @@ export default function DemandsPage() {
         observacoes: values.observacoes || null,
         status: values.status || null,
         entregaPrevista: values.entregaPrevista
-          ? (values.entregaPrevista as Dayjs).format('YYYY-MM-DD')
+          ? values.entregaPrevista.format('YYYY-MM-DD')
           : null,
         dataEntrega: values.dataEntrega
-          ? (values.dataEntrega as Dayjs).format('YYYY-MM-DD')
+          ? values.dataEntrega.format('YYYY-MM-DD')
           : null,
         workspace: values.workspace || null,
         responsavelId: values.responsavelId || null,
