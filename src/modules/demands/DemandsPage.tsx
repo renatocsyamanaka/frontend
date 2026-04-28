@@ -54,7 +54,6 @@ import {
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../../lib/api';
-import UserSelect from '../shared/UserSelect';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -257,6 +256,107 @@ function normalizeText(value?: string | null) {
   return String(value || '').trim();
 }
 
+function normalizeSearchText(value?: string | number | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+
+type UserOption = {
+  id: number;
+  name?: string | null;
+  nome?: string | null;
+  email?: string | null;
+};
+
+function getUserDisplayName(user: UserOption) {
+  return normalizeText(user.name || user.nome || user.email || `Usuário ${user.id}`);
+}
+
+function unwrapUsers(payload: any): UserOption[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  if (Array.isArray(payload?.users)) return payload.users;
+  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
+  if (Array.isArray(payload?.data?.users)) return payload.data.users;
+  return [];
+}
+
+function DemandUserSelect(props: {
+  value?: number | null;
+  onChange?: (value: number | null) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  const usersQuery = useQuery<UserOption[]>({
+    queryKey: ['demands-page-user-select-options'],
+    queryFn: async () => {
+      const endpoints = ['/users/admin/all-users', '/users', '/auth/users'];
+      let lastError: any;
+
+      for (const endpoint of endpoints) {
+        try {
+          const res = await api.get(endpoint, { params: { limit: 1000, page: 1 } });
+          const users = unwrapUsers(res.data)
+            .filter((user) => user?.id)
+            .map((user) => ({
+              id: Number(user.id),
+              name: user.name || user.nome || user.email || `Usuário ${user.id}`,
+              email: user.email || '',
+            }));
+
+          if (users.length) return users;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      throw lastError || new Error('Falha ao carregar usuários.');
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const options = useMemo(
+    () =>
+      (usersQuery.data || []).map((user) => {
+        const name = getUserDisplayName(user);
+        const email = normalizeText(user.email || '');
+        const label = email ? `${name} (${email})` : name;
+
+        return {
+          value: Number(user.id),
+          label,
+          searchText: normalizeSearchText(`${name} ${email}`),
+        };
+      }),
+    [usersQuery.data]
+  );
+
+  return (
+    <Select
+      showSearch
+      allowClear
+      value={props.value || undefined}
+      placeholder={props.placeholder || 'Responsável'}
+      loading={usersQuery.isLoading}
+      options={options}
+      optionFilterProp="label"
+      filterOption={(input, option) => {
+        const typed = normalizeSearchText(input);
+        const searchText = normalizeSearchText(String((option as any)?.searchText || (option as any)?.label || ''));
+        return searchText.includes(typed);
+      }}
+      onChange={(value) => props.onChange?.(value ? Number(value) : null)}
+      notFoundContent={usersQuery.isLoading ? <Spin size="small" /> : 'Nenhum responsável encontrado'}
+      style={props.style}
+    />
+  );
+}
+
 function formatDate(value?: string | null) {
   if (!value) return '-';
   const d = dayjs(value);
@@ -398,6 +498,12 @@ export default function DemandsPage() {
   const [activityFormOpen, setActivityFormOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<DashboardActivity | null>(null);
 
+  const [activitySearchInput, setActivitySearchInput] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [activityPeriodicidadeFilter, setActivityPeriodicidadeFilter] = useState<string | undefined>();
+  const [activityUrgenciaFilter, setActivityUrgenciaFilter] = useState<string | undefined>();
+  const [activityResponsavelId, setActivityResponsavelId] = useState<number | null>(null);
+
   const [form] = Form.useForm();
   const [activityForm] = Form.useForm();
 
@@ -406,6 +512,8 @@ export default function DemandsPage() {
       page,
       limit,
       tipo: activeTipo || undefined,
+      // Envia os dois nomes porque alguns controllers usam q e outros usam search.
+      q: search || undefined,
       search: search || undefined,
       status: statusFilter || undefined,
       urgencia: urgenciaFilter || undefined,
@@ -555,6 +663,44 @@ export default function DemandsPage() {
   const rows = listQuery.data?.data || [];
   const meta = listQuery.data?.meta;
   const activities = activitiesQuery.data || [];
+
+  const filteredActivities = useMemo(() => {
+    const term = normalizeSearchText(activitySearch);
+
+    return activities.filter((item) => {
+      const matchesSearch =
+        !term ||
+        [
+          item.nome,
+          item.workspace,
+          item.solicitante,
+          item.observacoes,
+          item.tipoResponsabilidade,
+          item.periodicidade,
+          item.diaAplicacao,
+          item.responsavel?.name,
+          item.responsavel?.email,
+        ]
+          .map((value) => normalizeSearchText(value))
+          .some((value) => value.includes(term));
+
+      const matchesPeriodicidade =
+        !activityPeriodicidadeFilter || item.periodicidade === activityPeriodicidadeFilter;
+
+      const matchesUrgencia = !activityUrgenciaFilter || item.urgencia === activityUrgenciaFilter;
+
+      const matchesResponsavel =
+        !activityResponsavelId || Number(item.responsavelId) === Number(activityResponsavelId);
+
+      return matchesSearch && matchesPeriodicidade && matchesUrgencia && matchesResponsavel;
+    });
+  }, [
+    activities,
+    activitySearch,
+    activityPeriodicidadeFilter,
+    activityUrgenciaFilter,
+    activityResponsavelId,
+  ]);
 
   const handleNew = (tipo?: DemandTipo) => {
     const selectedTipo = tipo || activeTipo || 'DEV_WEB';
@@ -1067,11 +1213,17 @@ export default function DemandsPage() {
               <Row gutter={[12, 12]}>
                 <Col xs={24} md={7}>
                   <Input.Search
-                    placeholder="Buscar por nome, solicitante, plataforma..."
+                    placeholder="Buscar por nome, responsável, solicitante, plataforma..."
                     allowClear
                     enterButton={<SearchOutlined />}
                     value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                      if (!e.target.value) {
+                        setSearch('');
+                        setPage(1);
+                      }
+                    }}
                     onSearch={(value) => {
                       setSearch(value.trim());
                       setPage(1);
@@ -1122,10 +1274,10 @@ export default function DemandsPage() {
                 </Col>
 
                 <Col xs={24} md={4}>
-                  <UserSelect
+                  <DemandUserSelect
                     value={responsavelId}
                     onChange={(value) => {
-                      setResponsavelId(value);
+                      setResponsavelId(value ? Number(value) : null);
                       setPage(1);
                     }}
                     placeholder="Responsável"
@@ -1212,21 +1364,63 @@ export default function DemandsPage() {
           <Card style={{ borderRadius: 16 }}>
             <Row gutter={[12, 12]}>
               <Col xs={24} md={6}>
-                <Input.Search placeholder="Buscar responsabilidade..." allowClear enterButton={<SearchOutlined />} />
+                <Input.Search
+                  placeholder="Buscar por nome, workspace ou responsável..."
+                  allowClear
+                  enterButton={<SearchOutlined />}
+                  value={activitySearchInput}
+                  onChange={(e) => {
+                    setActivitySearchInput(e.target.value);
+                    if (!e.target.value) setActivitySearch('');
+                  }}
+                  onSearch={(value) => setActivitySearch(value.trim())}
+                />
               </Col>
               <Col xs={24} md={4}>
-                <Select allowClear placeholder="Periodicidade" options={PERIODICIDADE_OPTIONS} />
+                <Select
+                  allowClear
+                  placeholder="Periodicidade"
+                  options={PERIODICIDADE_OPTIONS}
+                  value={activityPeriodicidadeFilter}
+                  onChange={(value) => setActivityPeriodicidadeFilter(value)}
+                  style={{ width: '100%' }}
+                />
               </Col>
               <Col xs={24} md={4}>
-                <Select allowClear placeholder="Urgência" options={URGENCY_OPTIONS} />
+                <Select
+                  allowClear
+                  placeholder="Urgência"
+                  options={URGENCY_OPTIONS}
+                  value={activityUrgenciaFilter}
+                  onChange={(value) => setActivityUrgenciaFilter(value)}
+                  style={{ width: '100%' }}
+                />
               </Col>
               <Col xs={24} md={4}>
-                <UserSelect placeholder="Responsável" style={{ width: '100%' }} />
+                <DemandUserSelect
+                  value={activityResponsavelId}
+                  onChange={(value) => setActivityResponsavelId(value ? Number(value) : null)}
+                  placeholder="Responsável"
+                  style={{ width: '100%' }}
+                />
               </Col>
               <Col xs={24} md={6}>
-                <Text type="secondary">
-                  Use esta área para controlar quem é responsável por atualizar dashboards e sistemas.
-                </Text>
+                <Space wrap>
+                  <Button
+                    onClick={() => {
+                      setActivitySearchInput('');
+                      setActivitySearch('');
+                      setActivityPeriodicidadeFilter(undefined);
+                      setActivityUrgenciaFilter(undefined);
+                      setActivityResponsavelId(null);
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                  <Text type="secondary">
+                    Total filtrado: <strong>{filteredActivities.length}</strong>
+                  </Text>
+                </Space>
               </Col>
             </Row>
           </Card>
@@ -1246,12 +1440,12 @@ export default function DemandsPage() {
                   'Verifique os endpoints do backend de responsabilidades.'
                 }
               />
-            ) : activities.length === 0 ? (
-              <Empty description="Nenhuma responsabilidade cadastrada." />
+            ) : filteredActivities.length === 0 ? (
+              <Empty description="Nenhuma responsabilidade encontrada." />
             ) : (
               <Table
                 rowKey="id"
-                dataSource={activities}
+                dataSource={filteredActivities}
                 columns={activityColumns}
                 pagination={{ pageSize: 10 }}
                 size="middle"
@@ -1289,7 +1483,7 @@ export default function DemandsPage() {
 
             <Col xs={24} md={8}>
               <Form.Item label="Responsável" name="responsavelId">
-                <UserSelect style={{ width: '100%' }} />
+                <DemandUserSelect style={{ width: '100%' }} />
               </Form.Item>
             </Col>
 
@@ -1487,7 +1681,7 @@ export default function DemandsPage() {
 
             <Col xs={24} md={8}>
               <Form.Item label="Responsável" name="responsavelId">
-                <UserSelect style={{ width: '100%' }} />
+                <DemandUserSelect style={{ width: '100%' }} />
               </Form.Item>
             </Col>
 
