@@ -8,7 +8,6 @@ import {
   Space,
   Divider,
   Tag,
-  Radio,
   Alert,
   Typography,
   Input,
@@ -49,10 +48,14 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [sendingSimple, setSendingSimple] = useState(false);
-  const [sendingComplete, setSendingComplete] = useState(false);
+
+  const [sendingStart, setSendingStart] = useState(false);
+  const [sendingDaily, setSendingDaily] = useState(false);
+  const [sendingFinal, setSendingFinal] = useState(false);
+
   const [newEmail, setNewEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
+
   const [form] = Form.useForm();
 
   const contactEmails = useMemo(() => {
@@ -66,8 +69,8 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
 
     form.setFieldsValue({
       dailyReportEnabled: !!project.dailyReportEnabled,
-      dailyReportSendToClient: !!project.dailyReportSendToClient,
-      dailyReportType: project.dailyReportType || 'simple',
+      dailyReportSendToClient: true,
+      dailyReportType: 'complete',
       dailyReportColorDone: project.dailyReportColorDone || DEFAULT_COLORS.done,
       dailyReportColorPending: project.dailyReportColorPending || DEFAULT_COLORS.pending,
       dailyReportHeaderColor: project.dailyReportHeaderColor || DEFAULT_COLORS.header,
@@ -76,32 +79,30 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     });
   }, [project, open, form]);
 
- const handleRemoveLogo = async () => {
-  try {
-    await api.delete(`/installation-projects/${project.id}/delete-daily-report-logo`, {
-      data: {
-        logoUrl: form.getFieldValue('dailyReportClientLogoUrl'),
-      },
-    });
+  const handleRemoveLogo = async () => {
+    try {
+      await api.delete(`/installation-projects/${project.id}/delete-daily-report-logo`, {
+        data: {
+          logoUrl: form.getFieldValue('dailyReportClientLogoUrl'),
+        },
+      });
 
-    form.setFieldValue('dailyReportClientLogoUrl', null);
+      form.setFieldValue('dailyReportClientLogoUrl', null);
+      message.success('Logo removida');
 
-    message.success('Logo removida');
+      if (onUpdated) await onUpdated();
+    } catch (err) {
+      message.error(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Erro ao remover logo'
+      );
+    }
+  };
 
-    if (onUpdated) await onUpdated();
-  } catch (err) {
-    message.error(
-      err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        'Erro ao remover logo'
-    );
-  }
-};
   const handleUploadLogo = async ({ file, onSuccess, onError }) => {
     try {
       setUploadingLogo(true);
-
-      const oldLogo = form.getFieldValue('dailyReportClientLogoUrl');
 
       const formData = new FormData();
       formData.append('file', file);
@@ -117,7 +118,6 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
         data?.dailyReportClientLogoUrl;
 
       form.setFieldValue('dailyReportClientLogoUrl', logoUrl);
-
 
       message.success('Logo enviada com sucesso');
 
@@ -140,17 +140,12 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     try {
       const values = await form.validateFields();
 
-      if (values.dailyReportEnabled && !values.dailyReportType) {
-        message.warning('Selecione o tipo de relatório automático.');
-        return;
-      }
-
       setSaving(true);
 
       await api.patch(`/installation-projects/${project.id}/daily-report/settings`, {
         dailyReportEnabled: !!values.dailyReportEnabled,
         dailyReportSendToClient: true,
-        dailyReportType: values.dailyReportEnabled ? values.dailyReportType : 'simple',
+        dailyReportType: 'complete',
         dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
         dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
         dailyReportHeaderColor: values.dailyReportHeaderColor || DEFAULT_COLORS.header,
@@ -174,58 +169,124 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     }
   };
 
-  const handleSend = async (type) => {
+  const getEmailPayloadBase = () => ({
+    emailTo: contactEmails,
+  });
+
+  const handleSendStart = async () => {
     try {
-      const values = form.getFieldsValue(true);
+      setSendingStart(true);
 
-      const headerColor =
-        values.dailyReportHeaderColor ||
-        project?.dailyReportHeaderColor ||
-        DEFAULT_COLORS.header;
-      const isComplete = type === 'complete';
-
-      if (isComplete) setSendingComplete(true);
-      else setSendingSimple(true);
-
-      await api.post(`/installation-projects/${project.id}/emails/daily`, {
-        reportType: isComplete ? 'complete' : 'simple',
-        sendAll: isComplete,
-        date: new Date().toISOString().slice(0, 10),
-        emailTo: contactEmails,
-        dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
-        dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
-        dailyReportHeaderColor: headerColor,
-        dailyReportClientLogoUrl:
-          (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
-            .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
-
-        dailyReportOmnilinkLogoUrl:
-          values.dailyReportOmnilinkLogoUrl ||
-          project.dailyReportOmnilinkLogoUrl ||
-          DEFAULT_OMNILINK_LOGO,
+      await api.post(`/installation-projects/${project.id}/emails/start`, {
+        ...getEmailPayloadBase(),
       });
 
-      message.success(
-        isComplete
-          ? 'Relatório completo enviado com sucesso'
-          : 'Relatório simples enviado com sucesso'
-      );
+      message.success('E-mail de início enviado com sucesso');
 
       if (onUpdated) await onUpdated();
     } catch (err) {
       message.error(
         err?.response?.data?.error ||
           err?.response?.data?.message ||
-          'Erro ao enviar relatório'
+          'Erro ao enviar e-mail de início'
       );
     } finally {
-      setSendingSimple(false);
-      setSendingComplete(false);
+      setSendingStart(false);
     }
   };
 
+  const handleSendDaily = async () => {
+    try {
+      const values = form.getFieldsValue(true);
+
+      setSendingDaily(true);
+
+      const headerColor =
+        values.dailyReportHeaderColor ||
+        project?.dailyReportHeaderColor ||
+        DEFAULT_COLORS.header;
+
+      await api.post(`/installation-projects/${project.id}/emails/daily`, {
+        ...getEmailPayloadBase(),
+        reportType: 'complete',
+        sendAll: true,
+        date: new Date().toISOString().slice(0, 10),
+        dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
+        dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
+        dailyReportHeaderColor: headerColor,
+        dailyReportClientLogoUrl:
+          (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
+            .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
+        dailyReportOmnilinkLogoUrl:
+          values.dailyReportOmnilinkLogoUrl ||
+          project.dailyReportOmnilinkLogoUrl ||
+          DEFAULT_OMNILINK_LOGO,
+      });
+
+      message.success('Relatório diário completo enviado com sucesso');
+
+      if (onUpdated) await onUpdated();
+    } catch (err) {
+      message.error(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Erro ao enviar relatório diário'
+      );
+    } finally {
+      setSendingDaily(false);
+    }
+  };
+
+const handleSendFinal = async () => {
+  try {
+    const values = form.getFieldsValue(true);
+
+    setSendingFinal(true);
+
+    const headerColor =
+      values.dailyReportHeaderColor ||
+      project?.dailyReportHeaderColor ||
+      DEFAULT_COLORS.header;
+
+    await api.post(`/installation-projects/${project.id}/emails/final`, {
+      ...getEmailPayloadBase(),
+      reportType: 'complete',
+      sendAll: true,
+      date: new Date().toISOString().slice(0, 10),
+
+      dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
+      dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
+      dailyReportHeaderColor: headerColor,
+
+      dailyReportClientLogoUrl:
+        (values.dailyReportClientLogoUrl || project.dailyReportClientLogoUrl || '')
+          .replace('http://api.projetos-rc.online', 'https://api.projetos-rc.online') || null,
+
+      dailyReportOmnilinkLogoUrl:
+        values.dailyReportOmnilinkLogoUrl ||
+        project.dailyReportOmnilinkLogoUrl ||
+        DEFAULT_OMNILINK_LOGO,
+
+      finalReport: true,
+      finalTitle: 'Relatório Final do Projeto',
+      finalMessage: 'Projeto finalizado. Segue abaixo o resumo completo das instalações realizadas.',
+    });
+
+    message.success('Relatório final completo enviado com sucesso');
+
+    if (onUpdated) await onUpdated();
+  } catch (err) {
+    message.error(
+      err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        'Erro ao enviar relatório final'
+    );
+  } finally {
+    setSendingFinal(false);
+  }
+};
+
   const clientLogoUrl = Form.useWatch('dailyReportClientLogoUrl', form);
-  const omnilinkLogoUrl = Form.useWatch('dailyReportOmnilinkLogoUrl', form);
 
   const handleRemoveEmail = async (emailToRemove) => {
     if (contactEmails.length <= 1) {
@@ -252,60 +313,59 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
       );
     }
   };
-  
-const handleAddEmail = async () => {
-  const email = String(newEmail || '').trim().toLowerCase();
 
-  if (!email) {
-    message.warning('Digite um e-mail');
-    return;
-  }
+  const handleAddEmail = async () => {
+    const email = String(newEmail || '').trim().toLowerCase();
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    message.error('E-mail inválido');
-    return;
-  }
+    if (!email) {
+      message.warning('Digite um e-mail');
+      return;
+    }
 
-  if (contactEmails.includes(email)) {
-    message.warning('Esse e-mail já está cadastrado');
-    return;
-  }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      message.error('E-mail inválido');
+      return;
+    }
 
-  try {
-    setSavingEmail(true);
+    if (contactEmails.includes(email)) {
+      message.warning('Esse e-mail já está cadastrado');
+      return;
+    }
 
-    // 🔥 remove o e-mail fake
-    const cleanedEmails = contactEmails.filter(
-      (e) => e !== 'sem-email@base.local'
-    );
+    try {
+      setSavingEmail(true);
 
-    const nextEmails = [...cleanedEmails, email];
+      const cleanedEmails = contactEmails.filter(
+        (e) => e !== 'sem-email@base.local'
+      );
 
-    await api.patch(`/installation-projects/${project.id}`, {
-      contactEmails: nextEmails,
-      contactEmail: nextEmails[0],
-    });
+      const nextEmails = [...cleanedEmails, email];
 
-    message.success('E-mail adicionado com sucesso');
-    setNewEmail('');
+      await api.patch(`/installation-projects/${project.id}`, {
+        contactEmails: nextEmails,
+        contactEmail: nextEmails[0],
+      });
 
-    if (onUpdated) await onUpdated();
-  } catch (err) {
-    message.error(
-      err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        'Erro ao adicionar e-mail'
-    );
-  } finally {
-    setSavingEmail(false);
-  }
-};
+      message.success('E-mail adicionado com sucesso');
+      setNewEmail('');
+
+      if (onUpdated) await onUpdated();
+    } catch (err) {
+      message.error(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Erro ao adicionar e-mail'
+      );
+    } finally {
+      setSavingEmail(false);
+    }
+  };
 
   return (
     <>
       <Space wrap>
         <Button icon={<MailOutlined />} onClick={() => setOpen(true)}>
-          Relatório diário
+          Sistema de e-mails
         </Button>
 
         {project?.dailyReportEnabled ? (
@@ -320,7 +380,7 @@ const handleAddEmail = async () => {
               borderRadius: 8,
             }}
           >
-            Automático ativo • {project.dailyReportType === 'complete' ? 'Completo' : 'Simples'}
+            Automático ativo • Completo detalhado
           </Tag>
         ) : (
           <Tag
@@ -334,7 +394,7 @@ const handleAddEmail = async () => {
               borderRadius: 8,
             }}
           >
-            E-mail Diario Inativo
+            Envio automático inativo
           </Tag>
         )}
       </Space>
@@ -344,7 +404,7 @@ const handleAddEmail = async () => {
         title={
           <Space>
             <MailOutlined />
-            Relatório diário do projeto
+            Sistema de e-mails do projeto
           </Space>
         }
         onCancel={() => setOpen(false)}
@@ -358,147 +418,145 @@ const handleAddEmail = async () => {
         }}
       >
         <Form form={form} layout="vertical">
+          <Form.Item name="dailyReportType" hidden>
+            <Input />
+          </Form.Item>
+
           <Alert
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
-            message="Os e-mails serão usados a partir do cadastro de contato do projeto."
+            message="Os e-mails serão enviados para os contatos cadastrados no projeto."
           />
 
-        <Card size="small" style={{ borderRadius: 12, marginBottom: 16 }}>
-          <Typography.Text strong>E-mails de contato cadastrados</Typography.Text>
+          <Card size="small" style={{ borderRadius: 12, marginBottom: 16 }}>
+            <Typography.Text strong>E-mails de contato cadastrados</Typography.Text>
 
-          <div style={{ marginTop: 10 }}>
-            {contactEmails.length ? (
-              <Space wrap>
-                {contactEmails.map((email) => (
-                  <Tag
-                    key={email}
-                    color="blue"
-                    closable
-                    onClose={(e) => {
-                      e.preventDefault();
+            <div style={{ marginTop: 10 }}>
+              {contactEmails.length ? (
+                <Space wrap>
+                  {contactEmails.map((email) => (
+                    <Tag
+                      key={email}
+                      color="blue"
+                      closable
+                      onClose={(e) => {
+                        e.preventDefault();
 
-                      Modal.confirm({
-                        title: 'Remover e-mail?',
-                        content: email,
-                        okText: 'Remover',
-                        cancelText: 'Cancelar',
-                        onOk: () => handleRemoveEmail(email),
-                      });
-                    }}
-                  >
-                    {email}
-                  </Tag>
-                ))}
-              </Space>
-            ) : (
-              <Tag color="red">Nenhum e-mail de contato cadastrado</Tag>
-            )}
-          </div>
-
-          <Space.Compact style={{ width: '100%', marginTop: 12 }}>
-            <Input
-              value={newEmail}
-              placeholder="Adicionar novo e-mail"
-              onChange={(e) => setNewEmail(e.target.value)}
-              onPressEnter={handleAddEmail}
-            />
-
-            <Button
-              type="primary"
-              loading={savingEmail}
-              onClick={handleAddEmail}
-            >
-              Adicionar
-            </Button>
-          </Space.Compact>
-        </Card>
-
-          <Row gutter={16}>
-            {/* ESQUERDA */}
-              <Col xs={24} lg={12}>
-                <Card
-                  size="small"
-                  title="Configuração de envio"
-                  style={{ borderRadius: 12, height: '100%' }}
-                >
-                  <Row gutter={16}>
-                    <Col xs={24}>
-                      <Form.Item
-                        label="Envio diário automático"
-                        name="dailyReportEnabled"
-                        valuePropName="checked"
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                          <Switch
-                            checkedChildren="Ativo"
-                            unCheckedChildren="Inativo"
-                            style={{ minWidth: 100 }}
-                          />
-                        </div>
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Form.Item
-                    label="Tipo de relatório automático"
-                    name="dailyReportType"
-                    dependencies={['dailyReportEnabled']}
-                    rules={[
-                      ({ getFieldValue }) => ({
-                        validator(_, value) {
-                          if (getFieldValue('dailyReportEnabled') && !value) {
-                            return Promise.reject(
-                              new Error('Selecione o tipo de relatório automático')
-                            );
-                          }
-
-                          return Promise.resolve();
-                        },
-                      }),
-                    ]}
-                  >
-                    <Radio.Group
-                      size="large"
-                      style={{
-                        display: 'flex',
-                        width: '100%',
-                        maxWidth: 400,
-                        margin: '0 auto',
+                        Modal.confirm({
+                          title: 'Remover e-mail?',
+                          content: email,
+                          okText: 'Remover',
+                          cancelText: 'Cancelar',
+                          onOk: () => handleRemoveEmail(email),
+                        });
                       }}
                     >
-                      <Radio.Button value="simple" style={{ flex: 1, textAlign: 'center' }}>
-                        Simples
-                      </Radio.Button>
+                      {email}
+                    </Tag>
+                  ))}
+                </Space>
+              ) : (
+                <Tag color="red">Nenhum e-mail de contato cadastrado</Tag>
+              )}
+            </div>
 
-                      <Radio.Button value="complete" style={{ flex: 1, textAlign: 'center' }}>
-                        Completo detalhado
-                      </Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
+            <Space.Compact style={{ width: '100%', marginTop: 12 }}>
+              <Input
+                value={newEmail}
+                placeholder="Adicionar novo e-mail"
+                onChange={(e) => setNewEmail(e.target.value)}
+                onPressEnter={handleAddEmail}
+              />
 
-                  <Divider style={{ margin: '12px 0' }} />
+              <Button
+                type="primary"
+                loading={savingEmail}
+                onClick={handleAddEmail}
+              >
+                Adicionar
+              </Button>
+            </Space.Compact>
+          </Card>
 
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{
-                        marginTop: 8,
-                        borderRadius: 8,
-                        textAlign: 'center',
-                        fontSize: 14,
-                      }}
-                      message="O envio automático utiliza o tipo de relatório selecionado acima quando executado."
+          <Row gutter={16}>
+            <Col xs={24} lg={12}>
+              <Card
+                size="small"
+                title="Configuração de envio automático"
+                style={{ borderRadius: 12, height: '100%' }}
+              >
+                <Form.Item
+                  label="Envio diário automático"
+                  name="dailyReportEnabled"
+                  valuePropName="checked"
+                >
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <Switch
+                      checkedChildren="Ativo"
+                      unCheckedChildren="Inativo"
+                      style={{ minWidth: 100 }}
                     />
-                </Card>
-              </Col>
+                  </div>
+                </Form.Item>
 
-            {/* DIREITA */}
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{
+                    marginTop: 8,
+                    borderRadius: 8,
+                    textAlign: 'center',
+                    fontSize: 14,
+                  }}
+                  message="O envio automático diário será sempre no modelo completo detalhado."
+                />
+
+                <Divider style={{ margin: '16px 0' }} />
+
+                <Card
+                  size="small"
+                  title="Envios manuais"
+                  style={{ borderRadius: 12 }}
+                >
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Button
+                      block
+                      icon={<SendOutlined />}
+                      loading={sendingStart}
+                      disabled={!contactEmails.length}
+                      onClick={handleSendStart}
+                    >
+                      Enviar início
+                    </Button>
+
+                    <Button
+                      block
+                      type="primary"
+                      icon={<SendOutlined />}
+                      loading={sendingDaily}
+                      disabled={!contactEmails.length}
+                      onClick={handleSendDaily}
+                    >
+                      Enviar diário completo
+                    </Button>
+
+                    <Button
+                      block
+                      icon={<SendOutlined />}
+                      loading={sendingFinal}
+                      disabled={!contactEmails.length}
+                      onClick={handleSendFinal}
+                    >
+                      Enviar final
+                    </Button>
+                  </Space>
+                </Card>
+              </Card>
+            </Col>
+
             <Col xs={24} lg={12}>
               <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                
-                {/* CORES */}
                 <Card size="small" title="Cores do relatório" style={{ borderRadius: 12 }}>
                   <Row gutter={[10, 10]}>
                     {[
@@ -528,7 +586,6 @@ const handleAddEmail = async () => {
                   </Typography.Text>
                 </Card>
 
-                {/* LOGO */}
                 <Card size="small" title="Logo do cliente" style={{ borderRadius: 12 }}>
                   <Form.Item name="dailyReportClientLogoUrl" hidden>
                     <Input />
@@ -588,10 +645,10 @@ const handleAddEmail = async () => {
                     </div>
                   </Space>
                 </Card>
-
               </Space>
             </Col>
           </Row>
+
           <Divider />
 
           <div
@@ -611,26 +668,9 @@ const handleAddEmail = async () => {
               Salvar configuração
             </Button>
 
-            <Space wrap>
-              <Button
-                icon={<SendOutlined />}
-                loading={sendingSimple}
-                disabled={!contactEmails.length}
-                onClick={() => handleSend('simple')}
-              >
-                Enviar simples agora
-              </Button>
-
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                loading={sendingComplete}
-                disabled={!contactEmails.length}
-                onClick={() => handleSend('complete')}
-              >
-                Enviar completo agora
-              </Button>
-            </Space>
+            <Button onClick={() => setOpen(false)}>
+              Fechar
+            </Button>
           </div>
         </Form>
       </Modal>
