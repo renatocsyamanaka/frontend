@@ -52,7 +52,7 @@ import { api } from "../../lib/api";
 
 type Status = "A_INICIAR" | "INICIADO" | "FINALIZADO";
 
-type RecordType = "BASE" | "PROJECT";
+type RecordType = "BASE" | "PROJECT" | "OUTROS";
 
 type Client = { id: number; name: string };
 
@@ -855,6 +855,25 @@ export default function InstallationProjectDetailPage() {
     sendDailyEmail.mutate({ date: dayjs().format("YYYY-MM-DD") });
   };
 
+  const deleteProject = useMutation({
+    mutationFn: async () => {
+      const res = await api.delete(`/installation-projects/${projectId}`);
+      return res.data;
+    },
+
+    onSuccess: async () => {
+      message.success("Projeto excluído com sucesso!");
+
+      await qc.invalidateQueries({ queryKey: ["installation-projects"] });
+
+      nav("/projetos-instalacao");
+    },
+
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || "Falha ao excluir projeto");
+    },
+  });
+
   const updateProject = useMutation({
     mutationFn: async (payload: Partial<InstallationProject>) => {
       const res = await api.patch(
@@ -937,8 +956,8 @@ export default function InstallationProjectDetailPage() {
 
   const startProject = useMutation({
     mutationFn: async () => {
-      if (p?.recordType === "BASE") {
-        throw new Error("Converta a BASE para projeto antes de iniciar.");
+      if (p?.recordType === "BASE" || p?.recordType === "OUTROS") {
+        throw new Error("Converta este registro para projeto antes de iniciar.");
       }
 
       const res = await api.post(`/installation-projects/${projectId}/start`);
@@ -1921,12 +1940,16 @@ const importProgressesFromExcel = async (file: File) => {
           gap: 16,
         }}
       >
-        {p?.recordType === "BASE" ? (
+        {p?.recordType === "BASE" || p?.recordType === "OUTROS" ? (
           <Alert
             type="warning"
             showIcon
-            message="Este registro ainda está na BASE"
-            description="Ajuste os dados necessários e mova para Projetos quando estiver pronto para operar."
+              message={
+                p?.recordType === "OUTROS"
+                  ? "Este registro está em OUTROS"
+                  : "Este registro ainda está na BASE"
+              }
+              description="Esse registro não entra nos dashboards. Mova para Projetos quando estiver pronto para operar."
           />
         ) : null}
 
@@ -2176,8 +2199,24 @@ const importProgressesFromExcel = async (file: File) => {
         >
           Editar
         </Button>
-
-        {p?.recordType === "BASE" ? (
+        <Popconfirm
+          title="Excluir projeto"
+          description="Tem certeza que deseja excluir este projeto? Essa ação não poderá ser desfeita."
+          okText="Sim, excluir"
+          cancelText="Cancelar"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => deleteProject.mutate()}
+        >
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={deleteProject.isPending}
+            block={isMobile}
+          >
+            Excluir
+          </Button>
+        </Popconfirm>
+        {p?.recordType === "BASE" || p?.recordType === "OUTROS" ? (
           <Button
             onClick={() => {
               Modal.confirm({

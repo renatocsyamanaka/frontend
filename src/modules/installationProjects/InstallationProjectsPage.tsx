@@ -20,6 +20,8 @@ import {
   Typography,
   Upload,
   message,
+  Popconfirm,
+  Dropdown,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
@@ -36,13 +38,15 @@ import {
   SwapOutlined,
   UploadOutlined,
   ProjectOutlined,
+  DeleteOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../../lib/api';
 
 type Client = { id: number; name: string };
 type Status = 'A_INICIAR' | 'INICIADO' | 'FINALIZADO';
-type RecordType = 'BASE' | 'PROJECT';
+type RecordType = 'BASE' | 'PROJECT' | 'OUTROS';
 type RoleLite = { id: number; name: string; level: number };
 type ImportBaseResult = {
   batch?: string | null;
@@ -274,7 +278,14 @@ function statusTag(s: Status) {
 }
 
 function recordTypeTag(type?: RecordType) {
-  if (type === 'BASE') return <Tag color="gold" style={{ borderRadius: 999 }}>BASE</Tag>;
+  if (type === 'BASE') {
+    return <Tag color="gold" style={{ borderRadius: 999 }}>BASE</Tag>;
+  }
+
+  if (type === 'OUTROS') {
+    return <Tag color="default" style={{ borderRadius: 999 }}>OBSOLETO</Tag>;
+  }
+
   return <Tag color="purple" style={{ borderRadius: 999 }}>PROJETO</Tag>;
 }
 
@@ -476,7 +487,17 @@ export default function InstallationProjectsPage() {
       message.error(e?.response?.data?.error || 'Falha ao criar projeto');
     },
   });
-
+  const deleteProject = useMutation({
+    mutationFn: async (id: number) =>
+      (await api.delete(`/installation-projects/${id}`)).data,
+    onSuccess: async () => {
+      message.success('Registro excluído com sucesso!');
+      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao excluir registro');
+    },
+  });
   const convertBase = useMutation({
     mutationFn: async (id: number) =>
       (await api.patch(`/installation-projects/${id}/convert-to-project`)).data,
@@ -522,7 +543,7 @@ export default function InstallationProjectsPage() {
 
     const rowsByTab = rows.filter((r) => {
       const type = r.recordType || 'PROJECT';
-      return activeTab === 'PROJECT' ? type === 'PROJECT' : type === 'BASE';
+      return type === activeTab;
     });
 
     if (!q) return rowsByTab;
@@ -547,20 +568,23 @@ export default function InstallationProjectsPage() {
   }, [rows, search, activeTab]);
 
   const totals = useMemo(() => {
-    const totalProjects = rows.filter((r) => (r.recordType || 'PROJECT') === 'PROJECT').length;
-    const totalBase = rows.filter((r) => r.recordType === 'BASE').length;
-    const totalIniciado = rows.filter((r) => r.status === 'INICIADO').length;
-    const totalFinalizado = rows.filter((r) => r.status === 'FINALIZADO').length;
-    const totalAIniciar = rows.filter((r) => r.status === 'A_INICIAR').length;
+    const projectRows = rows.filter((r) => (r.recordType || 'PROJECT') === 'PROJECT');
+    const baseRows = rows.filter((r) => r.recordType === 'BASE');
+    const outrosRows = rows.filter((r) => r.recordType === 'OUTROS');
 
-    return {
-      totalGeral: rows.length,
-      totalProjects,
-      totalBase,
-      totalIniciado,
-      totalFinalizado,
-      totalAIniciar,
-    };
+      return {
+        totalGeral: rows.length,
+        totalProjects: projectRows.length,
+        totalBase: baseRows.length,
+        totalOutros: outrosRows.length,
+        totalIniciado: projectRows.filter((r) => r.status === 'INICIADO').length,
+        totalFinalizado: projectRows.filter((r) => r.status === 'FINALIZADO').length,
+        totalAIniciar: projectRows.filter((r) => r.status === 'A_INICIAR').length,
+        totalPendentes:
+          projectRows.length -
+          projectRows.filter((r) => r.status === 'INICIADO').length -
+          projectRows.filter((r) => r.status === 'FINALIZADO').length,
+      };
   }, [rows]);
 
   const pagedRows = useMemo(() => {
@@ -718,12 +742,31 @@ export default function InstallationProjectsPage() {
     importBase.mutate(raw as File);
   };
 
+  const moveRecordType = useMutation({
+    mutationFn: async ({
+      id,
+      recordType,
+    }: {
+      id: number;
+      recordType: RecordType;
+    }) =>
+      (await api.patch(`/installation-projects/${id}/record-type`, { recordType }))
+        .data,
+    onSuccess: async () => {
+      message.success('Registro movido com sucesso!');
+      await qc.invalidateQueries({ queryKey: ['installation-projects'] });
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Falha ao mover registro');
+    },
+  });
+  
   const commonColumns: ColumnsType<InstallationProject> = [
     {
       title: 'Tipo',
       dataIndex: 'recordType',
       key: 'recordType',
-      width: 100,
+      width: 60,
       sorter: (a, b) => textSorter(a.recordType, b.recordType),
       render: (_, r) => recordTypeTag(r.recordType),
     },
@@ -731,7 +774,7 @@ export default function InstallationProjectsPage() {
       title: 'Projeto / Cliente',
       dataIndex: 'title',
       key: 'title',
-      width: 280,
+      width: 180,
       sorter: (a, b) =>
         textSorter(
           `${a.title || ''} ${a.client?.name || ''}`,
@@ -752,7 +795,7 @@ export default function InstallationProjectsPage() {
       title: 'AF',
       dataIndex: 'af',
       key: 'af',
-      width: 130,
+      width: 70,
       sorter: (a, b) => textSorter(a.af, b.af),
       render: (v) => v || '-',
     },
@@ -760,14 +803,14 @@ export default function InstallationProjectsPage() {
       title: 'Data da venda',
       dataIndex: 'saleDate',
       key: 'saleDate',
-      width: 130,
+      width: 80,
       sorter: (a, b) => dateSorter(a.saleDate, b.saleDate),
       render: (value) => formatDate(value),
     },
     {
       title: 'Produtos',
       key: 'items',
-      width: 260,
+      width: 100,
       sorter: (a, b) =>
         textSorter(
           a.items?.map((item) => item.equipmentName).join(', '),
@@ -790,7 +833,7 @@ export default function InstallationProjectsPage() {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 160,
+      width: 70,
       sorter: (a, b) => numberSorter(statusOrder[a.status], statusOrder[b.status]),
       render: (s: Status) => {
         const map = {
@@ -854,7 +897,7 @@ export default function InstallationProjectsPage() {
     {
       title: 'Progresso',
       key: 'progress',
-      width: 220,
+      width: 120,
       sorter: (a, b) => numberSorter(getProgressPercent(a), getProgressPercent(b)),
       defaultSortOrder: 'descend',
       render: (_, r) => {
@@ -895,41 +938,70 @@ export default function InstallationProjectsPage() {
     },
   ];
 
-  const baseColumns: ColumnsType<InstallationProject> = [
-    ...commonColumns,
-    {
-      title: 'Ações',
-      key: 'actions',
-      width: 180,
-      fixed: isMobile ? undefined : 'right',
-      render: (_, r) => (
-        <Space wrap>
-          <Button size="small" onClick={() => navigate(`/projetos-instalacao/${r.id}`)}>
-            Abrir
+const baseColumns: ColumnsType<InstallationProject> = [
+  ...commonColumns,
+  {
+    title: 'Ações',
+    key: 'actions',
+    width: 260,
+    fixed: isMobile ? undefined : 'right',
+    render: (_, r) => (
+      <Space size={6} style={{ flexWrap: 'nowrap' }}>
+        <Button size="small" onClick={() => navigate(`/projetos-instalacao/${r.id}`)}>
+          Abrir
+        </Button>
+
+        <Popconfirm
+          title="Excluir registro"
+          description="Tem certeza que deseja excluir este registro?"
+          okText="Sim, excluir"
+          cancelText="Cancelar"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => deleteProject.mutate(r.id)}
+        >
+          <Button
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            loading={deleteProject.isPending}
+          >
+            Excluir
           </Button>
+        </Popconfirm>
+
+        <Dropdown
+          trigger={['click']}
+          menu={{
+            items: [
+              r.recordType !== 'PROJECT'
+                ? { key: 'PROJECT', label: 'Mover para Projetos' }
+                : null,
+              r.recordType !== 'BASE'
+                ? { key: 'BASE', label: 'Mover para Base' }
+                : null,
+              r.recordType !== 'OUTROS'
+                ? { key: 'OUTROS', label: 'Mover para Obsoleto' }
+                : null,
+            ].filter(Boolean) as any,
+            onClick: ({ key }) =>
+              moveRecordType.mutate({
+                id: r.id,
+                recordType: key as RecordType,
+              }),
+          }}
+        >
           <Button
             size="small"
-            type="primary"
             icon={<SwapOutlined />}
-            loading={convertBase.isPending}
-            onClick={() => {
-              Modal.confirm({
-                title: 'Mover para Projetos?',
-                content: `A AF ${r.af || r.title} deixará a BASE e passará para a visão de Projetos.`,
-                okText: 'Mover',
-                cancelText: 'Cancelar',
-                onOk: async () => {
-                  await convertBase.mutateAsync(r.id);
-                },
-              });
-            }}
+            loading={moveRecordType.isPending}
           >
             Mover
           </Button>
-        </Space>
-      ),
-    },
-  ];
+        </Dropdown>
+      </Space>
+    ),
+  },
+];
 
   const tabItems = [
     {
@@ -1025,7 +1097,7 @@ export default function InstallationProjectsPage() {
           loading={projectsQuery.isLoading}
           dataSource={filteredRows}
           columns={projectColumns}
-          scroll={{ x: 1450 }}
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
         />
       ),
@@ -1131,6 +1203,83 @@ export default function InstallationProjectsPage() {
         />
       ),
     },
+    {
+      key: 'OUTROS',
+      label: <span style={{ fontWeight: 700 }}>Obsoleto</span>,
+      children: isMobile ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {projectsQuery.isLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+              <Spin />
+            </div>
+          ) : filteredRows.length ? (
+            <>
+              {pagedRows.map((r) => (
+                <Card key={r.id} size="small" style={{ borderRadius: 18 }}>
+                  <Typography.Text strong>
+                    <Link to={`/projetos-instalacao/${r.id}`}>{r.title}</Link>
+                  </Typography.Text>
+
+                  <div style={{ marginTop: 8 }}>
+                    <Space size={[6, 6]} wrap>
+                      {recordTypeTag(r.recordType)}
+                      {statusTag(r.status)}
+                    </Space>
+                  </div>
+
+                  <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>AF:</b> {r.af || '-'}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Data de compra:</b> {formatDate(r.saleDate)}
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      <b>Produtos:</b>{' '}
+                      {r.items?.length
+                        ? r.items.map((item) => `${item.equipmentName} (${item.qty})`).join(', ')
+                        : '-'}
+                    </Typography.Text>
+                  </div>
+
+                  <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                    <Button onClick={() => navigate(`/projetos-instalacao/${r.id}`)}>
+                      Abrir
+                    </Button>
+
+                    <Popconfirm
+                      title="Excluir registro"
+                      description="Tem certeza que deseja excluir este registro?"
+                      okText="Sim, excluir"
+                      cancelText="Cancelar"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => deleteProject.mutate(r.id)}
+                    >
+                      <Button danger icon={<DeleteOutlined />}>
+                        Excluir
+                      </Button>
+                    </Popconfirm>
+                  </div>
+                </Card>
+              ))}
+            </>
+          ) : (
+            <Typography.Text type="secondary">Nenhum registro em Outros encontrado.</Typography.Text>
+          )}
+        </div>
+      ) : (
+        <Table
+          rowKey="id"
+          sticky
+          size="small"
+          loading={projectsQuery.isLoading}
+          dataSource={filteredRows}
+          columns={baseColumns}
+          scroll={{ x: 'max-content' }}
+          pagination={{ pageSize: 10, size: 'small', showSizeChanger: false }}
+        />
+      ),
+    }
   ];
 
   return (
@@ -1253,7 +1402,11 @@ export default function InstallationProjectsPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : activeTab === 'PROJECT' ? 'repeat(3, minmax(0, 1fr))' : 'repeat(1, minmax(0, 320px))',
+          gridTemplateColumns: isMobile
+            ? '1fr'
+            : activeTab === 'PROJECT'
+              ? 'repeat(4, minmax(0, 1fr))'
+              : 'repeat(1, minmax(0, 320px))',
           gap: 12,
           flexShrink: 0,
         }}
@@ -1285,6 +1438,15 @@ export default function InstallationProjectsPage() {
               icon={<CheckCircleOutlined />}
               bg="linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)"
               iconBg="linear-gradient(135deg, #16a34a 0%, #4ade80 100%)"
+            />
+
+            <SummaryCard
+              title="Pendentes"
+              value={totals.totalPendentes}
+              subtitle="Total menos iniciados e finalizados"
+              icon={<ClockCircleOutlined />}
+              bg="linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)"
+              iconBg="linear-gradient(135deg, #ea580c 0%, #fb923c 100%)"
             />
           </>
         )}
@@ -1334,6 +1496,16 @@ export default function InstallationProjectsPage() {
               </div>
             </Card>
           </div>
+        )}
+        {activeTab === 'OUTROS' && (
+          <SummaryCard
+            title="Total outros"
+            value={totals.totalOutros}
+            subtitle="Registros fora do dashboard"
+            icon={<DatabaseOutlined />}
+            bg="linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)"
+            iconBg="linear-gradient(135deg, #475569 0%, #94a3b8 100%)"
+          />
         )}
       </div>
 
@@ -1403,7 +1575,7 @@ export default function InstallationProjectsPage() {
             style={{ width: '100%' }}
             options={[
               { label: 'Todos os status', value: 'TODOS' },
-              { label: 'À iniciar', value: 'A_INICIAR' },
+              { label: 'Pendentes', value: 'A_INICIAR' },
               { label: 'Iniciado', value: 'INICIADO' },
               { label: 'Finalizado', value: 'FINALIZADO' },
             ]}

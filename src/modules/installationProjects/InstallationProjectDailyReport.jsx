@@ -139,12 +139,18 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+
+      if (values.dailyReportEnabled && !values.dailyReportType) {
+        message.warning('Selecione o tipo de relatório automático.');
+        return;
+      }
+
       setSaving(true);
 
       await api.patch(`/installation-projects/${project.id}/daily-report/settings`, {
         dailyReportEnabled: !!values.dailyReportEnabled,
         dailyReportSendToClient: true,
-        dailyReportType: values.dailyReportType || 'simple',
+        dailyReportType: values.dailyReportEnabled ? values.dailyReportType : 'simple',
         dailyReportColorDone: values.dailyReportColorDone || DEFAULT_COLORS.done,
         dailyReportColorPending: values.dailyReportColorPending || DEFAULT_COLORS.pending,
         dailyReportHeaderColor: values.dailyReportHeaderColor || DEFAULT_COLORS.header,
@@ -222,14 +228,17 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
   const omnilinkLogoUrl = Form.useWatch('dailyReportOmnilinkLogoUrl', form);
 
   const handleRemoveEmail = async (emailToRemove) => {
+    if (contactEmails.length <= 1) {
+      message.warning('O projeto precisa ter pelo menos um e-mail cadastrado.');
+      return;
+    }
+
     try {
-      const nextEmails = contactEmails.filter(
-        (e) => e !== emailToRemove
-      );
+      const nextEmails = contactEmails.filter((e) => e !== emailToRemove);
 
       await api.patch(`/installation-projects/${project.id}`, {
         contactEmails: nextEmails,
-        contactEmail: nextEmails[0] || null,
+        contactEmail: nextEmails[0],
       });
 
       message.success('E-mail removido');
@@ -238,54 +247,59 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
     } catch (err) {
       message.error(
         err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        'Erro ao remover e-mail'
+          err?.response?.data?.message ||
+          'Erro ao remover e-mail'
       );
     }
   };
   
-  const handleAddEmail = async () => {
-    const email = String(newEmail || '').trim().toLowerCase();
+const handleAddEmail = async () => {
+  const email = String(newEmail || '').trim().toLowerCase();
 
-    if (!email) {
-      message.warning('Digite um e-mail');
-      return;
-    }
+  if (!email) {
+    message.warning('Digite um e-mail');
+    return;
+  }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      message.error('E-mail inválido');
-      return;
-    }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    message.error('E-mail inválido');
+    return;
+  }
 
-    if (contactEmails.includes(email)) {
-      message.warning('Esse e-mail já está cadastrado');
-      return;
-    }
+  if (contactEmails.includes(email)) {
+    message.warning('Esse e-mail já está cadastrado');
+    return;
+  }
 
-    try {
-      setSavingEmail(true);
+  try {
+    setSavingEmail(true);
 
-      const nextEmails = [...contactEmails, email];
+    // 🔥 remove o e-mail fake
+    const cleanedEmails = contactEmails.filter(
+      (e) => e !== 'sem-email@base.local'
+    );
 
-      await api.patch(`/installation-projects/${project.id}`, {
-        contactEmails: nextEmails,
-        contactEmail: nextEmails[0],
-      });
+    const nextEmails = [...cleanedEmails, email];
 
-      message.success('E-mail adicionado com sucesso');
-      setNewEmail('');
+    await api.patch(`/installation-projects/${project.id}`, {
+      contactEmails: nextEmails,
+      contactEmail: nextEmails[0],
+    });
 
-      if (onUpdated) await onUpdated();
-    } catch (err) {
-      message.error(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          'Erro ao adicionar e-mail'
-      );
-    } finally {
-      setSavingEmail(false);
-    }
-  };
+    message.success('E-mail adicionado com sucesso');
+    setNewEmail('');
+
+    if (onUpdated) await onUpdated();
+  } catch (err) {
+    message.error(
+      err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        'Erro ao adicionar e-mail'
+    );
+  } finally {
+    setSavingEmail(false);
+  }
+};
 
   return (
     <>
@@ -430,42 +444,38 @@ export default function InstallationProjectDailyReport({ project, onUpdated }) {
                   <Form.Item
                     label="Tipo de relatório automático"
                     name="dailyReportType"
+                    dependencies={['dailyReportEnabled']}
                     rules={[
-                      { required: true, message: 'Selecione o tipo de relatório' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (getFieldValue('dailyReportEnabled') && !value) {
+                            return Promise.reject(
+                              new Error('Selecione o tipo de relatório automático')
+                            );
+                          }
+
+                          return Promise.resolve();
+                        },
+                      }),
                     ]}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                      <Radio.Group
-                        size="large"
-                        style={{
-                          display: 'flex',
-                          width: '100%',
-                          maxWidth: 400,
-                        }}
-                      >
-                        <Radio.Button
-                          value="simple"
-                          style={{
-                            flex: 1,
-                            textAlign: 'center',
-                            borderRadius: '8px 0 0 8px',
-                          }}
-                        >
-                          Simples
-                        </Radio.Button>
+                    <Radio.Group
+                      size="large"
+                      style={{
+                        display: 'flex',
+                        width: '100%',
+                        maxWidth: 400,
+                        margin: '0 auto',
+                      }}
+                    >
+                      <Radio.Button value="simple" style={{ flex: 1, textAlign: 'center' }}>
+                        Simples
+                      </Radio.Button>
 
-                        <Radio.Button
-                          value="complete"
-                          style={{
-                            flex: 1,
-                            textAlign: 'center',
-                            borderRadius: '0 8px 8px 0',
-                          }}
-                        >
-                          Completo detalhado
-                        </Radio.Button>
-                      </Radio.Group>
-                    </div>
+                      <Radio.Button value="complete" style={{ flex: 1, textAlign: 'center' }}>
+                        Completo detalhado
+                      </Radio.Button>
+                    </Radio.Group>
                   </Form.Item>
 
                   <Divider style={{ margin: '12px 0' }} />

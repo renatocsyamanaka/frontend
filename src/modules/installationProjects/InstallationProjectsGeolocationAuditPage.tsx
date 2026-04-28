@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -14,26 +14,26 @@ import {
   Tabs,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ArrowLeftOutlined,
+  EditOutlined,
   EnvironmentOutlined,
   ReloadOutlined,
   SearchOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
+import ProjectLocationModal from './ProjectLocationModal';
 
 const { Title, Text } = Typography;
 
 type AuditRow = {
   projectId: number;
   title: string;
-  clientId?: number;
-  clientName?: string;
+  clientId?: number | null;
+  clientName?: string | null;
   city?: string;
   uf?: string;
   lat?: number | null;
@@ -60,9 +60,9 @@ function coordText(lat?: number | null, lng?: number | null) {
 
 export default function InstallationProjectsGeolocationAuditPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [openModal, setOpenModal] = useState(false);
   const auditQuery = useQuery<AuditResponse>({
     queryKey: ['installation-projects-geolocation-audit'],
     queryFn: async () => {
@@ -71,23 +71,6 @@ export default function InstallationProjectsGeolocationAuditPage() {
     },
     retry: false,
     refetchOnWindowFocus: false,
-  });
-
-  const fillMutation = useMutation({
-    mutationFn: async () => {
-      const res = await api.post('/installation-projects/geolocation/fill-missing');
-      return res.data?.data || res.data;
-    },
-    onSuccess: (data) => {
-      message.success(
-        `Preenchimento concluído. Atualizados: ${data?.updated || 0} | Ignorados: ${data?.skipped || 0}`
-      );
-      queryClient.invalidateQueries({ queryKey: ['installation-projects-geolocation-audit'] });
-      queryClient.invalidateQueries({ queryKey: ['installation-projects-dashboard'] });
-    },
-    onError: () => {
-      message.error('Erro ao preencher coordenadas automaticamente.');
-    },
   });
 
   const filterRows = (rows: AuditRow[]) => {
@@ -112,9 +95,20 @@ export default function InstallationProjectsGeolocationAuditPage() {
     });
   };
 
-  const validRows = useMemo(() => filterRows(auditQuery.data?.valid || []), [auditQuery.data, search]);
-  const missingRows = useMemo(() => filterRows(auditQuery.data?.missing || []), [auditQuery.data, search]);
-  const invalidRows = useMemo(() => filterRows(auditQuery.data?.invalid || []), [auditQuery.data, search]);
+  const validRows = useMemo(
+    () => filterRows(auditQuery.data?.valid || []),
+    [auditQuery.data, search]
+  );
+
+  const missingRows = useMemo(
+    () => filterRows(auditQuery.data?.missing || []),
+    [auditQuery.data, search]
+  );
+
+  const invalidRows = useMemo(
+    () => filterRows(auditQuery.data?.invalid || []),
+    [auditQuery.data, search]
+  );
 
   const columns: ColumnsType<AuditRow> = [
     {
@@ -123,7 +117,9 @@ export default function InstallationProjectsGeolocationAuditPage() {
       key: 'title',
       render: (_, row) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{row.title || `Projeto ${row.projectId}`}</div>
+          <div style={{ fontWeight: 700 }}>
+            {row.title || `Projeto ${row.projectId}`}
+          </div>
           <Text type="secondary">ID: {row.projectId}</Text>
         </div>
       ),
@@ -132,46 +128,50 @@ export default function InstallationProjectsGeolocationAuditPage() {
       title: 'Cliente',
       dataIndex: 'clientName',
       key: 'clientName',
+      width: 220,
       render: (_, row) => (
         <div>
           <div>{row.clientName || '—'}</div>
           <Text type="secondary">ID: {row.clientId || '—'}</Text>
         </div>
       ),
-      width: 220,
     },
     {
-      title: 'Cidade/UF',
+      title: 'Cidade/UF do projeto',
       key: 'cityUf',
+      width: 200,
       render: (_, row) => `${row.city || '—'} / ${row.uf || '—'}`,
-      width: 180,
     },
     {
       title: 'Latitude / Longitude',
       key: 'coords',
-      render: (_, row) => coordText(row.lat, row.lng),
       width: 220,
+      render: (_, row) => coordText(row.lat, row.lng),
     },
     {
       title: 'Motivo',
       dataIndex: 'reason',
       key: 'reason',
+      width: 210,
       render: (value) =>
         value ? <Tag color="red">{value}</Tag> : <Tag color="green">OK</Tag>,
-      width: 160,
     },
     {
       title: 'Ação',
       key: 'action',
-      width: 160,
-      render: (_, row) => (
-        <Button
-          size="small"
-          onClick={() => navigate(`/projetos-instalacao?clientId=${row.clientId || ''}`)}
-        >
-          Ver projetos
-        </Button>
-      ),
+      width: 190,
+        render: (_, row) => (
+          <Button
+            size="small"
+            type="primary"
+            onClick={() => {
+              setSelectedProject(row);
+              setOpenModal(true);
+            }}
+          >
+            Editar localização
+          </Button>
+        ),
     },
   ];
 
@@ -186,7 +186,14 @@ export default function InstallationProjectsGeolocationAuditPage() {
         }}
         styles={{ body: { padding: 24 } }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
           <div>
             <div
               style={{
@@ -211,8 +218,7 @@ export default function InstallationProjectsGeolocationAuditPage() {
             </Title>
 
             <Text style={{ color: 'rgba(255,255,255,0.78)' }}>
-              Veja quais projetos têm coordenadas válidas, quais estão sem latitude/longitude e quais
-              precisam de correção.
+              Veja quais projetos têm coordenadas válidas, quais estão sem latitude/longitude e quais precisam de correção.
             </Text>
           </div>
 
@@ -235,20 +241,10 @@ export default function InstallationProjectsGeolocationAuditPage() {
               size="large"
               icon={<ReloadOutlined />}
               onClick={() => auditQuery.refetch()}
+              loading={auditQuery.isFetching}
               style={{ borderRadius: 14 }}
             >
               Recarregar
-            </Button>
-
-            <Button
-              size="large"
-              type="primary"
-              icon={<ToolOutlined />}
-              loading={fillMutation.isPending}
-              onClick={() => fillMutation.mutate()}
-              style={{ borderRadius: 14 }}
-            >
-              Preencher automático
             </Button>
           </Space>
         </div>
@@ -260,16 +256,22 @@ export default function InstallationProjectsGeolocationAuditPage() {
             <Statistic title="Total" value={auditQuery.data?.summary?.total || 0} />
           </Card>
         </Col>
+
         <Col xs={24} md={8}>
           <Card bordered={false} style={{ borderRadius: 20 }}>
-            <Statistic title="Com coordenadas válidas" value={auditQuery.data?.summary?.valid || 0} />
+            <Statistic
+              title="Com coordenadas válidas"
+              value={auditQuery.data?.summary?.valid || 0}
+            />
           </Card>
         </Col>
+
         <Col xs={24} md={4}>
           <Card bordered={false} style={{ borderRadius: 20 }}>
             <Statistic title="Sem coordenadas" value={auditQuery.data?.summary?.missing || 0} />
           </Card>
         </Col>
+
         <Col xs={24} md={4}>
           <Card bordered={false} style={{ borderRadius: 20 }}>
             <Statistic title="Inválidas" value={auditQuery.data?.summary?.invalid || 0} />
@@ -292,7 +294,7 @@ export default function InstallationProjectsGeolocationAuditPage() {
             type="info"
             showIcon
             message="Dica"
-            description="Use o preenchimento automático para tentar completar coordenadas de cidades conhecidas. Os casos restantes podem ser revisados manualmente."
+            description="Os projetos sem coordenadas devem ser revisados manualmente. Clique em 'Abrir / Editar projeto' para ajustar a localização diretamente no cadastro do projeto."
           />
         </Space>
       </Card>
@@ -309,7 +311,7 @@ export default function InstallationProjectsGeolocationAuditPage() {
                 label: `Sem coordenadas (${missingRows.length})`,
                 children: (
                   <Table
-                    rowKey={(row) => `missing_${row.projectId}_${row.clientId || 0}`}
+                    rowKey={(row) => `missing_${row.projectId}`}
                     columns={columns}
                     dataSource={missingRows}
                     pagination={{ pageSize: 8 }}
@@ -322,7 +324,7 @@ export default function InstallationProjectsGeolocationAuditPage() {
                 label: `Inválidas (${invalidRows.length})`,
                 children: (
                   <Table
-                    rowKey={(row) => `invalid_${row.projectId}_${row.clientId || 0}`}
+                    rowKey={(row) => `invalid_${row.projectId}`}
                     columns={columns}
                     dataSource={invalidRows}
                     pagination={{ pageSize: 8 }}
@@ -335,7 +337,7 @@ export default function InstallationProjectsGeolocationAuditPage() {
                 label: `Válidas (${validRows.length})`,
                 children: (
                   <Table
-                    rowKey={(row) => `valid_${row.projectId}_${row.clientId || 0}`}
+                    rowKey={(row) => `valid_${row.projectId}`}
                     columns={columns}
                     dataSource={validRows}
                     pagination={{ pageSize: 8 }}
@@ -347,6 +349,12 @@ export default function InstallationProjectsGeolocationAuditPage() {
           />
         )}
       </Card>
+      <ProjectLocationModal
+        open={openModal}
+        project={selectedProject}
+        onClose={() => setOpenModal(false)}
+        onUpdated={() => auditQuery.refetch()}
+      />
     </div>
   );
 }
