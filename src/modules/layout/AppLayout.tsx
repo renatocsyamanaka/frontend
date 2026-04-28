@@ -21,6 +21,7 @@ import {
   LinkOutlined,
   SettingOutlined,
   FileImageOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -300,19 +301,25 @@ export function AppLayout() {
         },
       ],
     },
+ {
+  key: 'admin',
+  icon: <SettingOutlined />,
+  label: 'Administração',
+  children: [
     {
-    key: 'admin',
-    icon: <SettingOutlined />,
-    label: 'Administração',
-    children: [
-      hasPermission('MEDIA_VIEW') && {
-        key: '/gerenciador-imagens',
-        icon: <FileImageOutlined />,
-        label: 'Gerenciador de Imagens',
-        onClick: () => navigate('/gerenciador-imagens'),
-      },
-    ].filter(Boolean),
-  }
+      key: '/gerenciador-imagens',
+      label: 'Gerenciador de Imagens',
+      icon: <FileImageOutlined />,
+      permission: 'MEDIA_VIEW',
+    },
+    {
+      key: '/logs-auditoria',
+      label: 'Logs do Sistema',
+      icon: <HistoryOutlined />,
+      permission: 'ACTIVITY_LOGS_VIEW',
+    },
+  ],
+}
   ];
 
   const visibleMenuConfig = useMemo(() => {

@@ -37,6 +37,7 @@ import WhatsappConversasPage from './modules/whatsapp/WhatsappConversasPage';
 import WhatsappConnectionPage from './modules/whatsapp/WhatsappConnectionPage';
 import WhatsappConversationDetailPage from './modules/whatsapp/WhatsappConversationDetailPage'
 import MediaManagerPage from './modules/media/MediaManagerPage';
+import ActivityLogsPage from './modules/auditLogs/ActivityLogsPage';
 
 
 import { ConfigProvider } from 'antd';
@@ -104,6 +105,15 @@ export default function App() {
           element={
             <RequireAccess permission="INSTALLATION_PROJECTS_VIEW">
               <InstallationProjectsByClientPage />
+            </RequireAccess>
+          }
+        />
+        
+        <Route
+          path="logs-auditoria"
+          element={
+            <RequireAccess permission="ACTIVITY_LOGS_VIEW">
+              <ActivityLogsPage />
             </RequireAccess>
           }
         />
