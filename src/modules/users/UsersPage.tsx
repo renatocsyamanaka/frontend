@@ -56,6 +56,7 @@ import {
   CarOutlined,
   NotificationOutlined,
   SettingOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
@@ -153,6 +154,7 @@ const PERMISSION_OPTIONS = [
   { value: 'NEWS_ADMIN_VIEW', label: 'Notícias Admin' },
   { value: 'DASHBOARD_ACTIVITY_VIEW', label: 'Planejamento CIA' },
   { value: 'DELIVERY_REPORTS_VIEW', label: 'CTEs' },
+  { value: 'WHATSAPP_VIEW', label: 'WhatsApp' },
 ];
 const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
   DASHBOARD_VIEW: <HomeOutlined />,
@@ -174,6 +176,7 @@ const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
   OVERTIME_VIEW: <BarChartOutlined />,
   TIMEOFF_VIEW: <CarOutlined />,
   NEWS_VIEW: <NotificationOutlined />,
+  WHATSAPP_VIEW: <WhatsAppOutlined />,
   NEWS_ADMIN_VIEW: <SettingOutlined />,
 };
 

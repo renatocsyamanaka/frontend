@@ -17,14 +17,15 @@ import {
   message,
 } from 'antd';
 import {
+  CopyOutlined,
   DeleteOutlined,
   EyeOutlined,
   FileImageOutlined,
+  FilePdfOutlined,
   ReloadOutlined,
   SearchOutlined,
-  CopyOutlined,
 } from '@ant-design/icons';
-import { api, API_URL } from '../../lib/api';
+import { api } from '../../lib/api';
 
 const { Title, Text } = Typography;
 
@@ -37,11 +38,33 @@ type SystemFile = {
   createdAt?: string;
 };
 
+const FOLDER_LABELS: Record<string, string> = {
+  avatars: 'Avatares',
+  news: 'Notícias',
+  'dashboard-banners': 'Banners do Dashboard',
+  'daily-report-logos': 'Logos de Projetos de Instalações',
+  homologation: 'Homologação',
+  needs: 'Demandas',
+  media: 'Mídia Geral',
+};
+
+function normalizeFolder(folder?: string) {
+  if (!folder) return 'media';
+  return String(folder).split('/')[0];
+}
+
+function folderLabel(folder?: string) {
+  const key = normalizeFolder(folder);
+  return FOLDER_LABELS[key] || key;
+}
+
 function absUrl(url?: string | null) {
   if (!url) return '';
   if (/^https?:\/\//i.test(url)) return url;
 
-  const origin = API_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const origin = apiUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+
   return `${origin}/${String(url).replace(/^\/+/, '')}`;
 }
 
@@ -50,6 +73,16 @@ function formatSize(size?: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function isPdf(file?: SystemFile | null) {
+  return String(file?.name || file?.url || '').toLowerCase().endsWith('.pdf');
+}
+
+function isImage(file?: SystemFile | null) {
+  return /\.(png|jpg|jpeg|webp|gif|bmp|svg)$/i.test(
+    String(file?.name || file?.url || '')
+  );
 }
 
 export default function MediaManagerPage() {
@@ -75,29 +108,38 @@ export default function MediaManagerPage() {
       return res.data;
     },
     onSuccess: async () => {
-      message.success('Imagem excluída com sucesso');
+      message.success('Arquivo excluído com sucesso');
       setPreview(null);
       await qc.invalidateQueries({ queryKey: ['system-files'] });
     },
     onError: (e: any) => {
-      message.error(e?.response?.data?.error || 'Erro ao excluir imagem');
+      message.error(e?.response?.data?.error || 'Erro ao excluir arquivo');
     },
   });
 
   const folders = useMemo(() => {
-    const set = new Set((filesQuery.data || []).map((f) => f.folder).filter(Boolean));
-    return Array.from(set).sort();
+    const set = new Set(
+      (filesQuery.data || [])
+        .map((file) => normalizeFolder(file.folder))
+        .filter(Boolean)
+    );
+
+    return Array.from(set).sort((a, b) =>
+      folderLabel(a).localeCompare(folderLabel(b), 'pt-BR')
+    );
   }, [filesQuery.data]);
 
   const filteredFiles = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return (filesQuery.data || []).filter((file) => {
-      if (folder && file.folder !== folder) return false;
+      const normalized = normalizeFolder(file.folder);
+
+      if (folder && normalized !== folder) return false;
 
       if (!q) return true;
 
-      return [file.name, file.folder, file.url]
+      return [file.name, folderLabel(file.folder), file.url]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -106,8 +148,7 @@ export default function MediaManagerPage() {
   }, [filesQuery.data, search, folder]);
 
   const copyUrl = async (url: string) => {
-    const full = absUrl(url);
-    await navigator.clipboard.writeText(full);
+    await navigator.clipboard.writeText(absUrl(url));
     message.success('URL copiada');
   };
 
@@ -122,18 +163,22 @@ export default function MediaManagerPage() {
         }}
         styles={{ body: { padding: 22 } }}
       >
-        <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }} wrap>
+        <Space
+          align="start"
+          style={{ width: '100%', justifyContent: 'space-between' }}
+          wrap
+        >
           <div>
             <Tag color="blue" style={{ borderRadius: 999 }}>
-              <FileImageOutlined /> Arquivos do sistema
+              <FileImageOutlined /> Administração
             </Tag>
 
             <Title level={2} style={{ color: '#fff', margin: '10px 0 4px' }}>
-              Gerenciador de Imagens
+              Gerenciador de Arquivos
             </Title>
 
             <Text style={{ color: 'rgba(255,255,255,0.78)' }}>
-              Visualize, copie links e exclua imagens das pastas de uploads do portal.
+              Visualize imagens, PDFs e arquivos das pastas do portal.
             </Text>
           </div>
 
@@ -154,7 +199,7 @@ export default function MediaManagerPage() {
               allowClear
               size="large"
               prefix={<SearchOutlined />}
-              placeholder="Buscar por nome, pasta ou URL"
+              placeholder="Buscar por nome, categoria ou URL"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -165,12 +210,12 @@ export default function MediaManagerPage() {
               allowClear
               size="large"
               style={{ width: '100%' }}
-              placeholder="Filtrar por módulo/pasta"
+              placeholder="Filtrar por categoria"
               value={folder}
               onChange={setFolder}
               options={folders.map((f) => ({
                 value: f,
-                label: f,
+                label: folderLabel(f),
               }))}
             />
           </Col>
@@ -192,13 +237,13 @@ export default function MediaManagerPage() {
 
       <Card bordered={false} style={{ borderRadius: 20 }}>
         {filesQuery.isLoading ? (
-          <Text>Carregando imagens...</Text>
+          <Text>Carregando arquivos...</Text>
         ) : !filteredFiles.length ? (
-          <Empty description="Nenhuma imagem encontrada" />
+          <Empty description="Nenhum arquivo encontrado" />
         ) : (
           <Row gutter={[16, 16]}>
             {filteredFiles.map((file) => (
-              <Col xs={24} sm={12} md={8} lg={6} xl={4} key={`${file.folder}-${file.name}`}>
+              <Col xs={24} sm={12} md={8} lg={6} xl={4} key={file.path}>
                 <Card
                   hoverable
                   style={{
@@ -224,15 +269,28 @@ export default function MediaManagerPage() {
                         overflow: 'hidden',
                       }}
                     >
-                      <Image
-                        src={absUrl(file.url)}
-                        alt={file.name}
-                        height={140}
-                        width="100%"
-                        style={{ objectFit: 'cover' }}
-                        preview={false}
-                        fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDE2MCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE2MCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNmMWY1ZjkiLz48dGV4dCB4PSI4MCIgeT0iNTIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5NGEzYjgiIGZvbnQtc2l6ZT0iMTIiPkltYWdlbTwvdGV4dD48L3N2Zz4="
-                      />
+                      {isPdf(file) ? (
+                        <div style={{ textAlign: 'center', color: '#ef4444' }}>
+                          <FilePdfOutlined style={{ fontSize: 42 }} />
+                          <div style={{ marginTop: 8, fontWeight: 700 }}>
+                            PDF
+                          </div>
+                        </div>
+                      ) : isImage(file) ? (
+                        <Image
+                          src={absUrl(file.url)}
+                          alt={file.name}
+                          height={140}
+                          width="100%"
+                          style={{ objectFit: 'cover' }}
+                          preview={false}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', color: '#64748b' }}>
+                          <FileImageOutlined style={{ fontSize: 36 }} />
+                          <div style={{ marginTop: 8 }}>Arquivo</div>
+                        </div>
+                      )}
                     </div>
                   }
                 >
@@ -241,22 +299,30 @@ export default function MediaManagerPage() {
                   </Text>
 
                   <Space wrap size={[4, 4]}>
-                    <Tag>{file.folder || 'uploads'}</Tag>
+                    <Tag>{folderLabel(file.folder)}</Tag>
                     <Tag color="blue">{formatSize(file.size)}</Tag>
                   </Space>
 
                   <Space wrap>
-                    <Button size="small" icon={<EyeOutlined />} onClick={() => setPreview(file)}>
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => setPreview(file)}
+                    >
                       Ver
                     </Button>
 
-                    <Button size="small" icon={<CopyOutlined />} onClick={() => copyUrl(file.url)}>
+                    <Button
+                      size="small"
+                      icon={<CopyOutlined />}
+                      onClick={() => copyUrl(file.url)}
+                    >
                       URL
                     </Button>
 
                     <Popconfirm
-                      title="Excluir imagem"
-                      description="Tem certeza que deseja excluir esta imagem?"
+                      title="Excluir arquivo"
+                      description="Tem certeza que deseja excluir este arquivo?"
                       okText="Sim, excluir"
                       cancelText="Cancelar"
                       okButtonProps={{ danger: true }}
@@ -289,14 +355,18 @@ export default function MediaManagerPage() {
               </Button>
 
               <Popconfirm
-                title="Excluir imagem"
-                description="Tem certeza que deseja excluir esta imagem?"
+                title="Excluir arquivo"
+                description="Tem certeza que deseja excluir este arquivo?"
                 okText="Sim, excluir"
                 cancelText="Cancelar"
                 okButtonProps={{ danger: true }}
                 onConfirm={() => deleteFile.mutate(preview.path)}
               >
-                <Button danger icon={<DeleteOutlined />} loading={deleteFile.isPending}>
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  loading={deleteFile.isPending}
+                >
                   Excluir
                 </Button>
               </Popconfirm>
@@ -310,17 +380,47 @@ export default function MediaManagerPage() {
       >
         {preview && (
           <div style={{ display: 'grid', gap: 12 }}>
-            <Image
-              src={absUrl(preview.url)}
-              alt={preview.name}
-              style={{ maxHeight: 520, objectFit: 'contain' }}
-            />
+            {isPdf(preview) ? (
+              <iframe
+                src={absUrl(preview.url)}
+                title={preview.name}
+                style={{
+                  width: '100%',
+                  height: 620,
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 12,
+                }}
+              />
+            ) : isImage(preview) ? (
+              <Image
+                src={absUrl(preview.url)}
+                alt={preview.name}
+                style={{ maxHeight: 520, objectFit: 'contain' }}
+              />
+            ) : (
+              <Card>
+                <Text>
+                  Pré-visualização indisponível para este tipo de arquivo.
+                </Text>
+              </Card>
+            )}
 
             <Card size="small">
-              <p><b>Pasta:</b> {preview.folder}</p>
-              <p><b>Tamanho:</b> {formatSize(preview.size)}</p>
-              <p><b>URL:</b> {absUrl(preview.url)}</p>
-              <p><b>Caminho:</b> {preview.path}</p>
+              <p>
+                <b>Categoria:</b> {folderLabel(preview.folder)}
+              </p>
+              <p>
+                <b>Pasta técnica:</b> {preview.folder}
+              </p>
+              <p>
+                <b>Tamanho:</b> {formatSize(preview.size)}
+              </p>
+              <p>
+                <b>URL:</b> {absUrl(preview.url)}
+              </p>
+              <p>
+                <b>Caminho:</b> {preview.path}
+              </p>
             </Card>
           </div>
         )}
