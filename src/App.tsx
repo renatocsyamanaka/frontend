@@ -36,6 +36,9 @@ import InstallationProjectsByClientPage from './modules/installationProjects/ins
 import WhatsappConversasPage from './modules/whatsapp/WhatsappConversasPage';
 import WhatsappConnectionPage from './modules/whatsapp/WhatsappConnectionPage';
 import WhatsappConversationDetailPage from './modules/whatsapp/WhatsappConversationDetailPage'
+import MediaManagerPage from './modules/media/MediaManagerPage';
+
+
 import { ConfigProvider } from 'antd';
 import ptBR from 'antd/es/locale/pt_BR';
 
@@ -112,7 +115,14 @@ export default function App() {
             </RequireAccess>
           }
         />
-
+        <Route
+          path="gerenciador-imagens"
+          element={
+            <RequireAccess permission="MEDIA_VIEW">
+              <MediaManagerPage />
+            </RequireAccess>
+          }
+        />
         <Route
           path="projetos-instalacao/geolocalizacao"
           element={

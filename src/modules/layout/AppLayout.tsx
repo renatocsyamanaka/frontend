@@ -18,7 +18,9 @@ import {
   UserOutlined,
   FileSearchOutlined,
   FundOutlined,
-  LinkOutlined
+  LinkOutlined,
+  SettingOutlined,
+  FileImageOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -298,6 +300,19 @@ export function AppLayout() {
         },
       ],
     },
+    {
+    key: 'admin',
+    icon: <SettingOutlined />,
+    label: 'Administração',
+    children: [
+      hasPermission('MEDIA_VIEW') && {
+        key: '/gerenciador-imagens',
+        icon: <FileImageOutlined />,
+        label: 'Gerenciador de Imagens',
+        onClick: () => navigate('/gerenciador-imagens'),
+      },
+    ].filter(Boolean),
+  }
   ];
 
   const visibleMenuConfig = useMemo(() => {
