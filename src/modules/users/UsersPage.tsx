@@ -56,7 +56,8 @@ import {
   CarOutlined,
   NotificationOutlined,
   SettingOutlined,
-  WhatsAppOutlined
+  WhatsAppOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { LocationSelect } from '../shared/LocationSelect';
 import UserAddressModal from './UserAddressModal';
@@ -445,7 +446,7 @@ export function UsersPage() {
   const canCreateAnyUser = myLevel >= 5;
   const canEditAnyUser = myLevel >= 5;
   const canReviewRegistrationRequests = myLevel >= 3;
-
+  const [passwordForm] = Form.useForm();
   const [fSearch, setFSearch] = useState<string>('');
   const [fRoles, setFRoles] = useState<number[] | undefined>(undefined);
   const [fActive, setFActive] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
@@ -494,7 +495,27 @@ export function UsersPage() {
       return WORKER_ROLE_NAMES.includes(label);
     });
   }, [roleOptions]);
+  const changeUserPassword = useMutation({
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: number;
+      payload: {
+        newPassword: string;
+        confirmNewPassword: string;
+      };
+    }) => (await api.put(`/users/${id}/change-password`, payload)).data,
 
+    onSuccess: () => {
+      message.success('Senha alterada com sucesso');
+      passwordForm.resetFields();
+    },
+
+    onError: (e: any) => {
+      message.error(e?.response?.data?.error || 'Erro ao alterar senha');
+    },
+  });
   const managerOptions = useMemo(() => {
     const seen = new Set<number>();
 
@@ -2568,6 +2589,81 @@ export function UsersPage() {
                     )}
                   </Space>
                 </div>
+                {canEditAnyUser && editing?.loginEnabled !== false && (
+                  <div
+                    style={{
+                      border: '1px solid #f0f0f0',
+                      borderRadius: 14,
+                      padding: 16,
+                      background: '#fff',
+                      marginTop: 16,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 12 }}>
+                      <LockOutlined /> Alterar senha do usuário
+                    </div>
+
+                    <Form
+                      form={passwordForm}
+                      layout="vertical"
+                      onFinish={(values) => {
+                        if (!editing?.id) return;
+
+                        Modal.confirm({
+                          title: 'Confirmar alteração de senha',
+                          content: `Deseja realmente alterar a senha de ${editing.name}?`,
+                          okText: 'Sim, alterar',
+                          cancelText: 'Cancelar',
+                          onOk: () =>
+                            changeUserPassword.mutate({
+                              id: editing.id,
+                              payload: values,
+                            }),
+                        });
+                      }}
+                    >
+                      <Form.Item
+                        name="newPassword"
+                        label="Nova senha"
+                        rules={[
+                          { required: true, message: 'Informe a nova senha' },
+                          { min: 6, message: 'A senha deve ter no mínimo 6 caracteres' },
+                        ]}
+                      >
+                        <Input.Password placeholder="Digite a nova senha" />
+                      </Form.Item>
+
+                      <Form.Item
+                        name="confirmNewPassword"
+                        label="Confirmar nova senha"
+                        dependencies={['newPassword']}
+                        rules={[
+                          { required: true, message: 'Confirme a nova senha' },
+                          ({ getFieldValue }) => ({
+                            validator(_, value) {
+                              if (!value || getFieldValue('newPassword') === value) {
+                                return Promise.resolve();
+                              }
+                              return Promise.reject(new Error('As senhas não conferem'));
+                            },
+                          }),
+                        ]}
+                      >
+                        <Input.Password placeholder="Confirme a nova senha" />
+                      </Form.Item>
+
+                      <Button
+                        type="primary"
+                        danger
+                        icon={<LockOutlined />}
+                        loading={changeUserPassword.isPending}
+                        onClick={() => passwordForm.submit()}
+                      >
+                        Alterar senha
+                      </Button>
+                    </Form>
+                  </div>
+                )}
               </Card>
             </Col>
           </Row>

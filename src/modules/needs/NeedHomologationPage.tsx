@@ -1076,176 +1076,224 @@ export default function NeedHomologationPage() {
       </Card>
 
       <Card
-        title="Checklist dos documentos obrigatórios"
-        style={sectionCardStyle()}
-        styles={{ body: sectionBodyStyle() }}
+        title={
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <span>Checklist dos documentos obrigatórios</span>
+
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              type="primary"
+              disabled={!registration?.id}
+              onClick={async () => {
+                try {
+                  if (!registration?.id) {
+                    message.warning('Cadastro não encontrado para baixar os documentos');
+                    return;
+                  }
+
+                  const res = await api.get(
+                    `/need-homologation/approved/${registration.id}/documents/download-zip`,
+                    { responseType: 'blob' }
+                  );
+
+                  const blob = new Blob([res.data], { type: 'application/zip' });
+                  const url = window.URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+
+                  link.href = url;
+                  link.download = `documentos-${registration.id}.zip`;
+
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+
+                  window.URL.revokeObjectURL(url);
+                } catch (err: any) {
+                  console.error('Erro ZIP:', err);
+                  message.error(err?.response?.data?.error || 'Erro ao baixar documentos');
+                }
+              }}
+            >
+              Baixar tudo
+            </Button>
+          </div>
+        }
       >
-        {!summary.requiredChecklist?.length ? (
-          <Empty description="Nenhum tipo de documento configurado" />
-        ) : (
-          <Row gutter={[16, 16]}>
-            {summary.requiredChecklist.map((item) => {
-              const docs = documentsByType.get(item.documentTypeId) || [];
-              const latest = item.latestDocument || docs[0] || null;
+              {!summary.requiredChecklist?.length ? (
+                <Empty description="Nenhum tipo de documento configurado" />
+              ) : (
+                <Row gutter={[16, 16]}>
+                  {summary.requiredChecklist.map((item) => {
+                    const docs = documentsByType.get(item.documentTypeId) || [];
+                    const latest = item.latestDocument || docs[0] || null;
 
-              return (
-                <Col xs={24} lg={12} key={item.documentTypeId}>
-                  <Card
-                    size="small"
-                    style={{
-                      borderRadius: 18,
-                      border: '1px solid #eef2f7',
-                      height: '100%',
-                    }}
-                    styles={{ body: { padding: 16 } }}
-                  >
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      <Space
-                        style={{
-                          width: '100%',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                        }}
-                      >
-                        <Space direction="vertical" size={2}>
-                          <Text strong>{item.name}</Text>
-                          <Text type="secondary">{item.description || 'Documento obrigatório'}</Text>
-                        </Space>
-
-                        {getTag(item.latestStatus || (item.sentCount ? 'SENT' : 'PENDING'))}
-                      </Space>
-
-                      <Space wrap>
-                        <Tag color="blue" style={{ borderRadius: 999 }}>
-                          Enviados: {item.sentCount}
-                        </Tag>
-
-                        {item.templateUrl ? (
-                          <Button
-                            size="small"
-                            icon={<EyeOutlined />}
-                            style={{ borderRadius: 10 }}
-                            onClick={() => window.open(resolveAssetUrl(item.templateUrl), '_blank')}
-                          >
-                            Ver modelo
-                          </Button>
-                        ) : null}
-
-                        <Upload
-                          showUploadList={false}
-                          beforeUpload={(file) => {
-                            uploadTemplate.mutate({
-                              documentTypeId: item.documentTypeId,
-                              file,
-                            });
-                            return false;
-                          }}
-                        >
-                          <Button
-                            size="small"
-                            icon={<UploadOutlined />}
-                            loading={uploadTemplate.isPending}
-                            style={{ borderRadius: 10 }}
-                          >
-                            Modelo
-                          </Button>
-                        </Upload>
-                      </Space>
-
-                      {!docs.length ? (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message="Documento ainda não enviado"
-                          style={{ borderRadius: 12 }}
-                        />
-                      ) : (
-                        <List
+                    return (
+                      <Col xs={24} lg={12} key={item.documentTypeId}>
+                        <Card
                           size="small"
-                          dataSource={docs}
-                          renderItem={(doc) => (
-                            <List.Item
-                              actions={[
-                                <Tooltip title="Visualizar" key="view">
-                                  <Button
-                                    type="text"
-                                    icon={<EyeOutlined />}
-                                    onClick={() => handlePreviewDocument(doc)}
-                                  />
-                                </Tooltip>,
-                                <Tooltip title="Download" key="download">
-                                  <Button
-                                    type="text"
-                                    icon={<DownloadOutlined />}
-                                    onClick={() => handleDownloadDocument(doc)}
-                                  />
-                                </Tooltip>,
-                                <Tooltip title="Aprovar" key="approve">
-                                  <Button
-                                    type="text"
-                                    icon={<CheckOutlined />}
-                                    onClick={() => askNotesAndReview(doc.id, 'APPROVED')}
-                                    loading={reviewDocument.isPending}
-                                  />
-                                </Tooltip>,
-                                <Tooltip title="Reprovar" key="reject">
-                                  <Button
-                                    danger
-                                    type="text"
-                                    icon={<CloseOutlined />}
-                                    onClick={() => askNotesAndReview(doc.id, 'REJECTED')}
-                                    loading={reviewDocument.isPending}
-                                  />
-                                </Tooltip>,
-                              ]}
+                          style={{
+                            borderRadius: 18,
+                            border: '1px solid #eef2f7',
+                            height: '100%',
+                          }}
+                          styles={{ body: { padding: 16 } }}
+                        >
+                          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                            <Space
+                              style={{
+                                width: '100%',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                              }}
                             >
-                              <List.Item.Meta
-                                avatar={<FileOutlined style={{ fontSize: 18 }} />}
-                                title={
-                                  <Space wrap>
-                                    <Text strong>{doc.originalName}</Text>
-                                    {getTag(doc.status)}
-                                  </Space>
-                                }
-                                description={
-                                  <Space direction="vertical" size={2}>
-                                    <Text type="secondary">
-                                      Enviado em {fmtDateTime(doc.uploadedAt || doc.createdAt)}
-                                    </Text>
-                                    <Text type="secondary">Tamanho: {fileSize(doc.size)}</Text>
-                                    {doc.reviewedAt ? (
-                                      <Text type="secondary">
-                                        Revisado em {fmtDateTime(doc.reviewedAt)}
-                                        {doc.reviewedBy?.name ? ` por ${doc.reviewedBy.name}` : ''}
-                                      </Text>
-                                    ) : null}
-                                    {doc.notes ? (
-                                      <Text type="secondary">Observação: {doc.notes}</Text>
-                                    ) : null}
-                                  </Space>
-                                }
-                              />
-                            </List.Item>
-                          )}
-                        />
-                      )}
+                              <Space direction="vertical" size={2}>
+                                <Text strong>{item.name}</Text>
+                                <Text type="secondary">{item.description || 'Documento obrigatório'}</Text>
+                              </Space>
 
-                      {latest?.status === 'REJECTED' ? (
-                        <Alert
-                          type="error"
-                          showIcon
-                          message="Documento reprovado"
-                          description={latest.notes || 'Verifique o arquivo enviado'}
-                          style={{ borderRadius: 12 }}
-                        />
-                      ) : null}
-                    </Space>
-                  </Card>
-                </Col>
-              );
-            })}
-          </Row>
-        )}
+                              {getTag(item.latestStatus || (item.sentCount ? 'SENT' : 'PENDING'))}
+                            </Space>
+
+                            <Space wrap>
+                              <Tag color="blue" style={{ borderRadius: 999 }}>
+                                Enviados: {item.sentCount}
+                              </Tag>
+
+                              {item.templateUrl ? (
+                                <Button
+                                  size="small"
+                                  icon={<EyeOutlined />}
+                                  style={{ borderRadius: 10 }}
+                                  onClick={() => window.open(resolveAssetUrl(item.templateUrl), '_blank')}
+                                >
+                                  Ver modelo
+                                </Button>
+                              ) : null}
+
+                              <Upload
+                                showUploadList={false}
+                                beforeUpload={(file) => {
+                                  uploadTemplate.mutate({
+                                    documentTypeId: item.documentTypeId,
+                                    file,
+                                  });
+                                  return false;
+                                }}
+                              >
+                                <Button
+                                  size="small"
+                                  icon={<UploadOutlined />}
+                                  loading={uploadTemplate.isPending}
+                                  style={{ borderRadius: 10 }}
+                                >
+                                  Modelo
+                                </Button>
+                              </Upload>
+                            </Space>
+
+                            {!docs.length ? (
+                              <Alert
+                                type="warning"
+                                showIcon
+                                message="Documento ainda não enviado"
+                                style={{ borderRadius: 12 }}
+                              />
+                            ) : (
+                              <List
+                                size="small"
+                                dataSource={docs}
+                                renderItem={(doc) => (
+                                  <List.Item
+                                    actions={[
+                                      <Tooltip title="Visualizar" key="view">
+                                        <Button
+                                          type="text"
+                                          icon={<EyeOutlined />}
+                                          onClick={() => handlePreviewDocument(doc)}
+                                        />
+                                      </Tooltip>,
+                                      <Tooltip title="Download" key="download">
+                                        <Button
+                                          type="text"
+                                          icon={<DownloadOutlined />}
+                                          onClick={() => handleDownloadDocument(doc)}
+                                        />
+                                      </Tooltip>,
+                                      <Tooltip title="Aprovar" key="approve">
+                                        <Button
+                                          type="text"
+                                          icon={<CheckOutlined />}
+                                          onClick={() => askNotesAndReview(doc.id, 'APPROVED')}
+                                          loading={reviewDocument.isPending}
+                                        />
+                                      </Tooltip>,
+                                      <Tooltip title="Reprovar" key="reject">
+                                        <Button
+                                          danger
+                                          type="text"
+                                          icon={<CloseOutlined />}
+                                          onClick={() => askNotesAndReview(doc.id, 'REJECTED')}
+                                          loading={reviewDocument.isPending}
+                                        />
+                                      </Tooltip>,
+                                    ]}
+                                  >
+                                    <List.Item.Meta
+                                      avatar={<FileOutlined style={{ fontSize: 18 }} />}
+                                      title={
+                                        <Space wrap>
+                                          <Text strong>{doc.originalName}</Text>
+                                          {getTag(doc.status)}
+                                        </Space>
+                                      }
+                                      description={
+                                        <Space direction="vertical" size={2}>
+                                          <Text type="secondary">
+                                            Enviado em {fmtDateTime(doc.uploadedAt || doc.createdAt)}
+                                          </Text>
+                                          <Text type="secondary">Tamanho: {fileSize(doc.size)}</Text>
+                                          {doc.reviewedAt ? (
+                                            <Text type="secondary">
+                                              Revisado em {fmtDateTime(doc.reviewedAt)}
+                                              {doc.reviewedBy?.name ? ` por ${doc.reviewedBy.name}` : ''}
+                                            </Text>
+                                          ) : null}
+                                          {doc.notes ? (
+                                            <Text type="secondary">Observação: {doc.notes}</Text>
+                                          ) : null}
+                                        </Space>
+                                      }
+                                    />
+                                  </List.Item>
+                                )}
+                              />
+                            )}
+
+                            {latest?.status === 'REJECTED' ? (
+                              <Alert
+                                type="error"
+                                showIcon
+                                message="Documento reprovado"
+                                description={latest.notes || 'Verifique o arquivo enviado'}
+                                style={{ borderRadius: 12 }}
+                              />
+                            ) : null}
+                          </Space>
+                        </Card>
+                      </Col>
+                    );
+                  })}
+                </Row>
+              )}
       </Card>
 
       <Row gutter={[16, 16]}>
