@@ -1089,9 +1089,18 @@ export default function NeedHomologationPage() {
             <span>Checklist dos documentos obrigatórios</span>
 
             <Button
-              size="small"
-              icon={<DownloadOutlined />}
               type="primary"
+              size="large"
+              icon={<DownloadOutlined />}
+              style={{
+                borderRadius: 14,
+                height: 44,
+                padding: '0 20px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
               disabled={!registration?.id}
               onClick={async () => {
                 try {
@@ -1105,12 +1114,27 @@ export default function NeedHomologationPage() {
                     { responseType: 'blob' }
                   );
 
+                  const nomePrestador =
+                    registration.fullName ||
+                    registration.company ||
+                    summary?.need?.requestedName ||
+                    `cadastro-${registration.id}`;
+
+                  const nomeLimpo = nomePrestador
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^\w\s-]/g, '')
+                    .trim()
+                    .replace(/\s+/g, '_');
+
+                  const fileName = `documentos_homologacao_${nomeLimpo}.zip`;
+
                   const blob = new Blob([res.data], { type: 'application/zip' });
                   const url = window.URL.createObjectURL(blob);
-                  const link = document.createElement('a');
 
+                  const link = document.createElement('a');
                   link.href = url;
-                  link.download = `documentos-${registration.id}.zip`;
+                  link.download = fileName;
 
                   document.body.appendChild(link);
                   link.click();
