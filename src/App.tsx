@@ -38,6 +38,8 @@ import WhatsappConnectionPage from './modules/whatsapp/WhatsappConnectionPage';
 import WhatsappConversationDetailPage from './modules/whatsapp/WhatsappConversationDetailPage'
 import MediaManagerPage from './modules/media/MediaManagerPage';
 import ActivityLogsPage from './modules/auditLogs/ActivityLogsPage';
+import AutoInventoryPage from './modules/autoInventory/AutoInventoryPage';
+import AutoInventoryPublicPage from './modules/autoInventory/AutoInventoryPublicPage';
 
 
 import { ConfigProvider } from 'antd';
@@ -49,6 +51,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/solicitar-peca" element={<PublicPartRequestPage />} />
       <Route path="/cadastro-tecnico/:token" element={<TechnicianRegistrationPage />} />
+      <Route path="/auto-inventario/:token"  element={<AutoInventoryPublicPage />}/>
 
       <Route
         path="/"
@@ -89,6 +92,14 @@ export default function App() {
           element={
             <RequireAccess permission="WHATSAPP_VIEW">
               <WhatsappConversationDetailPage />
+            </RequireAccess>
+          }
+        />
+        <Route
+          path="/auto-inventory"
+          element={
+            <RequireAccess permission="AUTO_INVENTORY_VIEW">
+              <AutoInventoryPage />
             </RequireAccess>
           }
         />

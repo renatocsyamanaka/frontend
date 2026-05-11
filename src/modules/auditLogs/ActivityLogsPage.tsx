@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Col,
+  DatePicker,
   Descriptions,
   Empty,
   Input,
@@ -22,6 +23,7 @@ import {
   ApartmentOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
   FileAddOutlined,
@@ -41,6 +43,7 @@ import dayjs from 'dayjs';
 import { api } from '../../lib/api';
 
 const { Text, Title } = Typography;
+const { RangePicker } = DatePicker;
 
 type ActivityLog = {
   id: number;
@@ -101,6 +104,11 @@ const ACTION_LABELS: Record<string, string> = {
   LOGO_RELATORIO_DIARIO_EXCLUIDA: 'Logo do relatório excluída',
   CONFIG_RELATORIO_DIARIO_ATUALIZADA: 'Configuração do relatório diário atualizada',
   PROJETO_ATUALIZADO: 'Projeto atualizado',
+  PROJETO_EXCLUIDO: 'Projeto excluído',
+  PROGRESSO_CRIADO: 'Progresso criado',
+  PROGRESSO_EXCLUIDO: 'Progresso excluído',
+  SENHA_USUARIO_ALTERADA: 'Senha de usuário alterada',
+  SENHA_ALTERADA: 'Senha alterada',
 };
 
 const COMMON_ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({
@@ -183,6 +191,35 @@ const FIELD_LABELS: Record<string, string> = {
   endPlannedAt: 'Fim planejado',
   contactEmail: 'E-mail de contato',
   contactEmails: 'E-mails de contato',
+  targetUserId: 'Usuário alterado',
+  targetUserName: 'Nome do usuário alterado',
+  targetUserEmail: 'E-mail do usuário alterado',
+  changedUserId: 'Usuário alterado',
+  changedUserName: 'Nome do usuário alterado',
+  changedUserEmail: 'E-mail do usuário alterado',
+  affectedUserId: 'Usuário alterado',
+  affectedUserName: 'Nome do usuário alterado',
+  affectedUserEmail: 'E-mail do usuário alterado',
+  progressId: 'Progresso',
+  progressDate: 'Data do progresso',
+  progressAt: 'Data do progresso',
+  projectTitle: 'Projeto',
+  projectName: 'Projeto',
+  installationProjectId: 'Projeto',
+  vehicleId: 'Veículo',
+  vehicles: 'Veículos',
+  Vehicles: 'Veículos',
+  progressVehicles: 'Veículos do progresso',
+  vehicleProgress: 'Veículos do progresso',
+  createdVehicles: 'Veículos criados',
+  updatedVehicles: 'Veículos atualizados',
+  plate: 'Placa',
+  placa: 'Placa',
+  serial: 'Serial',
+  serialNumber: 'Serial',
+  equipmentSerial: 'Serial do equipamento',
+  notes: 'Observações',
+  message: 'Mensagem',
 };
 
 function getActionLabel(action?: string) {
@@ -249,8 +286,63 @@ function labelizeKey(key: string) {
     .replace(/^./, (s) => s.toUpperCase());
 }
 
+function formatObjectSummary(value: any) {
+  if (!value || typeof value !== 'object') return String(value ?? '-');
+
+  const label =
+    value.plate ||
+    value.placa ||
+    value.vehiclePlate ||
+    value.serial ||
+    value.serialNumber ||
+    value.equipmentSerial ||
+    value.chassi ||
+    value.name ||
+    value.nome ||
+    value.title ||
+    value.id;
+
+  const parts = [
+    value.plate || value.placa || value.vehiclePlate ? `Placa: ${value.plate || value.placa || value.vehiclePlate}` : undefined,
+    value.serial || value.serialNumber || value.equipmentSerial ? `Serial: ${value.serial || value.serialNumber || value.equipmentSerial}` : undefined,
+    value.model || value.modelo ? `Modelo: ${value.model || value.modelo}` : undefined,
+    value.status ? `Status: ${value.status}` : undefined,
+    value.result || value.resultado ? `Resultado: ${value.result || value.resultado}` : undefined,
+  ].filter(Boolean);
+
+  if (parts.length) return parts.join(' | ');
+  if (label) return String(label);
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 function formatValue(value: any) {
-  if (Array.isArray(value)) return value.join(', ');
+  if (React.isValidElement(value)) return value;
+
+  if (Array.isArray(value)) {
+    if (!value.length) return '-';
+
+    const hasObjects = value.some((item) => item && typeof item === 'object');
+
+    if (hasObjects) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {value.map((item, index) => (
+            <div key={index}>
+              <Text strong>{index + 1}.</Text> {formatObjectSummary(item)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return value.join(', ');
+  }
+
   if (value === true) return 'Sim';
   if (value === false) return 'Não';
   if (value === null || value === undefined || value === '') return '-';
@@ -258,7 +350,7 @@ function formatValue(value: any) {
   if (typeof value === 'object') {
     if (value.name) return value.name;
     if (value.nome) return value.nome;
-    return JSON.stringify(value);
+    return formatObjectSummary(value);
   }
 
   return String(value);
@@ -303,6 +395,9 @@ function normalizeBodyValue(
   if (key === 'managerId') return getUserName(userMap, value) || 'Gestor não localizado';
   if (key === 'responsavelId') return getUserName(userMap, value) || 'Responsável não localizado';
   if (key === 'userId') return getUserName(userMap, value) || 'Usuário não localizado';
+  if (['targetUserId', 'changedUserId', 'affectedUserId'].includes(key)) return getUserName(userMap, value) || `Usuário #${value}`;
+  if (['projectId', 'installationProjectId'].includes(key)) return `Projeto #${value}`;
+  if (key === 'progressId') return `Progresso #${value}`;
 
   if (key === 'sex') {
     if (value === 'M') return 'Masculino';
@@ -389,6 +484,10 @@ const isLogoRelatorioEnviada = (log?: ActivityLog | null) => getAction(log) === 
 const isLogoRelatorioExcluida = (log?: ActivityLog | null) => getAction(log) === 'LOGO_RELATORIO_DIARIO_EXCLUIDA';
 const isConfigRelatorio = (log?: ActivityLog | null) => getAction(log) === 'CONFIG_RELATORIO_DIARIO_ATUALIZADA';
 const isProjetoAtualizado = (log?: ActivityLog | null) => getAction(log) === 'PROJETO_ATUALIZADO';
+const isProjetoExcluido = (log?: ActivityLog | null) => getAction(log) === 'PROJETO_EXCLUIDO';
+const isProgressoCriado = (log?: ActivityLog | null) => getAction(log) === 'PROGRESSO_CRIADO';
+const isProgressoExcluido = (log?: ActivityLog | null) => getAction(log) === 'PROGRESSO_EXCLUIDO';
+const isSenhaUsuarioAlterada = (log?: ActivityLog | null) => ['SENHA_USUARIO_ALTERADA', 'SENHA_ALTERADA'].includes(getAction(log));
 
 function getFriendlyAction(log?: ActivityLog | null) {
   if (isPrestadorCriado(log)) return 'Prestador criado';
@@ -414,6 +513,10 @@ function getActionTag(log: ActivityLog) {
   if (isLogoRelatorioExcluida(log)) return <Tag color="volcano" icon={<DeleteOutlined />}>Logo excluída</Tag>;
   if (isConfigRelatorio(log)) return <Tag color="processing" icon={<SettingOutlined />}>Config. relatório</Tag>;
   if (isProjetoAtualizado(log)) return <Tag color="blue" icon={<ProjectOutlined />}>Projeto atualizado</Tag>;
+  if (isProjetoExcluido(log)) return <Tag color="red" icon={<DeleteOutlined />}>Projeto excluído</Tag>;
+  if (isProgressoCriado(log)) return <Tag color="green" icon={<PlusOutlined />}>Progresso criado</Tag>;
+  if (isProgressoExcluido(log)) return <Tag color="red" icon={<DeleteOutlined />}>Progresso excluído</Tag>;
+  if (isSenhaUsuarioAlterada(log)) return <Tag color="purple" icon={<UserOutlined />}>Senha alterada</Tag>;
 
   return <Tag>{getActionLabel(log.action)}</Tag>;
 }
@@ -608,6 +711,247 @@ function getProjetoAtualizadoFields(
       ],
     ),
   ]);
+}
+
+
+function pushUniqueField(fields: [string, any][], label: string, value: any) {
+  if (value === undefined || value === null || value === '') return;
+  if (Array.isArray(value) && value.length === 0) return;
+  if (fields.some(([existingLabel]) => existingLabel === label)) return;
+  fields.push([label, value]);
+}
+
+function appendPayloadFields(
+  fields: [string, any][],
+  payload: any,
+  userMap: Record<number, string>,
+  roleMap: Record<number, string>,
+  prefix = '',
+  ignoreKeys: string[] = []
+) {
+  bodyToFields(payload, userMap, roleMap, ignoreKeys).forEach(([label, value]) => {
+    pushUniqueField(fields, prefix ? `${prefix} - ${label}` : label, value);
+  });
+}
+
+function getProjectNameFromAny(log: ActivityLog | null) {
+  const body = getBody(log);
+  const params = getParams(log);
+  const response = getResponse(log);
+  const before = log?.before || {};
+  const after = log?.after || {};
+
+  return (
+    body.projectTitle ||
+    body.projectName ||
+    body.title ||
+    body.nome ||
+    body.name ||
+    response.projectTitle ||
+    response.projectName ||
+    response.title ||
+    response.nome ||
+    response.name ||
+    response.project?.title ||
+    response.project?.name ||
+    response.data?.title ||
+    response.data?.name ||
+    before.title ||
+    before.name ||
+    after.title ||
+    after.name ||
+    (params.id ? `Projeto #${params.id}` : undefined) ||
+    (log?.entityId ? `Projeto #${log.entityId}` : undefined)
+  );
+}
+
+function getProjetoExcluidoFields(
+  log: ActivityLog | null,
+  userMap: Record<number, string>,
+  roleMap: Record<number, string>
+) {
+  const body = getBody(log);
+  const params = getParams(log);
+  const response = getResponse(log);
+  const before = log?.before || {};
+  const status = log?.statusCode || log?.status;
+  const fields: [string, any][] = [];
+
+  pushUniqueField(fields, 'Projeto excluído', getProjectNameFromAny(log));
+  pushUniqueField(fields, 'ID do projeto', params.id || body.id || before.id || log?.entityId);
+  pushUniqueField(fields, 'AF', body.af || before.af || response.af || response.project?.af);
+  pushUniqueField(fields, 'Cliente', body.clientName || body.customerName || before.clientName || before.customerName || response.clientName || response.project?.clientName);
+  pushUniqueField(fields, 'Status anterior', before.status || body.status || response.project?.status);
+  pushUniqueField(fields, 'Resultado', response?.message || (status && status >= 200 && status < 300 ? 'Projeto excluído com sucesso' : undefined));
+  pushUniqueField(fields, 'Descrição', log?.description);
+
+  appendPayloadFields(fields, before, userMap, roleMap, 'Antes', ['id', 'title', 'name', 'af', 'clientName', 'customerName', 'status']);
+  appendPayloadFields(fields, body, userMap, roleMap, 'Requisição', ['id', 'title', 'name', 'nome', 'af', 'clientName', 'customerName', 'status']);
+  appendPayloadFields(fields, response, userMap, roleMap, 'Resposta', ['message', 'af', 'clientName']);
+
+  return fields;
+}
+
+
+function getProgressVehiclesFromAny(...sources: any[]) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+
+    const vehicles =
+      source.vehicles ||
+      source.Vehicles ||
+      source.progressVehicles ||
+      source.vehicleProgress ||
+      source.createdVehicles ||
+      source.updatedVehicles ||
+      source.items ||
+      source.data?.vehicles ||
+      source.data?.Vehicles ||
+      source.data?.progressVehicles;
+
+    if (Array.isArray(vehicles) && vehicles.length) return vehicles;
+  }
+
+  return [];
+}
+
+function getProgressVehicleSummary(vehicles: any[]) {
+  if (!vehicles.length) return undefined;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Text strong>{vehicles.length} veículo(s) vinculado(s) a este progresso</Text>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {vehicles.map((vehicle, index) => (
+          <div key={vehicle?.id || vehicle?.vehicleId || index}>
+            <Text strong>{index + 1}.</Text> {formatObjectSummary(vehicle)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getProgressFields(
+  log: ActivityLog | null,
+  userMap: Record<number, string>,
+  roleMap: Record<number, string>
+) {
+  const body = getBody(log);
+  const params = getParams(log);
+  const response = getResponse(log);
+  const before = log?.before || {};
+  const after = log?.after || {};
+  const status = log?.statusCode || log?.status;
+  const source = Object.keys(after).length ? after : Object.keys(before).length ? before : body;
+  const fields: [string, any][] = [];
+
+  pushUniqueField(fields, isProgressoExcluido(log) ? 'Progresso excluído' : 'Progresso criado', source.id || body.progressId || response.progressId || response.id || log?.entityId);
+  pushUniqueField(fields, 'Projeto', source.projectTitle || source.projectName || body.projectTitle || body.projectName || response.projectTitle || response.projectName || (source.projectId || body.projectId || params.projectId || params.id ? `Projeto #${source.projectId || body.projectId || params.projectId || params.id}` : undefined));
+  pushUniqueField(fields, 'Data do progresso', source.date || source.progressDate || source.progressAt || body.date || body.progressDate);
+  pushUniqueField(fields, 'Veículos realizados', source.trucksDone ?? body.trucksDone ?? response.trucksDone);
+  pushUniqueField(fields, 'Equipamentos realizados', source.equipmentsDone ?? body.equipmentsDone ?? response.equipmentsDone);
+  pushUniqueField(fields, 'Percentual', source.percentual ?? source.percentage ?? body.percentual ?? body.percentage);
+  pushUniqueField(fields, 'Observações', source.notes || source.observacoes || body.notes || body.observacoes);
+
+  const vehicles = getProgressVehiclesFromAny(source, body, response, before, after);
+  pushUniqueField(fields, 'Veículos do progresso', getProgressVehicleSummary(vehicles));
+
+  pushUniqueField(fields, 'Resultado', response?.message || (status && status >= 200 && status < 300 ? (isProgressoExcluido(log) ? 'Progresso excluído com sucesso' : 'Progresso criado com sucesso') : undefined));
+
+  const progressIgnoreKeys = [
+    'id',
+    'progressId',
+    'projectId',
+    'installationProjectId',
+    'projectTitle',
+    'projectName',
+    'date',
+    'progressDate',
+    'progressAt',
+    'trucksDone',
+    'equipmentsDone',
+    'percentual',
+    'percentage',
+    'notes',
+    'observacoes',
+    'vehicles',
+    'Vehicles',
+    'progressVehicles',
+    'vehicleProgress',
+    'createdVehicles',
+    'updatedVehicles',
+    'items',
+  ];
+
+  appendPayloadFields(fields, before, userMap, roleMap, 'Antes', progressIgnoreKeys);
+  appendPayloadFields(fields, body, userMap, roleMap, 'Requisição', progressIgnoreKeys);
+  appendPayloadFields(fields, after, userMap, roleMap, 'Depois', progressIgnoreKeys);
+  appendPayloadFields(fields, response, userMap, roleMap, 'Resposta', ['message', ...progressIgnoreKeys]);
+
+  return fields;
+}
+
+function getSenhaUsuarioAlteradaFields(
+  log: ActivityLog | null,
+  userMap: Record<number, string>,
+  roleMap: Record<number, string>
+) {
+  const body = getBody(log);
+  const params = getParams(log);
+  const response = getResponse(log);
+  const after = log?.after || {};
+  const targetId =
+    body.targetUserId ||
+    body.changedUserId ||
+    body.affectedUserId ||
+    body.userId ||
+    params.userId ||
+    params.id ||
+    response.targetUserId ||
+    response.userId ||
+    after.id ||
+    log?.entityId;
+
+  const targetName =
+    body.targetUserName ||
+    body.changedUserName ||
+    body.affectedUserName ||
+    body.userName ||
+    body.name ||
+    body.nome ||
+    response.targetUserName ||
+    response.userName ||
+    response.name ||
+    response.user?.name ||
+    after.name ||
+    after.nome ||
+    getUserName(userMap, targetId);
+
+  const targetEmail =
+    body.targetUserEmail ||
+    body.changedUserEmail ||
+    body.affectedUserEmail ||
+    body.userEmail ||
+    body.email ||
+    response.targetUserEmail ||
+    response.userEmail ||
+    response.email ||
+    response.user?.email ||
+    after.email;
+
+  const fields: [string, any][] = [];
+
+  pushUniqueField(fields, 'Usuário que teve a senha alterada', targetName || (targetId ? `Usuário #${targetId}` : undefined));
+  pushUniqueField(fields, 'ID do usuário alterado', targetId);
+  pushUniqueField(fields, 'E-mail do usuário alterado', targetEmail);
+  pushUniqueField(fields, 'Resultado', response?.message || 'Senha alterada com sucesso');
+  pushUniqueField(fields, 'Descrição', log?.description);
+
+  appendPayloadFields(fields, body, userMap, roleMap, 'Requisição', ['password', 'senha', 'newPassword', 'confirmPassword', 'targetUserId', 'changedUserId', 'affectedUserId', 'userId', 'targetUserName', 'changedUserName', 'affectedUserName', 'userName', 'name', 'nome', 'targetUserEmail', 'changedUserEmail', 'affectedUserEmail', 'userEmail', 'email']);
+  appendPayloadFields(fields, response, userMap, roleMap, 'Resposta', ['message', 'targetUserId', 'userId', 'targetUserName', 'userName', 'name', 'email']);
+
+  return fields;
 }
 
 function getStatusAlteradoFields(
@@ -811,6 +1155,10 @@ function getDetailTitle(log?: ActivityLog | null) {
   if (isLogoRelatorioExcluida(log)) return 'Logo do relatório excluída';
   if (isConfigRelatorio(log)) return 'Configuração do relatório diário';
   if (isProjetoAtualizado(log)) return 'Projeto atualizado';
+  if (isProjetoExcluido(log)) return 'Projeto excluído';
+  if (isProgressoCriado(log)) return 'Progresso criado';
+  if (isProgressoExcluido(log)) return 'Progresso excluído';
+  if (isSenhaUsuarioAlterada(log)) return 'Senha de usuário alterada';
   return 'Detalhes do log';
 }
 
@@ -831,6 +1179,10 @@ function getMainCardTitle(log?: ActivityLog | null) {
   if (isLogoRelatorioExcluida(log)) return 'Resultado da exclusão da logo';
   if (isConfigRelatorio(log)) return 'Configurações atualizadas';
   if (isProjetoAtualizado(log)) return 'Dados atualizados do projeto';
+  if (isProjetoExcluido(log)) return 'Dados do projeto excluído';
+  if (isProgressoCriado(log)) return 'Dados do progresso criado';
+  if (isProgressoExcluido(log)) return 'Dados do progresso excluído';
+  if (isSenhaUsuarioAlterada(log)) return 'Usuário afetado pela troca de senha';
   return 'Informações registradas';
 }
 
@@ -844,11 +1196,16 @@ export default function ActivityLogsPage() {
   const [loadingUsers, setLoadingUsers] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const [q, setQ] = useState('');
   const [actionFilter, setActionFilter] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>([
+    dayjs().subtract(6, 'day'),
+    dayjs(),
+  ]);
 
   const { userMap, userEmailMap, roleMap } = useMemo(() => {
     return createUserMaps(users);
@@ -876,7 +1233,8 @@ export default function ActivityLogsPage() {
     nextPage = page,
     nextPageSize = pageSize,
     nextAction = actionFilter,
-    nextQ = q
+    nextQ = q,
+    nextDateRange = dateRange
   ) => {
     try {
       setLoading(true);
@@ -887,6 +1245,8 @@ export default function ActivityLogsPage() {
           pageSize: nextPageSize,
           q: nextQ || undefined,
           action: nextAction || undefined,
+          dateFrom: nextDateRange?.[0]?.format('YYYY-MM-DD'),
+          dateTo: nextDateRange?.[1]?.format('YYYY-MM-DD'),
         },
       });
 
@@ -928,7 +1288,7 @@ export default function ActivityLogsPage() {
 
   useEffect(() => {
     loadUsers();
-    loadLogs(1, 20);
+    loadLogs(1, 20, undefined, '', dateRange);
   }, []);
 
   const actionOptions = useMemo(() => {
@@ -947,14 +1307,93 @@ export default function ActivityLogsPage() {
     );
   }, [logs]);
 
+  const isRangeOver30Days = (range: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
+    if (!range) return false;
+    return range[1].startOf('day').diff(range[0].startOf('day'), 'day') + 1 > 30;
+  };
+
+  const validateDateRange = (range: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
+    if (!range) {
+      message.warning('Selecione um período para consultar os logs.');
+      return false;
+    }
+
+    if (range[1].isBefore(range[0], 'day')) {
+      message.warning('A data final não pode ser menor que a data inicial.');
+      return false;
+    }
+
+    if (isRangeOver30Days(range)) {
+      message.warning('Selecione no máximo 30 dias por vez.');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleFilter = () => {
-    loadLogs(1, pageSize, actionFilter, q);
+    if (!validateDateRange(dateRange)) return;
+    loadLogs(1, pageSize, actionFilter, q, dateRange);
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!validateDateRange(dateRange)) return;
+
+    try {
+      setExporting(true);
+
+      const response = await api.get('/activity-logs/export', {
+        responseType: 'blob',
+        params: {
+          q: q || undefined,
+          action: actionFilter || undefined,
+          dateFrom: dateRange?.[0]?.format('YYYY-MM-DD'),
+          dateTo: dateRange?.[1]?.format('YYYY-MM-DD'),
+        },
+      });
+
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const inicio = dateRange?.[0]?.format('YYYY-MM-DD');
+      const fim = dateRange?.[1]?.format('YYYY-MM-DD');
+
+      link.href = url;
+      link.download = `logs_${inicio}_${fim}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      message.success('Excel gerado com sucesso.');
+    } catch (error: any) {
+      if (error?.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const parsed = JSON.parse(text);
+          message.error(parsed?.message || parsed?.error || 'Erro ao gerar Excel');
+          return;
+        } catch (_) {}
+      }
+
+      message.error(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          'Erro ao gerar Excel'
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleClearFilters = () => {
     setQ('');
     setActionFilter(undefined);
-    loadLogs(1, pageSize, undefined, '');
+    const defaultRange: [dayjs.Dayjs, dayjs.Dayjs] = [dayjs().subtract(6, 'day'), dayjs()];
+    setDateRange(defaultRange);
+    loadLogs(1, pageSize, undefined, '', [dayjs().subtract(6, 'day'), dayjs()]);
   };
 
   const openDetails = (log: ActivityLog) => {
@@ -1055,6 +1494,9 @@ export default function ActivityLogsPage() {
     else if (isLogoRelatorioExcluida(selectedLog)) fields = getLogoRelatorioFields(selectedLog, userMap, roleMap);
     else if (isConfigRelatorio(selectedLog)) fields = bodyToFields(getBody(selectedLog), userMap, roleMap);
     else if (isProjetoAtualizado(selectedLog)) fields = getProjetoAtualizadoFields(selectedLog, userMap, roleMap);
+    else if (isProjetoExcluido(selectedLog)) fields = getProjetoExcluidoFields(selectedLog, userMap, roleMap);
+    else if (isProgressoCriado(selectedLog) || isProgressoExcluido(selectedLog)) fields = getProgressFields(selectedLog, userMap, roleMap);
+    else if (isSenhaUsuarioAlterada(selectedLog)) fields = getSenhaUsuarioAlteradaFields(selectedLog, userMap, roleMap);
     else {
       fields = onlyFilled([
         ['Mensagem', selectedLog.response?.message],
@@ -1091,7 +1533,7 @@ export default function ActivityLogsPage() {
               icon={<ReloadOutlined />}
               onClick={() => {
                 loadUsers();
-                loadLogs(page, pageSize, actionFilter, q);
+                loadLogs(page, pageSize, actionFilter, q, dateRange);
               }}
               loading={loading}
             >
@@ -1112,7 +1554,7 @@ export default function ActivityLogsPage() {
             />
           </Col>
 
-          <Col xs={24} md={8} lg={6}>
+          <Col xs={24} md={8} lg={5}>
             <Select
               allowClear
               showSearch
@@ -1123,22 +1565,55 @@ export default function ActivityLogsPage() {
               optionFilterProp="label"
               onChange={(value) => {
                 setActionFilter(value);
-                loadLogs(1, pageSize, value, q);
+                loadLogs(1, pageSize, value, q, dateRange);
               }}
             />
           </Col>
 
-          <Col xs={12} md={4} lg={4}>
+          <Col xs={24} md={12} lg={5}>
+            <RangePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              value={dateRange}
+              allowClear={false}
+              presets={[
+                { label: 'Hoje', value: [dayjs(), dayjs()] },
+                { label: 'Últimos 7 dias', value: [dayjs().subtract(6, 'day'), dayjs()] },
+                { label: 'Últimos 30 dias', value: [dayjs().subtract(29, 'day'), dayjs()] },
+              ]}
+              onChange={(value) => {
+                const nextRange = value as [dayjs.Dayjs, dayjs.Dayjs] | null;
+
+                if (!validateDateRange(nextRange)) return;
+
+                setDateRange(nextRange);
+                loadLogs(1, pageSize, actionFilter, q, nextRange);
+              }}
+            />
+          </Col>
+
+          <Col xs={12} md={4} lg={2}>
             <Button type="primary" onClick={handleFilter} block>
               Filtrar
             </Button>
           </Col>
 
-          <Col xs={12} md={4} lg={4}>
+          <Col xs={12} md={4} lg={2}>
             <Button onClick={handleClearFilters} block>
               Limpar
             </Button>
           </Col>
+
+            <Col xs={24} md={8} lg={5} style={{ marginLeft: 'auto' }}>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={handleDownloadExcel}
+                loading={exporting}
+                block
+              >
+                Baixar Excel
+              </Button>
+            </Col>
         </Row>
 
         <div style={{ marginTop: 20 }}>
@@ -1156,7 +1631,7 @@ export default function ActivityLogsPage() {
               showTotal: (totalRegistros, range) =>
                 `${range[0]}-${range[1]} de ${totalRegistros} registros`,
               onChange: (nextPage, nextPageSize) => {
-                loadLogs(nextPage, nextPageSize, actionFilter, q);
+                loadLogs(nextPage, nextPageSize, actionFilter, q, dateRange);
               },
             }}
             locale={{

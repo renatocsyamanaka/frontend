@@ -369,6 +369,12 @@ function formatDateOnly(value?: string | null) {
   return d.isValid() ? d.format('DD/MM/YYYY') : '-';
 }
 
+function getDateValue(value?: string | null) {
+  if (!value) return 0;
+  const d = dayjs(value);
+  return d.isValid() ? d.valueOf() : 0;
+}
+
 function getTypeLabel(tipo?: string | null) {
   return TYPE_LABEL[normalizeText(tipo)] || normalizeText(tipo) || '-';
 }
@@ -829,6 +835,8 @@ export default function DemandsPage() {
       title: 'Demanda',
       dataIndex: 'nome',
       key: 'nome',
+      sorter: (a, b) => normalizeText(a.nome).localeCompare(normalizeText(b.nome), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <div style={{ display: 'grid', gap: 4 }}>
           <Text strong>{record.nome}</Text>
@@ -843,12 +851,21 @@ export default function DemandsPage() {
       title: activeTipo === 'DASHBOARD' ? 'Workspace' : 'Plataforma',
       key: 'plataforma_workspace',
       responsive: ['md'],
+      sorter: (a, b) =>
+        normalizeText(a.workspace || a.plataforma).localeCompare(
+          normalizeText(b.workspace || b.plataforma),
+          'pt-BR'
+        ),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => record.workspace || record.plataforma || '-',
     },
     {
       title: 'Responsável',
       key: 'responsavel',
       responsive: ['lg'],
+      sorter: (a, b) =>
+        normalizeText(a.responsavel?.name).localeCompare(normalizeText(b.responsavel?.name), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <Space size={6}>
           <UserOutlined />
@@ -860,6 +877,9 @@ export default function DemandsPage() {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
+      sorter: (a, b) =>
+        getStatusLabel(a.status).localeCompare(getStatusLabel(b.status), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) =>
         value ? <Tag color={getStatusColor(value)}>{getStatusLabel(value)}</Tag> : '-',
     },
@@ -868,6 +888,9 @@ export default function DemandsPage() {
       dataIndex: 'urgencia',
       key: 'urgencia',
       responsive: ['md'],
+      sorter: (a, b) =>
+        getUrgencyLabel(a.urgencia).localeCompare(getUrgencyLabel(b.urgencia), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) =>
         value ? <Tag color={getUrgencyColor(value)}>{getUrgencyLabel(value)}</Tag> : '-',
     },
@@ -875,6 +898,10 @@ export default function DemandsPage() {
       title: 'Entrega prevista',
       key: 'data',
       responsive: ['lg'],
+      sorter: (a, b) =>
+        getDateValue(a.entregaPrevista || a.dataEntrega) -
+        getDateValue(b.entregaPrevista || b.dataEntrega),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <Space size={6}>
           <CalendarOutlined />
@@ -886,6 +913,12 @@ export default function DemandsPage() {
       title: 'Observações / Descrição',
       key: 'campoExtra',
       responsive: ['xl'],
+      sorter: (a, b) =>
+        normalizeText(a.observacoes || a.descricao || a.periodicidade).localeCompare(
+          normalizeText(b.observacoes || b.descricao || b.periodicidade),
+          'pt-BR'
+        ),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => (
         <div style={{ maxWidth: 280 }}>
           <Text
@@ -950,18 +983,28 @@ export default function DemandsPage() {
       title: 'Workspace',
       dataIndex: 'workspace',
       key: 'workspace',
+      sorter: (a, b) => normalizeText(a.workspace).localeCompare(normalizeText(b.workspace), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => <Text strong>{value}</Text>,
     },
     {
       title: 'Nome',
       dataIndex: 'nome',
       key: 'nome',
+      sorter: (a, b) => normalizeText(a.nome).localeCompare(normalizeText(b.nome), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => value || '-',
     },
     {
       title: 'Tipo de responsabilidade',
       dataIndex: 'tipoResponsabilidade',
       key: 'tipoResponsabilidade',
+      sorter: (a, b) =>
+        getResponsibilityTypeLabel(a.tipoResponsabilidade).localeCompare(
+          getResponsibilityTypeLabel(b.tipoResponsabilidade),
+          'pt-BR'
+        ),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => getResponsibilityTypeLabel(value),
     },
     {
@@ -993,23 +1036,38 @@ export default function DemandsPage() {
       title: 'Periodicidade',
       dataIndex: 'periodicidade',
       key: 'periodicidade',
+      sorter: (a, b) =>
+        getPeriodicidadeLabel(a.periodicidade).localeCompare(
+          getPeriodicidadeLabel(b.periodicidade),
+          'pt-BR'
+        ),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => getPeriodicidadeLabel(value),
     },
     {
       title: 'Dia',
       dataIndex: 'diaAplicacao',
       key: 'diaAplicacao',
+      sorter: (a, b) =>
+        normalizeText(a.diaAplicacao).localeCompare(normalizeText(b.diaAplicacao), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => value || '-',
     },
     {
       title: 'Responsável',
       key: 'responsavel',
+      sorter: (a, b) =>
+        normalizeText(a.responsavel?.name).localeCompare(normalizeText(b.responsavel?.name), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (_, record) => record.responsavel?.name || '-',
     },
     {
       title: 'Urgência',
       dataIndex: 'urgencia',
       key: 'urgencia',
+      sorter: (a, b) =>
+        getUrgencyLabel(a.urgencia).localeCompare(getUrgencyLabel(b.urgencia), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) =>
         value ? <Tag color={getUrgencyColor(value)}>{getUrgencyLabel(value)}</Tag> : '-',
     },
@@ -1017,6 +1075,9 @@ export default function DemandsPage() {
       title: 'Solicitante',
       dataIndex: 'solicitante',
       key: 'solicitante',
+      sorter: (a, b) =>
+        normalizeText(a.solicitante).localeCompare(normalizeText(b.solicitante), 'pt-BR'),
+      sortDirections: ['ascend', 'descend'],
       render: (value) => value || '-',
     },
     {

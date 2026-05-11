@@ -22,6 +22,7 @@ import {
   SettingOutlined,
   FileImageOutlined,
   HistoryOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -286,6 +287,12 @@ export function AppLayout() {
           label: 'Relatório de Entregas',
           icon: <DatabaseOutlined />,
           permission: 'DELIVERY_REPORTS_VIEW',
+        },
+        {
+          key: '/auto-inventory',
+          label: 'Auto Inventário',
+          icon: <InboxOutlined />,
+          permission: 'AUTO_INVENTORY_VIEW',
         },
         {
           key: '/noticias',
