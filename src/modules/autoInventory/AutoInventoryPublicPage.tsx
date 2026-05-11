@@ -20,6 +20,7 @@ import {
   SaveOutlined,
   SendOutlined,
   ToolOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -49,7 +50,8 @@ export default function AutoInventoryPublicPage() {
     ? Math.round((filledItems / totalItems) * 100)
     : 0;
 
-  const isComplete = totalItems > 0 && filledItems === totalItems;
+  const allFilled = totalItems > 0 && filledItems === totalItems;
+  const isSubmitted = inventory?.status === 'COMPLETO';
 
   const referenceMonth = inventory?.cycle
     ? `${String(inventory.cycle.month).padStart(2, '0')}/${inventory.cycle.year}`
@@ -95,6 +97,10 @@ export default function AutoInventoryPublicPage() {
 
       if (res.data?.status === 'COMPLETO') {
         message.success('Auto inventário enviado completo com sucesso.');
+      } else if (allFilled) {
+        message.warning(
+          'Todos os itens foram preenchidos. Clique em “Enviar inventário” para finalizar.'
+        );
       } else {
         message.warning(
           res.data?.message ||
@@ -166,6 +172,7 @@ export default function AutoInventoryPublicPage() {
       render: (_: any, row: any, index: number) => (
         <InputNumber
           min={0}
+          disabled={isSubmitted}
           style={{ width: 150 }}
           value={row.quantidade}
           placeholder="Preencha qtd"
@@ -196,7 +203,9 @@ export default function AutoInventoryPublicPage() {
           boxShadow: '0 12px 28px rgba(15, 23, 42, 0.08)',
           overflow: 'hidden',
         }}
-        bodyStyle={{ padding: 0 }}
+        styles={{
+          body: { padding: 0 },
+        }}
       >
         <div
           style={{
@@ -244,19 +253,13 @@ export default function AutoInventoryPublicPage() {
 
                   <br />
 
-                  <Tag color="blue">
-                    Referência: {referenceMonth}
-                  </Tag>
+                  <Tag color="blue">Referência: {referenceMonth}</Tag>
                 </div>
               </Space>
             </Col>
 
             <Col xs={24} md={8}>
-              <Space
-                direction="vertical"
-                size={6}
-                style={{ width: '100%' }}
-              >
+              <Space direction="vertical" size={6} style={{ width: '100%' }}>
                 <Row justify="space-between">
                   <Text type="secondary">Progresso</Text>
 
@@ -267,12 +270,16 @@ export default function AutoInventoryPublicPage() {
 
                 <Progress
                   percent={progressPercent}
-                  status={isComplete ? 'success' : 'active'}
+                  status={isSubmitted ? 'success' : 'active'}
                 />
 
-                {isComplete ? (
+                {isSubmitted ? (
                   <Tag color="green" icon={<CheckCircleOutlined />}>
-                    Completo
+                    Enviado completo
+                  </Tag>
+                ) : allFilled ? (
+                  <Tag color="gold" icon={<WarningOutlined />}>
+                    Pronto para enviar
                   </Tag>
                 ) : (
                   <Tag color="orange" icon={<ClockCircleOutlined />}>
@@ -287,16 +294,20 @@ export default function AutoInventoryPublicPage() {
         <div style={{ padding: 28 }}>
           <Space direction="vertical" size={20} style={{ width: '100%' }}>
             <Alert
-              type={isComplete ? 'success' : 'info'}
+              type={isSubmitted ? 'success' : allFilled ? 'warning' : 'info'}
               showIcon
               message={
-                isComplete
+                isSubmitted
                   ? `Auto inventário completo - referência ${referenceMonth}`
+                  : allFilled
+                  ? `Todos os itens preenchidos - falta enviar`
                   : `Preencha seu auto inventário - referência ${referenceMonth}`
               }
               description={
-                isComplete
+                isSubmitted
                   ? 'Todos os itens foram preenchidos e enviados com sucesso.'
+                  : allFilled
+                  ? 'Clique em “Enviar inventário” para finalizar o envio.'
                   : 'Você pode salvar parcialmente e retornar depois pelo mesmo link.'
               }
             />
@@ -319,7 +330,7 @@ export default function AutoInventoryPublicPage() {
               </Col>
 
               <Col>
-                {isComplete ? (
+                {isSubmitted ? (
                   <Tag
                     color="green"
                     icon={<CheckCircleOutlined />}
@@ -347,6 +358,7 @@ export default function AutoInventoryPublicPage() {
                       type="primary"
                       icon={<SendOutlined />}
                       loading={saving}
+                      disabled={!allFilled}
                       onClick={() => save(true)}
                     >
                       Enviar inventário

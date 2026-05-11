@@ -34,6 +34,7 @@ import {
   ToolOutlined,
   UserSwitchOutlined,
   WarningOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { api } from '../../lib/api';
@@ -61,11 +62,15 @@ export default function AutoInventoryPage() {
   const [configLoading, setConfigLoading] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configForm] = Form.useForm();
-
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const month = selectedMonth.month() + 1;
   const year = selectedMonth.year();
 
-  const providers = dashboard?.providers || [];
+  const providersRaw = dashboard?.providers || [];
+
+  const providers = statusFilter
+    ? providersRaw.filter((item: any) => item.status === statusFilter)
+    : providersRaw;
   const resumo = dashboard?.resumo || {};
   const cycle = dashboard?.cycle || {};
   const config = cycle?.config || {};
@@ -287,6 +292,38 @@ export default function AutoInventoryPage() {
     }
   }
 
+  async function removeProviderFromCycle(providerId: number) {
+    Modal.confirm({
+      title: 'Remover prestador deste inventário?',
+      content:
+        'Essa ação remove o prestador apenas do mês selecionado. Ele continuará habilitado para próximos ciclos.',
+      okText: 'Remover',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      async onOk() {
+        try {
+          await api.delete(
+            `/auto-inventory/providers/${providerId}/remove-from-cycle`,
+            {
+              data: {
+                month,
+                year,
+              },
+            }
+          );
+
+          message.success('Prestador removido do inventário deste mês.');
+          await loadDashboard();
+        } catch (err: any) {
+          message.error(
+            err?.response?.data?.error ||
+              'Erro ao remover prestador do inventário.'
+          );
+        }
+      },
+    });
+  }
+
   useEffect(() => {
     loadDashboard();
   }, [selectedMonth]);
@@ -391,7 +428,16 @@ export default function AutoInventoryPage() {
               Ver
             </Button>
           </Tooltip>
-
+          <Tooltip title="Remover Prestador">
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => removeProviderFromCycle(row.providerId)}
+          >
+            Remover
+          </Button>
+          </Tooltip>
           <Tooltip title="Reenviar e-mail">
             <Button
               size="small"
@@ -413,33 +459,33 @@ export default function AutoInventoryPage() {
           </Tooltip>
 
           <Tooltip title="Copiar link público">
-<Space wrap>
-  <Tooltip title="Abrir link público">
-    <Button
-      size="small"
-      type="primary"
-      icon={<EyeOutlined />}
-      onClick={() => {
-        window.open(row.link, '_blank');
-      }}
-    >
-      Abrir
-    </Button>
-  </Tooltip>
+          <Space wrap>
+            <Tooltip title="Abrir link público">
+              <Button
+                size="small"
+                type="primary"
+                icon={<EyeOutlined />}
+                onClick={() => {
+                  window.open(row.link, '_blank');
+                }}
+              >
+                Abrir
+              </Button>
+            </Tooltip>
 
-  <Tooltip title="Copiar link público">
-    <Button
-      size="small"
-      icon={<CopyOutlined />}
-      onClick={() => {
-        navigator.clipboard.writeText(row.link);
-        message.success('Link copiado.');
-      }}
-    >
-      Copiar
-    </Button>
-  </Tooltip>
-</Space>
+            <Tooltip title="Copiar link público">
+              <Button
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={() => {
+                  navigator.clipboard.writeText(row.link);
+                  message.success('Link copiado.');
+                }}
+              >
+                Copiar
+              </Button>
+            </Tooltip>
+          </Space>
           </Tooltip>
         </Space>
       ),
@@ -471,151 +517,153 @@ export default function AutoInventoryPage() {
   return (
     <div style={{ padding: 24, background: '#f5f7fb', minHeight: '100vh' }}>
       <Space direction="vertical" size={20} style={{ width: '100%' }}>
-<Card
-  style={{
-    borderRadius: 20,
-    border: '1px solid #edf2f7',
-    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)',
-  }}
-  bodyStyle={{
-    padding: 24,
-  }}
->
-  <Row justify="space-between" align="middle" gutter={[20, 20]}>
-    <Col xs={24} lg={8}>
-      <Space direction="vertical" size={2}>
-        <Space align="center" size={12}>
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: 14,
-              background: '#eff6ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <InboxOutlined
-              style={{
-                fontSize: 22,
-                color: '#1677ff',
-              }}
-            />
-          </div>
-
-          <div>
-            <Title
-              level={3}
-              style={{
-                margin: 0,
-                color: '#0f172a',
-              }}
-            >
-              Auto Inventário
-            </Title>
-
-            <Text
-              style={{
-                color: '#64748b',
-                fontSize: 14,
-              }}
-            >
-              Gestão mensal de peças por prestador
-            </Text>
-          </div>
-        </Space>
-      </Space>
-    </Col>
-
-    <Col xs={24} lg={16}>
-      <Space
-        wrap
+      <Card
         style={{
-          width: '100%',
-          justifyContent: 'flex-end',
+          borderRadius: 20,
+          border: '1px solid #edf2f7',
+          boxShadow: '0 6px 18px rgba(15, 23, 42, 0.06)',
+        }}
+        styles={{
+          body: {
+            padding: 24,
+          },
         }}
       >
-        <DatePicker
-          picker="month"
-          value={selectedMonth}
-          onChange={(date) => setSelectedMonth(date || dayjs())}
-          format="MM/YYYY"
-          style={{
-            borderRadius: 12,
-          }}
-        />
+        <Row justify="space-between" align="middle" gutter={[20, 20]}>
+          <Col xs={24} lg={8}>
+            <Space direction="vertical" size={2}>
+              <Space align="center" size={12}>
+                <div
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 14,
+                    background: '#eff6ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <InboxOutlined
+                    style={{
+                      fontSize: 22,
+                      color: '#1677ff',
+                    }}
+                  />
+                </div>
 
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={loadDashboard}
-          loading={loading}
-        >
-          Atualizar
-        </Button>
+                <div>
+                  <Title
+                    level={3}
+                    style={{
+                      margin: 0,
+                      color: '#0f172a',
+                    }}
+                  >
+                    Auto Inventário
+                  </Title>
 
-        <Button
-          icon={<SettingOutlined />}
-          onClick={openConfigModal}
-          loading={configLoading}
-        >
-          Configurações
-        </Button>
+                  <Text
+                    style={{
+                      color: '#64748b',
+                      fontSize: 14,
+                    }}
+                  >
+                    Gestão mensal de peças por prestador
+                  </Text>
+                </div>
+              </Space>
+            </Space>
+          </Col>
 
-        <Button
-          icon={<ToolOutlined />}
-          onClick={() => setItemsModal(true)}
-        >
-          Peças
-        </Button>
+          <Col xs={24} lg={16}>
+            <Space
+              wrap
+              style={{
+                width: '100%',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <DatePicker
+                picker="month"
+                value={selectedMonth}
+                onChange={(date) => setSelectedMonth(date || dayjs())}
+                format="MM/YYYY"
+                style={{
+                  borderRadius: 12,
+                }}
+              />
 
-        <Button
-          icon={<UserSwitchOutlined />}
-          onClick={() => setProvidersConfigModal(true)}
-        >
-          Prestadores
-        </Button>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={loadDashboard}
+                loading={loading}
+              >
+                Atualizar
+              </Button>
 
-        <Button
-          icon={<CloudSyncOutlined />}
-          onClick={syncProviders}
-          loading={syncing}
-        >
-          Sincronizar
-        </Button>
+              <Button
+                icon={<SettingOutlined />}
+                onClick={openConfigModal}
+                loading={configLoading}
+              >
+                Configurações
+              </Button>
 
-        <Button
-          icon={<MailOutlined />}
-          onClick={sendCycleEmails}
-          loading={sendingEmails}
-          disabled={!dashboard}
-        >
-          Enviar e-mails
-        </Button>
+              <Button
+                icon={<ToolOutlined />}
+                onClick={() => setItemsModal(true)}
+              >
+                Peças
+              </Button>
 
-        <Button
-          icon={<PlusOutlined />}
-          type="primary"
-          onClick={createCycle}
-          loading={creating}
-          style={{
-            borderRadius: 12,
-          }}
-        >
-          Criar ciclo
-        </Button>
+              <Button
+                icon={<UserSwitchOutlined />}
+                onClick={() => setProvidersConfigModal(true)}
+              >
+                Prestadores
+              </Button>
 
-        <Button
-          icon={<DownloadOutlined />}
-          onClick={() => exportExcel()}
-          disabled={!dashboard}
-        >
-          Excel geral
-        </Button>
-      </Space>
-    </Col>
-  </Row>
-</Card>
+              <Button
+                icon={<CloudSyncOutlined />}
+                onClick={syncProviders}
+                loading={syncing}
+              >
+                Sincronizar
+              </Button>
+
+              <Button
+                icon={<MailOutlined />}
+                onClick={sendCycleEmails}
+                loading={sendingEmails}
+                disabled={!dashboard}
+              >
+                Enviar e-mails
+              </Button>
+
+              <Button
+                icon={<PlusOutlined />}
+                type="primary"
+                onClick={createCycle}
+                loading={creating}
+                style={{
+                  borderRadius: 12,
+                }}
+              >
+                Criar ciclo
+              </Button>
+
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={() => exportExcel()}
+                disabled={!dashboard}
+              >
+                Excel geral
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+      </Card>
 
         <Card style={{ borderRadius: 18 }}>
           <Row gutter={[16, 16]}>
@@ -645,7 +693,10 @@ export default function AutoInventoryPage() {
 
         <Row gutter={[16, 16]}>
           <Col xs={24} md={6}>
-            <Card style={{ borderRadius: 18 }}>
+            <Card
+              onClick={() => setStatusFilter(null)}
+              style={{ borderRadius: 18, cursor: 'pointer' }}
+            >
               <Statistic
                 title="Prestadores"
                 value={resumo.totalPrestadores || 0}
@@ -655,7 +706,10 @@ export default function AutoInventoryPage() {
           </Col>
 
           <Col xs={24} md={6}>
-            <Card style={{ borderRadius: 18 }}>
+              <Card
+                onClick={() => setStatusFilter('PENDENTE')}
+                style={{ borderRadius: 18, cursor: 'pointer' }}
+              >
               <Statistic
                 title="Pendentes"
                 value={resumo.pendentes || 0}
@@ -666,7 +720,10 @@ export default function AutoInventoryPage() {
           </Col>
 
           <Col xs={24} md={6}>
-            <Card style={{ borderRadius: 18 }}>
+              <Card
+                onClick={() => setStatusFilter('PARCIAL')}
+                style={{ borderRadius: 18, cursor: 'pointer' }}
+              >
               <Statistic
                 title="Parciais"
                 value={resumo.parciais || 0}
@@ -677,7 +734,10 @@ export default function AutoInventoryPage() {
           </Col>
 
           <Col xs={24} md={6}>
-            <Card style={{ borderRadius: 18 }}>
+            <Card
+              onClick={() => setStatusFilter('COMPLETO')}
+              style={{ borderRadius: 18, cursor: 'pointer' }}
+            >
               <Statistic
                 title="Completos"
                 value={resumo.completos || 0}
@@ -687,16 +747,29 @@ export default function AutoInventoryPage() {
             </Card>
           </Col>
         </Row>
-
-        <Card
-          title={
-            <Space>
-              <InboxOutlined />
-              <span>Prestadores do ciclo</span>
-            </Space>
-          }
-          style={{ borderRadius: 18 }}
-        >
+          <Card
+            title={
+              <Space>
+                <InboxOutlined />
+                <span>Prestadores do ciclo</span>
+              </Space>
+            }
+            extra={
+              statusFilter ? (
+                <Tag
+                  closable
+                  color="blue"
+                  onClose={() => setStatusFilter(null)}
+                >
+                  Filtro: {statusFilter}
+                </Tag>
+              ) : (
+                <Tag color="default">Todos</Tag>
+              )
+            }
+            style={{ borderRadius: 18 }}
+          >
+          
           <Table
             rowKey="responseId"
             loading={loading}
