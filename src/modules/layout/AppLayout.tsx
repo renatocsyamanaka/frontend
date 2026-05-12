@@ -728,33 +728,33 @@ export function AppLayout() {
       <style>{sidebarStyles}</style>
 
       <div className={`brand-sidebar ${collapsedSidebar ? 'is-collapsed' : ''}`}>
-<div
-  style={{
-    height: collapsedSidebar ? 76 : 104,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: collapsedSidebar ? '12px 6px' : '18px 20px',
-    overflow: 'hidden',
-    transition: 'all 0.25s ease',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
-    flexShrink: 0,
-  }}
->
-  <img
-    src="/logo_branca.png"
-    alt="Omnilink"
-    style={{
-      width: collapsedSidebar ? 54 : 190,
-      maxHeight: collapsedSidebar ? 54 : 68,
-      minWidth: 0,
-      objectFit: 'contain',
-      display: 'block',
-      transition: 'all 0.25s ease',
-      opacity: 1,
-    }}
-  />
-</div>
+        <div
+          style={{
+            height: collapsedSidebar ? 76 : 104,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: collapsedSidebar ? '12px 6px' : '18px 20px',
+            overflow: 'hidden',
+            transition: 'all 0.25s ease',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="/logo_branca.png"
+            alt="Omnilink"
+            style={{
+              width: collapsedSidebar ? 54 : 190,
+              maxHeight: collapsedSidebar ? 54 : 68,
+              minWidth: 0,
+              objectFit: 'contain',
+              display: 'block',
+              transition: 'all 0.25s ease',
+              opacity: 1,
+            }}
+          />
+        </div>
         <div className="brand-scroll">
           <div
             className="brand-sidebar-section-title"
