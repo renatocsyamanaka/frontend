@@ -148,8 +148,9 @@ const PERMISSION_OPTIONS = [
   { value: 'CLIENTS_VIEW', label: 'Clientes' },
   { value: 'TASKS_VIEW', label: 'Demandas' },
   { value: 'TECH_TYPES_VIEW', label: 'Tipos de Técnicos' },
-  { value: 'NEEDS_VIEW', label: 'Requisições' },
+  { value: 'NEEDS_VIEW', label: 'Requisições Prestadores' },
   { value: 'NEEDS_MAP_VIEW', label: 'Mapa de Requisições' },
+  { value: 'ACTIVITY_LOGS_VIEW', label: 'Admin Logs' },
   { value: 'ASSIGNMENTS_VIEW', label: 'Agenda' },
   { value: 'MEDIA_VIEW', label: 'Gerenciador de Imagens' },
   { value: 'OVERTIME_VIEW', label: 'Banco de Horas' },
@@ -179,6 +180,7 @@ const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
   ASSIGNMENTS_VIEW: <FileTextOutlined />,
   OVERTIME_VIEW: <BarChartOutlined />,
   TIMEOFF_VIEW: <CarOutlined />,
+  ACTIVITY_LOGS_VIEW: <FileTextOutlined />,
   NEWS_VIEW: <NotificationOutlined />,
   WHATSAPP_VIEW: <WhatsAppOutlined />,
   NEWS_ADMIN_VIEW: <SettingOutlined />,
@@ -3708,7 +3710,7 @@ export function UsersPage() {
         title="Gerenciar permissões"
         open={permissionsOpen}
         onCancel={() => setPermissionsOpen(false)}
-        width="44vw"
+        width="60vw"
         centered
         zIndex={3000}
         styles={{
