@@ -25,6 +25,7 @@ import {
   Grid,
   Popconfirm,
   Empty,
+  Checkbox,
   Divider,
   Image,
   Pagination,
@@ -141,6 +142,8 @@ const PERMISSION_OPTIONS = [
   { value: 'TECHS_MAP_VIEW', label: 'Mapa Técnicos' },
   { value: 'USERS_VIEW', label: 'Colaboradores' },
   { value: 'ORG_VIEW', label: 'Organograma' },
+  { value: 'AUTO_INVENTORY_VIEW', label: 'Auto Inventário' },
+  { value: 'AUTO_INVENTORY_ADMIN', label: 'Auto Inventário Admin' },
   { value: 'LOCATIONS_VIEW', label: 'Localidades' },
   { value: 'CLIENTS_VIEW', label: 'Clientes' },
   { value: 'TASKS_VIEW', label: 'Demandas' },
@@ -179,6 +182,8 @@ const PERMISSION_ICON_MAP: Record<string, React.ReactNode> = {
   NEWS_VIEW: <NotificationOutlined />,
   WHATSAPP_VIEW: <WhatsAppOutlined />,
   NEWS_ADMIN_VIEW: <SettingOutlined />,
+  AUTO_INVENTORY_VIEW: <FileDoneOutlined />,
+  AUTO_INVENTORY_ADMIN: <SettingOutlined />,
 };
 
 const permissionOptionsWithIcons = PERMISSION_OPTIONS.map((item) => ({
@@ -453,7 +458,34 @@ export function UsersPage() {
   const [fManagerId, setFManagerId] = useState<number | undefined>(undefined);
   const [tipoUsuario, setTipoUsuario] = useState<'COLABORADOR' | 'TECNICO'>('COLABORADOR');
   const [mapOpen, setMapOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [permissionsFormType, setPermissionsFormType] = useState<
+    'create' | 'edit' | 'approve'
+  >('create');
+  const [permissionsDraft, setPermissionsDraft] = useState<string[]>([]);
 
+  const getPermissionForm = () => {
+    if (permissionsFormType === 'edit') return editForm;
+    if (permissionsFormType === 'approve') return editApproveForm;
+    return createForm;
+  };
+
+  const getFormByType = (type: 'create' | 'edit' | 'approve') => {
+    if (type === 'edit') return editForm;
+    if (type === 'approve') return editApproveForm;
+    return createForm;
+  };
+
+  const openPermissionsModal = (type: 'create' | 'edit' | 'approve') => {
+    const form = getFormByType(type);
+    const current = form.getFieldValue('permissions');
+
+    setPermissionsFormType(type);
+    setPermissionsDraft(
+      Array.isArray(current) && current.length > 0 ? current : DEFAULT_PERMISSIONS
+    );
+    setPermissionsOpen(true);
+  };
   const { data, isLoading, isFetching, refetch } = useQuery<User[]>({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users')).data,
@@ -1941,20 +1973,31 @@ export function UsersPage() {
                     </Form.Item>
                   </Col>
 
-                  <Col xs={24} md={12}>
+                  <Col xs={24}>
                     <Form.Item
-                      name="sectors"
-                      label="Setor"
-                      rules={[{ required: true, message: 'Selecione ao menos um setor' }]}
+                      label="Abas / Permissões de acesso"
+                      tooltip="Selecione as páginas que esse usuário poderá acessar"
                     >
-                      <Select
-                        mode="multiple"
-                        allowClear
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder="Selecione o(s) setor(es)"
-                        options={SECTOR_OPTIONS}
-                      />
+                      <Button
+                        block
+                        onClick={() => openPermissionsModal('create')}
+                      >
+                        Gerenciar permissões
+                      </Button>
+
+                      <div style={{ marginTop: 8, color: '#64748b', fontSize: 13 }}>
+                        {((createForm.getFieldValue('permissions') as string[]) || []).length
+                          ? `${((createForm.getFieldValue('permissions') as string[]) || []).length} permissão(ões) selecionada(s)`
+                          : 'Nenhuma permissão selecionada'}
+                      </div>
+                    </Form.Item>
+
+                    <Form.Item
+                      name="permissions"
+                      hidden
+                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                    >
+                      <Select mode="multiple" options={PERMISSION_OPTIONS} />
                     </Form.Item>
                   </Col>
 
@@ -2027,23 +2070,7 @@ export function UsersPage() {
                     </>
                   )}
 
-                  <Col xs={24}>
-                    <Form.Item
-                      name="permissions"
-                      label="Abas / Permissões de acesso"
-                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
-                      tooltip="Selecione as páginas que esse usuário poderá acessar"
-                    >
-                      <Select
-                        mode="multiple"
-                        allowClear
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder="Selecione as abas liberadas para este usuário"
-                        options={PERMISSION_OPTIONS}
-                      />
-                    </Form.Item>
-                  </Col>
+
                 </Row>
               </Card>
             </Col>
@@ -2491,20 +2518,29 @@ export function UsersPage() {
 
                   <Col xs={24} md={12}>
                     <Form.Item
-                      name="permissions"
                       label="Abas / Permissões de acesso"
-                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
                       tooltip="Selecione as páginas que esse usuário poderá acessar"
                     >
-                      <Select
-                        mode="multiple"
-                        allowClear
-                        showSearch
-                        optionFilterProp="searchLabel"
-                        placeholder="Selecione as abas liberadas para este usuário"
-                        options={permissionOptionsWithIcons}
-                        maxTagCount="responsive"
-                      />
+                      <Button
+                        block
+                        onClick={() => openPermissionsModal('edit')}
+                      >
+                        Gerenciar permissões
+                      </Button>
+
+                      <div style={{ marginTop: 8, color: '#64748b', fontSize: 13 }}>
+                        {((editForm.getFieldValue('permissions') as string[]) || []).length
+                          ? `${((editForm.getFieldValue('permissions') as string[]) || []).length} permissão(ões) selecionada(s)`
+                          : 'Nenhuma permissão selecionada'}
+                      </div>
+                    </Form.Item>
+
+                    <Form.Item
+                      name="permissions"
+                      hidden
+                      rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+                    >
+                      <Select mode="multiple" options={PERMISSION_OPTIONS} />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -3633,19 +3669,29 @@ export function UsersPage() {
 
             <Col xs={24}>
               <Form.Item
-                name="permissions"
                 label="Abas / Permissões de acesso"
-                rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
                 tooltip="Escolha exatamente quais abas esse usuário poderá acessar após a aprovação"
               >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="Selecione as abas liberadas"
-                  options={PERMISSION_OPTIONS}
-                />
+                <Button
+                  block
+                  onClick={() => openPermissionsModal('approve')}
+                >
+                  Gerenciar permissões
+                </Button>
+
+                <div style={{ marginTop: 8, color: '#64748b', fontSize: 13 }}>
+                  {((editApproveForm.getFieldValue('permissions') as string[]) || []).length
+                    ? `${((editApproveForm.getFieldValue('permissions') as string[]) || []).length} permissão(ões) selecionada(s)`
+                    : 'Nenhuma permissão selecionada'}
+                </div>
+              </Form.Item>
+
+              <Form.Item
+                name="permissions"
+                hidden
+                rules={[{ required: true, message: 'Selecione ao menos uma permissão' }]}
+              >
+                <Select mode="multiple" options={PERMISSION_OPTIONS} />
               </Form.Item>
             </Col>
 
@@ -3656,6 +3702,119 @@ export function UsersPage() {
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Gerenciar permissões"
+        open={permissionsOpen}
+        onCancel={() => setPermissionsOpen(false)}
+        width="44vw"
+        centered
+        zIndex={3000}
+        styles={{
+          mask: { zIndex: 2999 },
+          body: {
+            overflow: 'hidden',
+            paddingTop: 10,
+          },
+        }}
+        footer={[
+          <Button key="clear" danger onClick={() => setPermissionsDraft(['DASHBOARD_VIEW'])}>
+            Limpar permissões
+          </Button>,
+          <Button key="cancel" onClick={() => setPermissionsOpen(false)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="ok"
+            type="primary"
+            onClick={() => {
+              const nextPermissions = permissionsDraft.length ? permissionsDraft : ['DASHBOARD_VIEW'];
+              getPermissionForm().setFieldValue('permissions', nextPermissions);
+              getPermissionForm().validateFields(['permissions']).catch(() => undefined);
+              setPermissionsOpen(false);
+            }}
+          >
+            Aplicar permissões
+          </Button>,
+        ]}
+      >
+        <div
+          style={{
+            marginBottom: 14,
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: '#f8fafc',
+            border: '1px solid #e5e7eb',
+            color: '#475569',
+            fontSize: 13,
+          }}
+        >
+          {permissionsDraft.length} permissão(ões) selecionada(s). Clique no card inteiro para selecionar ou remover.
+        </div>
+
+        <Row gutter={[14, 14]} style={{ margin: 0 }}>
+          {PERMISSION_OPTIONS.map((p) => {
+            const selected = permissionsDraft.includes(p.value);
+
+            const togglePermission = () => {
+              setPermissionsDraft((current) =>
+                current.includes(p.value)
+                  ? current.filter((v) => v !== p.value)
+                  : [...current, p.value]
+              );
+            };
+
+            return (
+              <Col xs={24} sm={12} md={8} lg={6} xl={6} key={p.value}>
+                <Card
+                  hoverable
+                  size="small"
+                  onClick={togglePermission}
+                  styles={{
+                    body: {
+                      padding: 12,
+                      cursor: 'pointer',
+                      minHeight: 52,
+                      display: 'flex',
+                      alignItems: 'center',
+                    },
+                  }}
+                  style={{
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    border: selected ? '2px solid #1677ff' : '1px solid #e5e7eb',
+                    background: selected ? '#eff6ff' : '#fff',
+                    boxShadow: selected ? '0 6px 16px rgba(22,119,255,0.12)' : undefined,
+                  }}
+                >
+                  <Space align="center">
+                    <Checkbox
+                      checked={selected}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={togglePermission}
+                    />
+
+                    <span
+                      style={{
+                        fontSize: 14,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        color: selected ? '#1d4ed8' : '#0f172a',
+                        fontWeight: selected ? 600 : 400,
+                      }}
+                    >
+                      {PERMISSION_ICON_MAP[p.value] || <AppstoreOutlined />}
+                      {p.label}
+                    </span>
+                  </Space>
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
       </Modal>
     </div>
   );
