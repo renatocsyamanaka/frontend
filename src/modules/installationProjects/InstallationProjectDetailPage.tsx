@@ -98,12 +98,40 @@ type ProjectItem = {
   createdAt?: string;
 };
 
+type ProjectAccessory = {
+  id: number;
+
+  accessoryName: string;
+
+  accessoryCode?: string | null;
+
+  qty: number;
+
+  isTrailer?: boolean;
+
+  createdAt?: string;
+};
+
 type ProgressVehicle = {
   id?: number;
 
   plate: string;
 
   serial: string;
+};
+
+type ProgressAccessory = {
+  id?: number;
+
+  accessoryName: string;
+
+  accessoryCode?: string | null;
+
+  plate: string;
+
+  qty: number;
+
+  notes?: string | null;
 };
 
 type ProjectProgress = {
@@ -120,6 +148,8 @@ type ProjectProgress = {
   createdAt?: string;
 
   vehicles?: ProgressVehicle[];
+
+  accessories?: ProgressAccessory[];
 };
 
 type ClientFull = {
@@ -264,6 +294,8 @@ type InstallationProject = {
   whatsappGroupLink?: string | null;
 
   items?: ProjectItem[];
+
+  accessories?: ProjectAccessory[];
 
   progress?: ProjectProgress[];
 };
@@ -574,6 +606,9 @@ export default function InstallationProjectDetailPage() {
 
   const [editingItem, setEditingItem] = useState<ProjectItem | null>(null);
 
+  const [editingAccessory, setEditingAccessory] =
+    useState<ProjectAccessory | null>(null);
+
   const screens = Grid.useBreakpoint();
 
   const isMobile = !screens.md;
@@ -585,6 +620,8 @@ export default function InstallationProjectDetailPage() {
   const [waOpen, setWaOpen] = useState(false);
 
   const [itemOpen, setItemOpen] = useState(false);
+
+  const [accessoryOpen, setAccessoryOpen] = useState(false);
 
   const [progressOpen, setProgressOpen] = useState(false);
 
@@ -610,6 +647,8 @@ export default function InstallationProjectDetailPage() {
   const [waForm] = Form.useForm();
 
   const [itemForm] = Form.useForm();
+
+  const [accessoryForm] = Form.useForm();
 
   const [progressForm] = Form.useForm();
 
@@ -662,6 +701,16 @@ export default function InstallationProjectDetailPage() {
     { label: "OMNICARRETA", value: "OMNICARRETA" },
 
     { label: "E.LOCK", value: "E.LOCK" },
+  ];
+
+  const ACESSORIOS_FIXOS = [
+    { label: "KIT BAÚ", value: "KIT BAÚ" },
+
+    { label: "CÂMERA", value: "CÂMERA" },
+
+    { label: "TRAVA QUINTA RODA", value: "TRAVA QUINTA RODA" },
+
+    { label: "CHICOTE ESPIRAL", value: "CHICOTE ESPIRAL" },
   ];
 
   const [importSummary, setImportSummary] = useState<ImportSummary>({
@@ -1099,6 +1148,100 @@ export default function InstallationProjectDetailPage() {
       message.error(e?.response?.data?.error || "Falha ao atualizar item"),
   });
 
+
+  const addAccessory = useMutation({
+    mutationFn: async (payload: {
+      accessoryName: string;
+      accessoryCode?: string | null;
+      qty: number;
+      isTrailer?: boolean;
+    }) => {
+      const res = await api.post(
+        `/installation-projects/${projectId}/accessories`,
+        payload,
+      );
+
+      return unwrap<ProjectAccessory>(res.data);
+    },
+
+    onSuccess: async () => {
+      message.success(editingAccessory ? "Acessório atualizado!" : "Acessório adicionado!");
+
+      setAccessoryOpen(false);
+
+      setEditingAccessory(null);
+
+      accessoryForm.resetFields();
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+    },
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao adicionar acessório"),
+  });
+
+  const updateAccessory = useMutation({
+    mutationFn: async ({
+      accessoryId,
+      payload,
+    }: {
+      accessoryId: number;
+      payload: {
+        accessoryName: string;
+        accessoryCode?: string | null;
+        qty: number;
+        isTrailer?: boolean;
+      };
+    }) => {
+      const res = await api.put(
+        `/installation-projects/${projectId}/accessories/${accessoryId}`,
+        payload,
+      );
+
+      return unwrap<ProjectAccessory>(res.data);
+    },
+
+    onSuccess: async () => {
+      message.success("Acessório atualizado!");
+
+      setAccessoryOpen(false);
+
+      setEditingAccessory(null);
+
+      accessoryForm.resetFields();
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+    },
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao atualizar acessório"),
+  });
+
+  const deleteAccessory = useMutation({
+    mutationFn: async (accessoryId: number) => {
+      const res = await api.delete(
+        `/installation-projects/${projectId}/accessories/${accessoryId}`,
+      );
+
+      return res.data;
+    },
+
+    onSuccess: async () => {
+      message.success("Acessório excluído!");
+
+      await qc.invalidateQueries({
+        queryKey: ["installation-project", projectId],
+      });
+    },
+
+    onError: (e: any) =>
+      message.error(e?.response?.data?.error || "Falha ao excluir acessório"),
+  });
+
   async function extractProgressFromExcelRows(rows: any[]) {
     if (!Array.isArray(rows) || !rows.length) {
       return {
@@ -1429,6 +1572,13 @@ const importProgressesFromExcel = async (file: File) => {
       date: string;
       notes?: string | null;
       vehicles: { plate: string; serial: string }[];
+      accessories?: {
+        accessoryName: string;
+        accessoryCode?: string | null;
+        plate: string;
+        qty: number;
+        notes?: string | null;
+      }[];
     }) => {
       const res = await api.post(
         `/installation-projects/${projectId}/progress`,
@@ -1486,6 +1636,13 @@ const importProgressesFromExcel = async (file: File) => {
         date: string;
         notes?: string | null;
         vehicles: { plate: string; serial: string }[];
+        accessories?: {
+          accessoryName: string;
+          accessoryCode?: string | null;
+          plate: string;
+          qty: number;
+          notes?: string | null;
+        }[];
       };
     }) => {
       const res = await api.put(
@@ -1558,6 +1715,16 @@ const importProgressesFromExcel = async (file: File) => {
 
     return [...src].sort((a, b) => (b.id || 0) - (a.id || 0));
   }, [p?.items]);
+
+  const accessoriesSorted = useMemo(() => {
+    const src = p?.accessories || [];
+
+    return [...src].sort((a, b) => (b.id || 0) - (a.id || 0));
+  }, [p?.accessories]);
+
+  const totalAccessoriesQty = useMemo(() => {
+    return accessoriesSorted.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  }, [accessoriesSorted]);
 
   const progressSorted = useMemo(() => {
     const src = p?.progress || [];
@@ -1838,6 +2005,20 @@ const importProgressesFromExcel = async (file: File) => {
             serial: v.serial || "",
           }))
         : [{ plate: "", serial: "" }],
+
+      accessories: progress.accessories?.length
+        ? progress.accessories.map((a) => ({
+            accessoryName: a.accessoryName || "",
+
+            accessoryCode: a.accessoryCode || null,
+
+            plate: a.plate || "",
+
+            qty: a.qty || 1,
+
+            notes: a.notes || null,
+          }))
+        : [],
     });
 
     setProgressOpen(true);
@@ -1988,7 +2169,7 @@ const importProgressesFromExcel = async (file: File) => {
 
             gridTemplateColumns: isMobile
               ? "1fr 1fr"
-              : "repeat(4, minmax(0, 1fr))",
+              : "repeat(5, minmax(0, 1fr))",
 
             gap: 12,
           }}
@@ -1999,6 +2180,8 @@ const importProgressesFromExcel = async (file: File) => {
           />
 
           <StatCard label="Equipamentos" value={p?.equipmentsTotal ?? 0} />
+
+          <StatCard label="Acessórios" value={totalAccessoriesQty} />
 
           <StatCard label="Equip./dia" value={p?.equipmentsPerDay ?? "-"} />
 
@@ -2399,6 +2582,122 @@ const importProgressesFromExcel = async (file: File) => {
           </Card>
 
           <Card
+            title="Acessórios do projeto"
+            extra={
+              <Button
+                icon={<PlusOutlined />}
+                type="primary"
+                onClick={() => {
+                  setEditingAccessory(null);
+
+                  accessoryForm.resetFields();
+
+                  accessoryForm.setFieldsValue({ qty: 1, isTrailer: true });
+
+                  setAccessoryOpen(true);
+                }}
+              >
+                Adicionar acessório
+              </Button>
+            }
+            styles={{ body: { padding: isMobile ? 12 : 24 } }}
+            style={{ borderRadius: 16 }}
+          >
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Typography.Text type="secondary">
+                  Cadastre os acessórios previstos para o projeto.
+                </Typography.Text>
+
+                <Tag color="blue">Total previsto: {totalAccessoriesQty}</Tag>
+              </div>
+
+              <List
+                dataSource={accessoriesSorted}
+                locale={{ emptyText: "Nenhum acessório cadastrado." }}
+                renderItem={(it) => (
+                  <List.Item>
+                    <div
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <Typography.Text strong style={wrapAny as any}>
+                          {it.accessoryName}
+                        </Typography.Text>
+
+                        {it.accessoryCode ? (
+                          <div style={{ marginTop: 2 }}>
+                            <Typography.Text type="secondary" style={wrapAny as any}>
+                              {it.accessoryCode}
+                            </Typography.Text>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <Space wrap>
+                        <Tag>{`Qtd: ${it.qty}`}</Tag>
+
+                        {it.isTrailer ? <Tag color="blue">Carreta</Tag> : null}
+
+                        <Button
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => {
+                            setEditingAccessory(it);
+
+                            accessoryForm.setFieldsValue({
+                              accessoryName: it.accessoryName,
+                              accessoryCode: it.accessoryCode || null,
+                              qty: it.qty,
+                              isTrailer: it.isTrailer ?? true,
+                            });
+
+                            setAccessoryOpen(true);
+                          }}
+                        >
+                          Editar
+                        </Button>
+
+                        <Popconfirm
+                          title="Excluir este acessório?"
+                          description="Essa ação não poderá ser desfeita."
+                          okText="Excluir"
+                          cancelText="Cancelar"
+                          onConfirm={() => deleteAccessory.mutate(it.id)}
+                        >
+                          <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            loading={deleteAccessory.isPending}
+                          >
+                            Excluir
+                          </Button>
+                        </Popconfirm>
+                      </Space>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            </Space>
+          </Card>
+
+          <Card
             title={
               <Space>
                 <CalendarOutlined /> Diário
@@ -2442,19 +2741,24 @@ const importProgressesFromExcel = async (file: File) => {
                       maxWidth: "100%",
                     }}
                   >
-                    <Space wrap>
-                      <Tag>{dayjs(pr.date).format("DD/MM/YYYY")}</Tag>
+                      <Space wrap>
+                        {pr.trucksDoneToday > 0 ? (
+                          <Typography.Text strong>
+                            {`Equipamentos no dia: ${pr.trucksDoneToday}`}
+                          </Typography.Text>
+                        ) : null}
 
-                      <Typography.Text
-                        strong
-                      >{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
-
-                      {pr.author?.name ? (
-                        <Typography.Text type="secondary">
-                          por {pr.author.name}
-                        </Typography.Text>
-                      ) : null}
-                    </Space>
+                        {(pr.accessories?.length || 0) > 0 ? (
+                          <Typography.Text strong>
+                            {`Acessórios no dia: ${
+                              pr.accessories?.reduce(
+                                (sum, item) => sum + Number(item.qty || 0),
+                                0,
+                              ) || 0
+                            }`}
+                          </Typography.Text>
+                        ) : null}
+                      </Space>
 
                     {pr.vehicles?.length ? (
                       <div
@@ -2495,7 +2799,34 @@ const importProgressesFromExcel = async (file: File) => {
                       </div>
                     ) : null}
 
-                    {pr.notes ? (
+
+                    {pr.accessories?.length ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      display: "grid",
+                      gap: 2,
+                      ...wrapAny,
+                    }}
+                  >
+                    <Typography.Text strong>Acessórios:</Typography.Text>
+
+                    {pr.accessories.map((a, idx) => (
+                      <div
+                        key={`${a.accessoryName}-${a.plate}-${idx}`}
+                        style={wrapAny as any}
+                      >
+                        <b>ACESSÓRIO:</b> {a.accessoryName}{" "}
+                        <span style={{ marginLeft: 10 }} />
+                        <b>PLACA CARRETA:</b> {a.plate}{" "}
+                        <span style={{ marginLeft: 10 }} />
+                        <b>QTD:</b> {a.qty}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {pr.notes ? (
                       <Typography.Text
                         style={{ whiteSpace: "pre-wrap", ...(wrapAny as any) }}
                       >
@@ -2659,7 +2990,7 @@ const importProgressesFromExcel = async (file: File) => {
 
                     <Typography.Text
                       strong
-                    >{`Caminhões no dia: ${pr.trucksDoneToday}`}</Typography.Text>
+                    >{`Equipamentos no dia: ${pr.trucksDoneToday}`}</Typography.Text>
 
                     {pr.author?.name ? (
                       <Typography.Text type="secondary">
@@ -2715,6 +3046,32 @@ const importProgressesFromExcel = async (file: File) => {
                         <b>PLACA:</b> {v.plate}{" "}
                         <span style={{ marginLeft: 10 }} />
                         <b>SÉRIE:</b> {v.serial}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {pr.accessories?.length ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      display: "grid",
+                      gap: 2,
+                      ...wrapAny,
+                    }}
+                  >
+                    <Typography.Text strong>Acessórios:</Typography.Text>
+
+                    {pr.accessories.map((a, idx) => (
+                      <div
+                        key={`${a.accessoryName}-${a.plate}-${idx}`}
+                        style={wrapAny as any}
+                      >
+                        <b>ACESSÓRIO:</b> {a.accessoryName}{" "}
+                        <span style={{ marginLeft: 10 }} />
+                        <b>PLACA CARRETA:</b> {a.plate}{" "}
+                        <span style={{ marginLeft: 10 }} />
+                        <b>QTD:</b> {a.qty}
                       </div>
                     ))}
                   </div>
@@ -3144,6 +3501,77 @@ const importProgressesFromExcel = async (file: File) => {
                   <Input.TextArea rows={3} />
                 </Form.Item>
               </Card>
+
+              <Card
+                title="Acessórios do projeto"
+                size="small"
+                style={{ borderRadius: 14, width: "100%" }}
+                extra={
+                  <Button
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      setEditingAccessory(null);
+                      accessoryForm.resetFields();
+                      accessoryForm.setFieldsValue({ qty: 1, isTrailer: true });
+                      setAccessoryOpen(true);
+                    }}
+                  >
+                    Adicionar acessório
+                  </Button>
+                }
+              >
+                <Space direction="vertical" style={{ width: "100%" }} size={8}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Typography.Text type="secondary">
+                      Cadastre a quantidade prevista de acessórios para este projeto.
+                    </Typography.Text>
+
+                    <Tag color="blue">Total previsto: {totalAccessoriesQty}</Tag>
+                  </div>
+
+                  <List
+                    size="small"
+                    dataSource={accessoriesSorted}
+                    locale={{ emptyText: "Nenhum acessório cadastrado." }}
+                    renderItem={(it) => (
+                      <List.Item
+                        actions={[
+                          <Button
+                            key="edit"
+                            size="small"
+                            onClick={() => {
+                              setEditingAccessory(it);
+                              accessoryForm.setFieldsValue({
+                                accessoryName: it.accessoryName,
+                                accessoryCode: it.accessoryCode || null,
+                                qty: it.qty,
+                                isTrailer: it.isTrailer ?? true,
+                              });
+                              setAccessoryOpen(true);
+                            }}
+                          >
+                            Editar qtd
+                          </Button>,
+                        ]}
+                      >
+                        <List.Item.Meta
+                          title={it.accessoryName}
+                          description={`Qtd prevista: ${it.qty}${it.isTrailer ? " • Carreta" : ""}`}
+                        />
+                      </List.Item>
+                    )}
+                  />
+                </Space>
+              </Card>
             </div>
 
             <div style={{ minWidth: 0, display: "grid", gap: 12 }}>
@@ -3474,7 +3902,90 @@ const importProgressesFromExcel = async (file: File) => {
       </Modal>
 
       <Modal
+        open={accessoryOpen}
+        zIndex={5000}
+        title={editingAccessory ? "Editar acessório" : "Adicionar acessório"}
+        okText={editingAccessory ? "Salvar" : "Adicionar"}
+        confirmLoading={addAccessory.isPending || updateAccessory.isPending}
+        onCancel={() => {
+          setAccessoryOpen(false);
+
+          setEditingAccessory(null);
+
+          accessoryForm.resetFields();
+        }}
+        onOk={async () => {
+          try {
+            const v = await accessoryForm.validateFields();
+
+            const payload = {
+              accessoryName: v.accessoryName,
+              accessoryCode: v.accessoryCode ?? null,
+              qty: v.qty ?? 1,
+              isTrailer: v.isTrailer ?? true,
+            };
+
+            if (editingAccessory?.id) {
+              updateAccessory.mutate({
+                accessoryId: editingAccessory.id,
+                payload,
+              });
+            } else {
+              addAccessory.mutate(payload);
+            }
+          } catch {}
+        }}
+        width={isMobile ? "96vw" : 560}
+        centered
+      >
+        <Form
+          form={accessoryForm}
+          layout="vertical"
+          initialValues={{ qty: 1, isTrailer: true }}
+        >
+          <Form.Item
+            name="accessoryName"
+            label="Acessório"
+            rules={[{ required: true, message: "Selecione o acessório" }]}
+          >
+            <Select
+              showSearch
+              placeholder="Selecione o acessório"
+              optionFilterProp="label"
+              options={ACESSORIOS_FIXOS}
+            />
+          </Form.Item>
+
+          <Form.Item name="accessoryCode" label="Código / referência (opcional)">
+            <Input placeholder="Ex: código interno ou referência" />
+          </Form.Item>
+
+          <Form.Item
+            name="qty"
+            label="Quantidade prevista"
+            rules={[{ required: true, message: "Informe a quantidade" }]}
+          >
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+
+          <Form.Item
+            name="isTrailer"
+            label="Tipo"
+            rules={[{ required: true, message: "Informe o tipo" }]}
+          >
+            <Select
+              options={[
+                { label: "Carreta", value: true },
+                { label: "Veículo / equipamento", value: false },
+              ]}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         open={itemOpen}
+        zIndex={5000}
         title={editingItem ? "Editar item" : "Adicionar item"}
         okText={editingItem ? "Salvar" : "Adicionar"}
         confirmLoading={addItem.isPending || updateItem.isPending}
@@ -3545,13 +4056,36 @@ const importProgressesFromExcel = async (file: File) => {
           try {
             const v = await progressForm.validateFields();
 
-            const vehicles = (v.vehicles || []).map((x: any) => ({
-              plate: String(x.plate || "")
-                .trim()
-                .toUpperCase(),
+            const vehicles = (v.vehicles || [])
+              .filter((x: any) => x?.plate || x?.serial)
+              .map((x: any) => ({
+                plate: String(x.plate || "")
+                  .trim()
+                  .toUpperCase(),
 
-              serial: String(x.serial || "").trim(),
-            }));
+                serial: String(x.serial || "").trim(),
+              }));
+
+            const accessories = (v.accessories || [])
+              .filter((a: any) => a?.accessoryName || a?.plate || a?.qty || a?.notes)
+              .map((a: any) => ({
+                accessoryName: a.accessoryName,
+
+                accessoryCode: a.accessoryCode || null,
+
+                plate: String(a.plate || "")
+                  .trim()
+                  .toUpperCase(),
+
+                qty: a.qty || 1,
+
+                notes: a.notes || null,
+              }));
+
+            if (!vehicles.length && !accessories.length) {
+              message.warning("Adicione pelo menos 1 equipamento ou 1 acessório.");
+              return;
+            }
 
             const payload = {
               date: (v.date as Dayjs).format("YYYY-MM-DD"),
@@ -3559,6 +4093,8 @@ const importProgressesFromExcel = async (file: File) => {
               notes: v.notes ?? null,
 
               vehicles,
+
+              accessories,
             };
 
             if (editingProgress?.id) {
@@ -3574,10 +4110,14 @@ const importProgressesFromExcel = async (file: File) => {
         }}
         afterOpenChange={(o) => {
           if (o && !editingProgress) {
+            progressForm.resetFields(["accessories"]);
+
             progressForm.setFieldsValue({
               date: dayjs(),
 
-              vehicles: [{ plate: "", serial: "" }],
+              vehicles: [],
+
+              accessories: [],
 
               notes: null,
             });
@@ -3736,34 +4276,28 @@ const importProgressesFromExcel = async (file: File) => {
             </Card>
           )}
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 8,
-            }}
-          >
-            <Typography.Text strong>Veículos instalados no dia</Typography.Text>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Lançamento diário separado"
+            description="Preencha equipamentos instalados, acessórios instalados, ou ambos. Para lançar somente acessórios, deixe equipamentos vazio."
+          />
 
-            <Typography.Text type="secondary">
-              Total do dia:{" "}
-              {Array.isArray(watchedVehicles) ? watchedVehicles.length : 0}
-            </Typography.Text>
-          </div>
-
-          <Form.List
-            name="vehicles"
-            rules={[
-              {
-                validator: async (_, list) => {
-                  if (!list || list.length < 1)
-                    throw new Error("Adicione pelo menos 1 veículo");
-                },
-              },
-            ]}
+          <Card
+            size="small"
+            title="Equipamentos instalados no dia"
+            style={{ borderRadius: 14, marginBottom: 16 }}
+            extra={
+              <Typography.Text type="secondary">
+                Total de equipamentos:{" "}
+                {Array.isArray(watchedVehicles) ? watchedVehicles.filter((x) => x?.plate || x?.serial).length : 0}
+              </Typography.Text>
+            }
           >
-            {(fields, { add, remove }, { errors }) => (
+
+          <Form.List name="vehicles">
+            {(fields, { add, remove }) => (
               <>
                 {fields.map((field, idx) => {
                   const currentPlate = normalizePlate(
@@ -3834,7 +4368,7 @@ const importProgressesFromExcel = async (file: File) => {
 
                         {alreadyExists ? (
                           <Tag color="warning">
-                            Placa já publicada anteriormente
+                            Placa do equipamento já publicada anteriormente
                           </Tag>
                         ) : null}
                       </div>
@@ -3861,7 +4395,6 @@ const importProgressesFromExcel = async (file: File) => {
                         <Button
                           danger
                           onClick={() => remove(field.name)}
-                          disabled={fields.length === 1}
                           block={isMobile}
                         >
                           Remover
@@ -3871,19 +4404,144 @@ const importProgressesFromExcel = async (file: File) => {
                   );
                 })}
 
-                <Form.ErrorList errors={errors} />
-
                 <Button
                   onClick={() => add({ plate: "", serial: "" })}
                   block={isMobile}
                 >
-                  + Adicionar veículo
+                  + Adicionar equipamento
                 </Button>
               </>
             )}
           </Form.List>
+          </Card>
 
-          <Form.Item name="notes" label="Observações (opcional)">
+          <Card
+            size="small"
+            title="Acessórios instalados no dia"
+            style={{ borderRadius: 14, marginBottom: 16 }}
+            extra={
+              <Typography.Text type="secondary">
+                Informe a placa da carreta onde o acessório foi instalado
+              </Typography.Text>
+            }
+          >
+
+          <Form.List name="accessories">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map((field, idx) => (
+                  <div
+                    key={field.key}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "1.2fr 1fr 100px 1fr auto",
+                      gap: 8,
+                      marginBottom: 8,
+                      alignItems: "start",
+                    }}
+                  >
+                    <Form.Item
+                      label={idx === 0 ? "Acessório" : ""}
+                      name={[field.name, "accessoryName"]}
+                      rules={[
+                        { required: true, message: "Selecione o acessório" },
+                      ]}
+                    >
+                      <Select
+                        showSearch
+                        placeholder="Selecione"
+                        optionFilterProp="label"
+                        options={ACESSORIOS_FIXOS}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      label={idx === 0 ? "Placa da carreta" : ""}
+                      name={[field.name, "plate"]}
+                      rules={[
+                        { required: true, message: "Informe a placa da carreta" },
+                        {
+                          validator: async (_, value) => {
+                            if (!value) return;
+
+                            if (!isValidPlate(value))
+                              throw new Error(
+                                "Placa inválida (ex: ABC-1234 ou ABC-1E34)",
+                              );
+                          },
+                        },
+                      ]}
+                    >
+                      <Input
+                        placeholder="Ex: ABC-1E34"
+                        maxLength={8}
+                        onChange={(e) => {
+                          const formatted = normalizePlate(e.target.value);
+
+                          progressForm.setFieldValue(
+                            ["accessories", field.name, "plate"],
+                            formatted,
+                          );
+                        }}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      label={idx === 0 ? "Qtd" : ""}
+                      name={[field.name, "qty"]}
+                      initialValue={1}
+                      rules={[
+                        { required: true, message: "Informe a qtd" },
+                      ]}
+                    >
+                      <InputNumber min={1} style={{ width: "100%" }} />
+                    </Form.Item>
+
+                    <Form.Item
+                      label={idx === 0 ? "Observação" : ""}
+                      name={[field.name, "notes"]}
+                    >
+                      <Input placeholder="Opcional" />
+                    </Form.Item>
+
+                    <div
+                      style={{
+                        paddingTop: isMobile ? 0 : idx === 0 ? 30 : 0,
+                      }}
+                    >
+                      <Button
+                        danger
+                        onClick={() => remove(field.name)}
+                        block={isMobile}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+
+                <Button
+                  onClick={() =>
+                    add({
+                      accessoryName: "",
+                      accessoryCode: null,
+                      plate: "",
+                      qty: 1,
+                      notes: null,
+                    })
+                  }
+                  block={isMobile}
+                >
+                  + Adicionar acessório
+                </Button>
+              </>
+            )}
+          </Form.List>
+          </Card>
+
+          <Form.Item name="notes" label="Observações gerais do dia (opcional)">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

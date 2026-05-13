@@ -96,6 +96,14 @@ type InstallationProjectItem = {
   qty: number;
 };
 
+type InstallationProjectAccessory = {
+  id?: number;
+  accessoryName: string;
+  accessoryCode?: string | null;
+  qty: number;
+  isTrailer?: boolean;
+};
+
 type InstallationProject = {
   id: number;
   title: string;
@@ -144,6 +152,7 @@ type InstallationProject = {
   requestedLng?: number | null;
 
   items?: InstallationProjectItem[];
+  accessories?: InstallationProjectAccessory[];
 };
 
 type CreateDTO = {
@@ -169,6 +178,7 @@ type CreateDTO = {
   requestedLat?: number | null;
   requestedLng?: number | null;
   recordType?: RecordType;
+  accessories?: InstallationProjectAccessory[];
 };
 
 type GeocodeResult = {
@@ -325,6 +335,13 @@ const statusOrder: Record<Status, number> = {
   FINALIZADO: 3,
 };
 
+const ACESSORIOS_FIXOS = [
+  { label: 'KIT BAÚ', value: 'KIT BAÚ' },
+  { label: 'CÂMERA', value: 'CÂMERA' },
+  { label: 'TRAVA QUINTA RODA', value: 'TRAVA QUINTA RODA' },
+  { label: 'CHICOTE ESPIRAL', value: 'CHICOTE ESPIRAL' },
+];
+
 function SummaryCard({
   title,
   value,
@@ -475,8 +492,28 @@ export default function InstallationProjectsPage() {
   });
 
   const createProject = useMutation({
-    mutationFn: async (payload: CreateDTO) =>
-      (await api.post('/installation-projects', payload)).data,
+    mutationFn: async (payload: CreateDTO) => {
+      const { accessories = [], ...projectPayload } = payload;
+
+      const createdRes = await api.post('/installation-projects', projectPayload);
+      const createdProject = unwrap<InstallationProject>(createdRes.data);
+      const createdProjectId = createdProject?.id;
+
+      if (createdProjectId && accessories.length) {
+        await Promise.all(
+          accessories.map((accessory) =>
+            api.post(`/installation-projects/${createdProjectId}/accessories`, {
+              accessoryName: accessory.accessoryName,
+              accessoryCode: accessory.accessoryCode || null,
+              qty: Number(accessory.qty || 1),
+              isTrailer: accessory.isTrailer ?? true,
+            }),
+          ),
+        );
+      }
+
+      return createdRes.data;
+    },
     onSuccess: async () => {
       message.success('Projeto criado com sucesso!');
       setOpen(false);
@@ -694,6 +731,17 @@ export default function InstallationProjectsPage() {
 
       const contactEmails = normalizeEmailList(v.contactEmails);
 
+      const accessories = Array.isArray(v.accessories)
+        ? v.accessories
+            .filter((item: any) => item?.accessoryName && Number(item?.qty || 0) > 0)
+            .map((item: any) => ({
+              accessoryName: String(item.accessoryName).trim(),
+              accessoryCode: item.accessoryCode ? String(item.accessoryCode).trim() : null,
+              qty: Number(item.qty || 1),
+              isTrailer: item.isTrailer ?? true,
+            }))
+        : [];
+
       const payload: CreateDTO = {
         title: v.title,
         af: v.af ?? null,
@@ -717,6 +765,7 @@ export default function InstallationProjectsPage() {
         requestedLat: v.requestedLat != null && v.requestedLat !== '' ? Number(v.requestedLat) : null,
         requestedLng: v.requestedLng != null && v.requestedLng !== '' ? Number(v.requestedLng) : null,
         recordType: 'PROJECT',
+        accessories,
       };
 
       if (
@@ -1639,6 +1688,7 @@ const baseColumns: ColumnsType<InstallationProject> = [
               requestedCep: null,
               requestedLat: null,
               requestedLng: null,
+              accessories: [],
             });
           }
         }}
@@ -1786,6 +1836,88 @@ const baseColumns: ColumnsType<InstallationProject> = [
                 <Form.Item label="Observações" name="notes" style={{ marginTop: 12, marginBottom: 0 }}>
                   <Input.TextArea rows={4} placeholder="Anotações iniciais..." />
                 </Form.Item>
+              </Card>
+
+              <Card size="small" title="Acessórios previstos" style={{ borderRadius: 16 }}>
+                <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  Informe a quantidade prevista de acessórios do projeto. Eles serão cadastrados automaticamente junto com o projeto.
+                </Typography.Text>
+
+                <Form.List name="accessories">
+                  {(fields, { add, remove }) => (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {fields.map((field) => (
+                        <div
+                          key={field.key}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1.2fr 0.8fr 0.7fr auto',
+                            gap: 8,
+                            alignItems: 'start',
+                          }}
+                        >
+                          <Form.Item
+                            name={[field.name, 'accessoryName']}
+                            label="Acessório"
+                            rules={[{ required: true, message: 'Selecione o acessório' }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Select
+                              showSearch
+                              placeholder="Selecione"
+                              optionFilterProp="label"
+                              options={ACESSORIOS_FIXOS}
+                            />
+                          </Form.Item>
+
+                          <Form.Item
+                            name={[field.name, 'qty']}
+                            label="Quantidade"
+                            rules={[{ required: true, message: 'Informe a quantidade' }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <InputNumber min={1} style={{ width: '100%' }} />
+                          </Form.Item>
+
+                          <Form.Item
+                            name={[field.name, 'isTrailer']}
+                            label="Tipo"
+                            initialValue={true}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Select
+                              options={[
+                                { label: 'Carreta', value: true },
+                                { label: 'Veículo', value: false },
+                              ]}
+                            />
+                          </Form.Item>
+
+                          <div style={{ paddingTop: isMobile ? 0 : 30 }}>
+                            <Button danger onClick={() => remove(field.name)} block={isMobile}>
+                              Remover
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <Button
+                        icon={<PlusOutlined />}
+                        onClick={() =>
+                          add({
+                            accessoryName: undefined,
+                            accessoryCode: null,
+                            qty: 1,
+                            isTrailer: true,
+                          })
+                        }
+                        block={isMobile}
+                      >
+                        Adicionar acessório previsto
+                      </Button>
+                    </div>
+                  )}
+                </Form.List>
               </Card>
             </div>
 
