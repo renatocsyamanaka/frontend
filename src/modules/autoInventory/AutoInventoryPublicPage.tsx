@@ -8,6 +8,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Progress,
   Row,
   Space,
   Tag,
@@ -16,6 +17,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined,
+  InfoCircleOutlined,
   SaveOutlined,
   SendOutlined,
 } from '@ant-design/icons';
@@ -32,11 +34,31 @@ type PublicItem = {
     id: number;
     codigo: string;
     nome: string;
-    hasSerialNumber: boolean;
-    serialNumberRequired: boolean;
+    hasSerialNumber?: boolean;
+    serialNumberRequired?: boolean;
+    has_serial_number?: boolean;
+    serial_number_required?: boolean;
+    controlaSeriais?: boolean;
+    seriaisObrigatorios?: boolean;
   };
   serials?: { id?: number; serialNumber: string }[];
 };
+
+function itemHasSerial(item: PublicItem['item']) {
+  return (
+    !!item?.hasSerialNumber ||
+    !!item?.has_serial_number ||
+    !!item?.controlaSeriais
+  );
+}
+
+function itemSerialRequired(item: PublicItem['item']) {
+  return (
+    !!item?.serialNumberRequired ||
+    !!item?.serial_number_required ||
+    !!item?.seriaisObrigatorios
+  );
+}
 
 export default function AutoInventoryPublicPage() {
   const { token } = useParams();
@@ -45,7 +67,24 @@ export default function AutoInventoryPublicPage() {
   const [inventory, setInventory] = useState<any>(null);
   const [form] = Form.useForm();
 
-  const items = useMemo(() => inventory?.items || [], [inventory]);
+  const items: PublicItem[] = useMemo(
+    () => inventory?.items || [],
+    [inventory]
+  );
+
+  const totalItems = items.length;
+  const filledItems = Form.useWatch([], form)
+    ? items.filter((row) => {
+        const value = form.getFieldValue(`quantidade_${row.itemId}`);
+        return value !== null && value !== undefined && value !== '';
+      }).length
+    : items.filter(
+        (row) => row.quantidade !== null && row.quantidade !== undefined
+      ).length;
+
+  const progressPercent = totalItems
+    ? Math.round((filledItems / totalItems) * 100)
+    : 0;
 
   async function loadInventory() {
     try {
@@ -77,12 +116,12 @@ export default function AutoInventoryPublicPage() {
   function parseSerials(value: any) {
     return String(value || '')
       .split(/[\n,;]+/g)
-      .map((serial) => serial.trim())
+      .map((serial) => serial.replace(/\D/g, '').trim())
       .filter(Boolean);
   }
 
   function buildPayload(values: any, finalizar: boolean) {
-    const payloadItems = (inventory?.items || []).map((row: PublicItem) => ({
+    const payloadItems = items.map((row) => ({
       itemId: row.itemId,
       quantidade: values[`quantidade_${row.itemId}`],
       serials: parseSerials(values[`serials_${row.itemId}`]),
@@ -95,19 +134,14 @@ export default function AutoInventoryPublicPage() {
   }
 
   function validateSerialsBeforeSubmit(values: any) {
-    for (const row of items) {
+    items.forEach((row) => {
       const item = row.item || {};
-
+      const hasSerial = itemHasSerial(item);
+      const required = itemSerialRequired(item);
       const quantidade = Number(values[`quantidade_${row.itemId}`] || 0);
-
       const serials = parseSerials(values[`serials_${row.itemId}`]);
 
-      if (
-        item.hasSerialNumber &&
-        item.serialNumberRequired &&
-        quantidade > 0 &&
-        serials.length !== quantidade
-      ) {
+      if (hasSerial && required && quantidade > 0 && serials.length !== quantidade) {
         const diferenca = quantidade - serials.length;
 
         if (diferenca > 0) {
@@ -120,7 +154,7 @@ export default function AutoInventoryPublicPage() {
           );
         }
       }
-    }
+    });
   }
 
   async function save(finalizar = false) {
@@ -156,6 +190,17 @@ export default function AutoInventoryPublicPage() {
     }
   }
 
+  function confirmSendInventory() {
+    Modal.confirm({
+      title: 'Confirmar envio do inventário?',
+      content:
+        'Ao confirmar, o inventário será enviado e essa ação não poderá ser desfeita. Caso ainda queira editar depois, clique em "Salvar parcial" em vez de enviar.',
+      okText: 'Confirmar envio',
+      cancelText: 'Cancelar',
+      onOk: () => save(true),
+    });
+  }
+
   useEffect(() => {
     loadInventory();
   }, [token]);
@@ -170,98 +215,211 @@ export default function AutoInventoryPublicPage() {
     >
       <Card
         loading={loading}
+        styles={{ body: { padding: 0 } }}
         style={{
-          maxWidth: 980,
+          maxWidth: 1328,
           margin: '0 auto',
-          borderRadius: 18,
+          borderRadius: 28,
+          overflow: 'hidden',
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
         }}
       >
-        <Space direction="vertical" size={18} style={{ width: '100%' }}>
-          <div>
-            <Title level={3} style={{ marginBottom: 0 }}>
-              Auto Inventário
-            </Title>
+        <div
+          style={{
+            background: '#002b4f',
+            padding: '36px 40px',
+            color: '#fff',
+          }}
+        >
+          <Row gutter={[24, 24]} align="middle" justify="space-between">
+            <Col xs={24} lg={16}>
+              <Space align="center" size={24} wrap>
+                      <img
+                        src="/logo_branca.png"
+                        alt="Omnilink"
+                        onError={(e) => {
+                          e.currentTarget.src = '/logo_branca.png';
+                        }}
+                        style={{
+                          width: 150,
+                          maxHeight: 70,
+                          objectFit: 'contain',
+                        }}
+                      />
 
-            <Text type="secondary">
-              {inventory?.provider?.name || '-'}
-            </Text>
-          </div>
+                <div>
+                  <Title level={2} style={{ color: '#fff', margin: 0 }}>
+                    Auto Inventário
+                  </Title>
 
-          {inventory?.status === 'COMPLETO' && (
+                  <Space size={8} wrap style={{ marginTop: 8 }}>
+                    <Text style={{ color: '#fff' }}>
+                      Prestador: {inventory?.provider?.name || '-'}
+                    </Text>
+
+                    {inventory?.cycle && (
+                      <Tag color="blue">
+                        Referência: {String(inventory.cycle.month).padStart(2, '0')}/
+                        {inventory.cycle.year}
+                      </Tag>
+                    )}
+
+                    <Tag color={inventory?.status === 'COMPLETO' ? 'green' : 'blue'}>
+                      {inventory?.status === 'COMPLETO'
+                        ? 'Enviado'
+                        : 'Em preenchimento'}
+                    </Tag>
+                  </Space>
+                </div>
+              </Space>
+            </Col>
+
+            <Col xs={24} lg={8}>
+              <Card
+                bordered={false}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 22,
+                  color: '#fff',
+                }}
+              >
+                <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                  <Row justify="space-between">
+                    <Text strong style={{ color: '#fff' }}>
+                      Itens preenchidos
+                    </Text>
+                    <Text strong style={{ color: '#fff' }}>
+                      {filledItems}/{totalItems}
+                    </Text>
+                  </Row>
+
+                  <Progress
+                    percent={progressPercent}
+                    showInfo
+                    strokeColor="#52c41a"
+                    trailColor="rgba(255,255,255,0.2)"
+                  />
+
+                  <Row justify="space-between">
+                    <Text style={{ color: '#fff' }}>Total de peças</Text>
+                    <Text style={{ color: '#fff' }}>{totalItems}</Text>
+                  </Row>
+                </Space>
+              </Card>
+            </Col>
+          </Row>
+        </div>
+
+        <div style={{ padding: 36 }}>
+          <Space direction="vertical" size={26} style={{ width: '100%' }}>
+            {inventory?.status === 'COMPLETO' && (
+              <Alert
+                type="success"
+                showIcon
+                icon={<CheckCircleOutlined />}
+                message="Inventário enviado"
+                description="Você ainda pode revisar, mas o inventário já foi enviado."
+              />
+            )}
+
             <Alert
-              type="success"
+              type="info"
               showIcon
-              icon={<CheckCircleOutlined />}
-              message="Inventário enviado"
-              description="Você ainda pode revisar, mas o inventário já foi enviado."
+              icon={<InfoCircleOutlined />}
+              message="Preencha o inventário"
+              description="Você pode salvar parcialmente e retornar depois utilizando este mesmo link. Ao enviar, o inventário será finalizado."
+              style={{ borderRadius: 14 }}
             />
-          )}
 
-          <Alert
-            type="info"
-            showIcon
-            message="Preencha o inventário"
-            description="Você pode salvar parcialmente e retornar depois utilizando este mesmo link."
-          />
+            <Form form={form} layout="vertical">
+              <div
+                style={{
+                  border: '1px solid #eef2f7',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  background: '#fff',
+                }}
+              >
+                <Row
+                  style={{
+                    background: '#fafafa',
+                    borderBottom: '1px solid #eef2f7',
+                    padding: '14px 18px',
+                    fontWeight: 700,
+                  }}
+                  align="middle"
+                >
+                  <Col xs={24} md={4}>Código</Col>
+                  <Col xs={24} md={10}>Peça</Col>
+                  <Col xs={24} md={4}>Quantidade</Col>
+                  <Col xs={24} md={6}>Número de série</Col>
+                </Row>
 
-          <Form form={form} layout="vertical">
-            <Space direction="vertical" size={12} style={{ width: '100%' }}>
-              {items.map((row: PublicItem) => {
-                const item = row.item || {};
-                const hasSerial = !!item.hasSerialNumber;
-                const required = !!item.serialNumberRequired;
+                {items.map((row) => {
+                  const item = row.item || {};
+                  const hasSerial = itemHasSerial(item);
+                  const required = itemSerialRequired(item);
 
-                return (
-                  <Card
-                    key={row.id}
-                    size="small"
-                    style={{ borderRadius: 14 }}
-                  >
-                    <Row gutter={[14, 10]} align="top">
+                  return (
+                    <Row
+                      key={row.id}
+                      gutter={[14, 10]}
+                      align="top"
+                      style={{
+                        padding: '18px',
+                        borderBottom: '1px solid #eef2f7',
+                      }}
+                    >
+                      <Col xs={24} md={4}>
+                        <Space direction="vertical" size={4}>
+                          <Tag color="blue">{item.codigo}</Tag>
+                          <Tag>Produto</Tag>
+                        </Space>
+                      </Col>
+
                       <Col xs={24} md={10}>
-                        <b>{item.nome}</b>
-                        <br />
-
-                        <Text type="secondary">{item.codigo}</Text>
-                        <br />
-
-                        {hasSerial ? (
-                          required ? (
-                            <Tag color="red">Serial obrigatório</Tag>
+                        <Space direction="vertical" size={6}>
+                          <Text strong>{item.nome}</Text>
+                          {hasSerial ? (
+                            required ? (
+                              <Tag color="red">Serial obrigatório</Tag>
+                            ) : (
+                              <Tag color="blue">Controla serial</Tag>
+                            )
                           ) : (
-                            <Tag color="blue">Controla serial</Tag>
-                          )
-                        ) : (
-                          <Tag>Sem serial</Tag>
-                        )}
+                            <Tag>Sem serial</Tag>
+                          )}
+                        </Space>
                       </Col>
 
                       <Col xs={24} md={4}>
                         <Form.Item
-                          label="Quantidade"
                           name={`quantidade_${row.itemId}`}
+                          style={{ marginBottom: 0 }}
                         >
                           <InputNumber
                             min={0}
+                            placeholder="Qtd"
                             style={{ width: '100%' }}
                           />
                         </Form.Item>
                       </Col>
 
-                      {hasSerial && (
-                        <Col xs={24} md={10}>
+                      <Col xs={24} md={6}>
+                        {hasSerial ? (
                           <Form.Item
-                            label={
-                              required
-                                ? 'Números de série obrigatórios'
-                                : 'Números de série opcionais'
-                            }
                             name={`serials_${row.itemId}`}
-                            extra="Informe um serial por linha, ou separe por vírgula."
+                            extra={
+                              required
+                                ? 'Informe os seriais. Aceita um por linha ou separados por vírgula.'
+                                : 'Opcional. Aceita um por linha ou separados por vírgula.'
+                            }
+                            style={{ marginBottom: 0 }}
                           >
                             <Input.TextArea
                               rows={3}
-                              placeholder={'Ex:\n123456\n123457'}
+                              placeholder="Ex:\n123456\n123457"
                               onKeyDown={(e) => {
                                 const allowed = [
                                   'Backspace',
@@ -271,73 +429,67 @@ export default function AutoInventoryPublicPage() {
                                   'ArrowUp',
                                   'ArrowDown',
                                   'Tab',
-                                  'Enter'
+                                  'Enter',
+                                  ',',
+                                  ';',
+                                  ' ',
                                 ];
 
-                                if (
-                                  !/[0-9]/.test(e.key) &&
-                                  !allowed.includes(e.key)
-                                ) {
+                                if (!/[0-9]/.test(e.key) && !allowed.includes(e.key)) {
                                   e.preventDefault();
                                 }
                               }}
                               onPaste={(e) => {
                                 const text = e.clipboardData.getData('text');
 
-                                // aceita apenas números, quebra de linha e vírgula
                                 if (!/^[0-9,\n\r; ]*$/.test(text)) {
                                   e.preventDefault();
-
-                                  message.warning(
-                                    'Número de série aceita apenas números.'
-                                  );
+                                  message.warning('Número de série aceita apenas números.');
                                 }
                               }}
                             />
                           </Form.Item>
-                        </Col>
-                      )}
+                        ) : (
+                          <Text type="secondary">Não se aplica</Text>
+                        )}
+                      </Col>
                     </Row>
-                  </Card>
-                );
-              })}
-            </Space>
-          </Form>
+                  );
+                })}
+              </div>
+            </Form>
 
-          <Space
-            wrap
-            style={{
-              justifyContent: 'flex-end',
-              width: '100%',
-            }}
-          >
-            <Button
-              icon={<SaveOutlined />}
-              onClick={() => save(false)}
-              loading={saving}
-            >
-              Salvar parcial
-            </Button>
+            <Row justify="space-between" gutter={[16, 16]} align="middle">
+              <Col xs={24} md={14}>
+                <Text type="secondary">
+                  As informações enviadas serão utilizadas pela equipe de Operações
+                  para controle de estoque e acompanhamento mensal.
+                </Text>
+              </Col>
 
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            loading={saving}
-            onClick={() => {
-              Modal.confirm({
-                title: 'Confirmar envio do inventário?',
-                content:
-                  'Ao confirmar, o inventário será enviado e essa ação não poderá ser desfeita. Caso ainda queira editar depois, clique em "Salvar parcial" em vez de enviar.',
-                okText: 'Confirmar envio',
-                cancelText: 'Cancelar',
-                onOk: () => save(true),
-              });
-            }}
-          >
-            Enviar inventário
-          </Button>
+              <Col xs={24} md={10}>
+                <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
+                  <Button
+                    icon={<SaveOutlined />}
+                    onClick={() => save(false)}
+                    loading={saving}
+                  >
+                    Salvar parcial
+                  </Button>
+
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={saving}
+                    onClick={confirmSendInventory}
+                  >
+                    Enviar inventário
+                  </Button>
+                </Space>
+              </Col>
+            </Row>
           </Space>
-        </Space>
+        </div>
       </Card>
     </div>
   );

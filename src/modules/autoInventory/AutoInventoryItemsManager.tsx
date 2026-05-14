@@ -10,9 +10,19 @@ type AutoInventoryItem = {
   codigo: string;
   nome: string;
   ativo: boolean;
-  hasSerialNumber: boolean;
-  serialNumberRequired: boolean;
+  hasSerialNumber?: boolean;
+  serialNumberRequired?: boolean;
+  has_serial_number?: boolean;
+  serial_number_required?: boolean;
 };
+
+function hasSerial(row: AutoInventoryItem) {
+  return !!(row.hasSerialNumber ?? row.has_serial_number);
+}
+
+function serialRequired(row: AutoInventoryItem) {
+  return !!(row.serialNumberRequired ?? row.serial_number_required);
+}
 
 export default function AutoInventoryItemsManager() {
   const [items, setItems] = useState<AutoInventoryItem[]>([]);
@@ -51,8 +61,8 @@ export default function AutoInventoryItemsManager() {
       codigo: row.codigo,
       nome: row.nome,
       ativo: !!row.ativo,
-      hasSerialNumber: !!row.hasSerialNumber,
-      serialNumberRequired: !!row.serialNumberRequired,
+      hasSerialNumber: hasSerial(row),
+      serialNumberRequired: serialRequired(row),
     });
     setModalOpen(true);
   }
@@ -112,20 +122,18 @@ export default function AutoInventoryItemsManager() {
     },
     {
       title: 'Controla seriais',
-      dataIndex: 'hasSerialNumber',
       key: 'hasSerialNumber',
       width: 150,
-      render: (value: boolean) =>
-        value ? <Tag color="blue">Sim</Tag> : <Tag>Não</Tag>,
+      render: (_value: boolean, row: AutoInventoryItem) =>
+        hasSerial(row) ? <Tag color="blue">Sim</Tag> : <Tag>Não</Tag>,
     },
     {
       title: 'Seriais obrigatórios',
-      dataIndex: 'serialNumberRequired',
       key: 'serialNumberRequired',
       width: 170,
-      render: (value: boolean, row: AutoInventoryItem) => {
-        if (!row.hasSerialNumber) return <Tag>Não se aplica</Tag>;
-        return value ? <Tag color="red">Sim</Tag> : <Tag color="orange">Não</Tag>;
+      render: (_value: boolean, row: AutoInventoryItem) => {
+        if (!hasSerial(row)) return <Tag>Não se aplica</Tag>;
+        return serialRequired(row) ? <Tag color="red">Sim</Tag> : <Tag color="orange">Não</Tag>;
       },
     },
     {
@@ -206,6 +214,10 @@ export default function AutoInventoryItemsManager() {
           <Form.Item shouldUpdate noStyle>
             {({ getFieldValue }) => {
               const hasSerialNumber = !!getFieldValue('hasSerialNumber');
+
+              if (!hasSerialNumber && getFieldValue('serialNumberRequired')) {
+                form.setFieldValue('serialNumberRequired', false);
+              }
 
               return (
                 <Form.Item
