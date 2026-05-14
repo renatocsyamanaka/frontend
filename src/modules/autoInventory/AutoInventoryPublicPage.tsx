@@ -461,10 +461,11 @@ export default function AutoInventoryPublicPage() {
 
             <Row justify="space-between" gutter={[16, 16]} align="middle">
               <Col xs={24} md={14}>
-                <Text type="secondary">
-                  As informações enviadas serão utilizadas pela equipe de Operações
+
+                      <Tag color="blue">
+                  As informações enviadas serão utilizadas pela equipe de Logistica
                   para controle de estoque e acompanhamento mensal.
-                </Text>
+                </Tag>
               </Col>
 
               <Col xs={24} md={10}>
