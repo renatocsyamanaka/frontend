@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -14,6 +14,7 @@ import {
   Statistic,
   Switch,
   Table,
+  Select,
   Tag,
   Dropdown,
   Alert,
@@ -71,14 +72,97 @@ export default function AutoInventoryPage() {
   const [configForm] = Form.useForm();
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [coordinatorFilter, setCoordinatorFilter] = useState<number | null>(null);
+  const [supervisorFilter, setSupervisorFilter] = useState<number | null>(null);
 
   const month = selectedMonth.month() + 1;
   const year = selectedMonth.year();
 
   const providersRaw = dashboard?.providers || [];
-  const providers = statusFilter
-    ? providersRaw.filter((item: any) => item.status === statusFilter)
-    : providersRaw;
+
+  const getCoordinator = (item: any) =>
+    item?.coordinator ||
+    item?.coordenador ||
+    item?.prestador?.coordinator ||
+    item?.prestador?.coordenador ||
+    null;
+
+  const getSupervisor = (item: any) =>
+    item?.supervisor ||
+    item?.prestador?.supervisor ||
+    null;
+
+  const getCoordinatorId = (item: any) =>
+    item?.coordinatorId ??
+    item?.coordenadorId ??
+    item?.prestador?.coordinatorId ??
+    item?.prestador?.coordenadorId ??
+    getCoordinator(item)?.id ??
+    null;
+
+  const getSupervisorId = (item: any) =>
+    item?.supervisorId ??
+    item?.prestador?.supervisorId ??
+    getSupervisor(item)?.id ??
+    null;
+
+  const coordinatorOptions = useMemo(() => {
+    const map = new Map<number, string>();
+
+    providersRaw.forEach((item: any) => {
+      const id = Number(getCoordinatorId(item));
+      const name =
+        getCoordinator(item)?.name ||
+        getCoordinator(item)?.nome ||
+        item?.coordinatorName ||
+        item?.coordenadorNome ||
+        item?.prestador?.coordinatorName ||
+        item?.prestador?.coordenadorNome;
+
+      if (Number.isFinite(id) && id > 0 && name) {
+        map.set(id, name);
+      }
+    });
+
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [providersRaw]);
+
+  const supervisorOptions = useMemo(() => {
+    const map = new Map<number, string>();
+
+    providersRaw.forEach((item: any) => {
+      const id = Number(getSupervisorId(item));
+      const name =
+        getSupervisor(item)?.name ||
+        getSupervisor(item)?.nome ||
+        item?.supervisorName ||
+        item?.supervisorNome ||
+        item?.prestador?.supervisorName ||
+        item?.prestador?.supervisorNome;
+
+      if (Number.isFinite(id) && id > 0 && name) {
+        map.set(id, name);
+      }
+    });
+
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [providersRaw]);
+
+  const providers = providersRaw.filter((item: any) => {
+    const matchStatus = statusFilter ? item.status === statusFilter : true;
+    const matchCoordinator = coordinatorFilter
+      ? Number(getCoordinatorId(item)) === coordinatorFilter
+      : true;
+    const matchSupervisor = supervisorFilter
+      ? Number(getSupervisorId(item)) === supervisorFilter
+      : true;
+
+    return matchStatus && matchCoordinator && matchSupervisor;
+  });
 
   const resumo = dashboard?.resumo || {};
   const cycle = dashboard?.cycle || {};
@@ -89,7 +173,12 @@ export default function AutoInventoryPage() {
       if (showLoading) setLoading(true);
 
       const res = await api.get('/auto-inventory/dashboard', {
-        params: { month, year },
+        params: {
+          month,
+          year,
+          ...(coordinatorFilter ? { coordinatorId: coordinatorFilter } : {}),
+          ...(supervisorFilter ? { supervisorId: supervisorFilter } : {}),
+        },
       });
 
       const nextProviders = res.data?.providers || [];
@@ -376,7 +465,7 @@ export default function AutoInventoryPage() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [selectedMonth]);
+  }, [selectedMonth, coordinatorFilter, supervisorFilter]);
 
   const statusTag = (status: string) => {
     if (status === 'COMPLETO') {
@@ -407,6 +496,7 @@ export default function AutoInventoryPage() {
       title: 'Prestador',
       dataIndex: ['prestador', 'name'],
       key: 'prestador',
+      width: 260,
       render: (_: any, row: any) => (
         <div>
           <b>{row.prestador?.name || 'Sem nome'}</b>
@@ -416,16 +506,44 @@ export default function AutoInventoryPage() {
       ),
     },
     {
+      title: 'Coordenador',
+      key: 'coordenador',
+      width: 150,
+      ellipsis: true,
+      render: (_: any, row: any) =>
+        getCoordinator(row)?.name ||
+        getCoordinator(row)?.nome ||
+        row.coordinatorName ||
+        row.coordenadorNome ||
+        row.prestador?.coordinatorName ||
+        row.prestador?.coordenadorNome ||
+        '-',
+    },
+    {
+      title: 'Supervisor',
+      key: 'supervisor',
+      width: 150,
+      ellipsis: true,
+      render: (_: any, row: any) =>
+        getSupervisor(row)?.name ||
+        getSupervisor(row)?.nome ||
+        row.supervisorName ||
+        row.supervisorNome ||
+        row.prestador?.supervisorName ||
+        row.prestador?.supervisorNome ||
+        '-',
+    },
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 110,
       render: statusTag,
     },
     {
       title: 'Progresso',
       key: 'progresso',
-      width: 170,
+      width: 150,
       render: (_: any, row: any) => {
         const percent = row.totalItens
           ? Math.round((row.preenchidos / row.totalItens) * 100)
@@ -591,8 +709,39 @@ export default function AutoInventoryPage() {
       title: 'Quantidade',
       dataIndex: 'quantidade',
       key: 'quantidade',
-      width: 140,
+      width: 120,
       render: (v: any) => v ?? <Tag color="red">Não preenchido</Tag>,
+    },
+    {
+      title: 'Seriais',
+      key: 'serials',
+      width: 260,
+      render: (_: any, row: any) => {
+        const item = row.item || {};
+        const serials = row.serials || [];
+
+        if (!item.hasSerialNumber) {
+          return <Tag>Não controla</Tag>;
+        }
+
+        if (!serials.length) {
+          return item.serialNumberRequired ? (
+            <Tag color="red">Obrigatório não informado</Tag>
+          ) : (
+            <Tag color="orange">Opcional não informado</Tag>
+          );
+        }
+
+        return (
+          <Space wrap size={[4, 4]}>
+            {serials.map((serial: any) => (
+              <Tag key={serial.id || serial.serialNumber} color="blue">
+                {serial.serialNumber}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -756,6 +905,69 @@ export default function AutoInventoryPage() {
           </Col>
         </Row>
 
+        <Card style={{ borderRadius: 18 }}>
+          <Row gutter={[12, 12]} align="middle">
+            <Col xs={24} md={8} lg={7}>
+              <Text type="secondary">Coordenador</Text>
+              <Select
+                allowClear
+                showSearch
+                placeholder="Filtrar por coordenador"
+                value={coordinatorFilter ?? undefined}
+                options={coordinatorOptions}
+                optionFilterProp="label"
+                style={{ width: '100%', marginTop: 6 }}
+                onChange={(value) => setCoordinatorFilter(value ?? null)}
+              />
+            </Col>
+
+            <Col xs={24} md={8} lg={7}>
+              <Text type="secondary">Supervisor</Text>
+              <Select
+                allowClear
+                showSearch
+                placeholder="Filtrar por supervisor"
+                value={supervisorFilter ?? undefined}
+                options={supervisorOptions}
+                optionFilterProp="label"
+                style={{ width: '100%', marginTop: 6 }}
+                onChange={(value) => setSupervisorFilter(value ?? null)}
+              />
+            </Col>
+
+            <Col xs={24} md={8} lg={10}>
+              <Space wrap style={{ marginTop: 24 }}>
+                <Button
+                  onClick={() => {
+                    setStatusFilter(null);
+                    setCoordinatorFilter(null);
+                    setSupervisorFilter(null);
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+                <Button
+                  type="default"
+                  disabled
+                  style={{
+                    borderRadius: 6,
+
+                    color: '#1677ff',
+                    borderColor: '#91caff',
+                    background: '#f0f7ff',
+
+                    opacity: 1,
+                    cursor: 'default',
+                    fontWeight: 500,
+                  }}
+                >
+                  Exibindo {providers.length} de {providersRaw.length} prestadores
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+
         <Card
           title={
             <Space>
@@ -783,7 +995,9 @@ export default function AutoInventoryPage() {
               pageSize: 10,
               showTotal: (total) => `${total} prestadores`,
             }}
-            scroll={{ x: 1400 }}
+            size="middle"
+            tableLayout="fixed"
+            scroll={{ x: 1120 }}
           />
         </Card>
       </Space>

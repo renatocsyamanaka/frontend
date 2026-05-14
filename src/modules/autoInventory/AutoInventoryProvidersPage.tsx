@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
+  Col,
   Input,
+  Row,
+  Select,
   Space,
   Switch,
   Table,
@@ -17,182 +21,309 @@ import {
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
 
-const { Title, Text } = Typography;
+const { Text, Title } = Typography;
+
+type Option = {
+  id: number;
+  name: string;
+  email?: string | null;
+};
+
+type ProviderRow = {
+  id: number;
+  name: string;
+  email?: string | null;
+  tipoPrestador?: 'ATA' | 'PRP' | 'SPOT' | 'PSO' | string;
+  estoqueAvancado: boolean;
+  autoInventoryEnabled: boolean;
+  coordinator?: Option | null;
+  coordinatorId?: number | null;
+  supervisor?: Option | null;
+  supervisorId?: number | null;
+};
 
 export default function AutoInventoryProvidersPage() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [providers, setProviders] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
+  const [providers, setProviders] = useState<ProviderRow[]>([]);
+  const [coordinators, setCoordinators] = useState<Option[]>([]);
+  const [supervisors, setSupervisors] = useState<Option[]>([]);
 
-  async function loadProviders(q = '') {
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const [coordinatorId, setCoordinatorId] = useState<number | null>(null);
+  const [supervisorId, setSupervisorId] = useState<number | null>(null);
+  const [estoqueAvancadoFilter, setEstoqueAvancadoFilter] = useState<boolean | null>(null);
+  const [autoInventoryFilter, setAutoInventoryFilter] = useState<boolean | null>(null);
+
+  const resumo = useMemo(() => {
+    const estoqueAvancado = providers.filter((item) => item.estoqueAvancado).length;
+    const autoInventario = providers.filter((item) => item.autoInventoryEnabled).length;
+
+    return {
+      total: providers.length,
+      estoqueAvancado,
+      semEstoqueAvancado: providers.length - estoqueAvancado,
+      autoInventario,
+      semAutoInventario: providers.length - autoInventario,
+    };
+  }, [providers]);
+
+  async function loadProviders() {
     try {
       setLoading(true);
 
-      const res = await api.get('/users/providers', {
-        params: q ? { q } : {},
+      const res = await api.get('/auto-inventory/providers-management', {
+        params: {
+          ...(search ? { q: search } : {}),
+          ...(coordinatorId ? { coordinatorId } : {}),
+          ...(supervisorId ? { supervisorId } : {}),
+          ...(estoqueAvancadoFilter !== null ? { estoqueAvancado: estoqueAvancadoFilter } : {}),
+          ...(autoInventoryFilter !== null ? { autoInventoryEnabled: autoInventoryFilter } : {}),
+        },
       });
 
-      setProviders(res.data?.data || res.data || []);
+      setProviders(res.data?.providers || []);
+      setCoordinators(res.data?.filters?.coordinators || []);
+      setSupervisors(res.data?.filters?.supervisors || []);
     } catch (err: any) {
       message.error(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          'Erro ao carregar prestadores.'
+        err?.response?.data?.error || 'Erro ao carregar prestadores do auto inventário.'
       );
     } finally {
       setLoading(false);
     }
   }
 
-  async function toggleAutoInventory(userId: number, checked: boolean) {
+  async function toggleProvider(row: ProviderRow, checked: boolean) {
     try {
-      setSavingId(userId);
+      setSavingId(row.id);
 
-    await api.patch(`/users/${userId}`, {
-    autoInventoryEnabled: checked,
-    });
+      await api.patch(`/auto-inventory/providers/${row.id}/auto-inventory`, {
+        enabled: checked,
+      });
 
-      message.success(
-        checked
-          ? 'Prestador habilitado para auto inventário.'
-          : 'Prestador removido do auto inventário.'
-      );
-
-      setProviders((prev) =>
-        prev.map((item) =>
-          item.id === userId
+      setProviders((old) =>
+        old.map((item) =>
+          item.id === row.id
             ? { ...item, autoInventoryEnabled: checked }
             : item
         )
       );
+
+      message.success(
+        checked
+          ? 'Prestador habilitado para receber auto inventário.'
+          : 'Prestador desabilitado do auto inventário.'
+      );
     } catch (err: any) {
       message.error(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          'Erro ao atualizar prestador.'
+        err?.response?.data?.error || 'Erro ao atualizar prestador.'
       );
     } finally {
       setSavingId(null);
     }
   }
 
+  function clearFilters() {
+    setQ('');
+    setSearch('');
+    setCoordinatorId(null);
+    setSupervisorId(null);
+    setEstoqueAvancadoFilter(null);
+    setAutoInventoryFilter(null);
+  }
+
   useEffect(() => {
     loadProviders();
-  }, []);
+  }, [search, coordinatorId, supervisorId, estoqueAvancadoFilter, autoInventoryFilter]);
 
   const columns = [
     {
       title: 'Prestador',
       dataIndex: 'name',
       key: 'name',
-      render: (_: any, record: any) => (
-        <div>
-          <b>{record.name}</b>
+      width: 360,
+      render: (_: any, row: ProviderRow) => (
+        <div style={{ minWidth: 0 }}>
+          <b style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{row.name}</b>
           <br />
-          <Text type="secondary">{record.email || 'Sem e-mail'}</Text>
+          <Text type="secondary" style={{ wordBreak: 'break-all' }}>{row.email || '-'}</Text>
         </div>
       ),
     },
     {
-      title: 'Auto Inventário',
-      dataIndex: 'autoInventoryEnabled',
-      key: 'autoInventoryEnabled',
-      render: (enabled: boolean) =>
-        enabled ? (
-          <Tag color="green">Habilitado</Tag>
+      title: 'Tipo',
+      key: 'tipoPrestador',
+      width: 90,
+      align: 'center' as const,
+      render: (_: any, row: ProviderRow) => <Tag color="blue">{row.tipoPrestador || '-'}</Tag>,
+    },
+    {
+      title: 'Estoque Avançado',
+      key: 'estoqueAvancado',
+      width: 150,
+      align: 'center' as const,
+      render: (_: any, row: ProviderRow) =>
+        row.estoqueAvancado ? (
+          <Tag color="green">Sim</Tag>
         ) : (
-          <Tag color="default">Desabilitado</Tag>
+          <Tag>Não</Tag>
+        ),
+    },
+    {
+      title: 'Auto Inventário',
+      key: 'autoInventoryEnabled',
+      width: 150,
+      align: 'center' as const,
+      render: (_: any, row: ProviderRow) =>
+        row.autoInventoryEnabled ? (
+          <Tag color="green">Ativado</Tag>
+        ) : (
+          <Tag>Desativado</Tag>
         ),
     },
     {
       title: 'Ação',
       key: 'action',
+      width: 120,
       align: 'center' as const,
-      render: (_: any, record: any) => (
+      render: (_: any, row: ProviderRow) => (
         <Switch
-          checked={!!record.autoInventoryEnabled}
-          loading={savingId === record.id}
+          checked={row.autoInventoryEnabled}
           checkedChildren="Sim"
           unCheckedChildren="Não"
-          onChange={(checked) =>
-            toggleAutoInventory(record.id, checked)
-          }
+          loading={savingId === row.id}
+          onChange={(checked) => toggleProvider(row, checked)}
         />
       ),
     },
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <Space direction="vertical" size={20} style={{ width: '100%' }}>
-        <Card>
-          <Space align="start">
-            <UserSwitchOutlined
-              style={{
-                fontSize: 30,
-                color: '#1677ff',
-                marginTop: 4,
-              }}
-            />
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card style={{ borderRadius: 12 }}>
+        <Space align="start">
+          <UserSwitchOutlined style={{ fontSize: 28, color: '#1677ff', marginTop: 6 }} />
+          <div>
+            <Title level={4} style={{ margin: 0 }}>
+              Prestadores do Auto Inventário
+            </Title>
+            <Text type="secondary">
+              Liste apenas prestadores ATA, PRP, SPOT e PSO. Veja quem possui estoque avançado e defina quem deve receber o auto inventário mensal.
+            </Text>
+          </div>
+        </Space>
+      </Card>
 
-            <div>
-              <Title level={3} style={{ margin: 0 }}>
-                Prestadores do Auto Inventário
-              </Title>
+      <Alert
+        type="info"
+        showIcon
+        message="Filtros corrigidos"
+        description="O filtro Estoque Avançado usa o cadastro do prestador, independente do Auto Inventário estar ativado ou não. O envio mensal continua controlado pela coluna Auto Inventário."
+      />
 
-              <Text type="secondary">
-                Habilite ou desabilite quais prestadores devem receber o
-                auto inventário mensal de peças.
-              </Text>
-            </div>
-          </Space>
-        </Card>
-
-        <Card>
-          <Space style={{ marginBottom: 16 }} wrap>
+      <Card style={{ borderRadius: 12 }}>
+        <Row gutter={[12, 12]} align="middle">
+          <Col xs={24} md={6}>
             <Input
               allowClear
-              placeholder="Pesquisar prestador"
               prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onPressEnter={() => loadProviders(search)}
-              style={{ width: 300 }}
+              placeholder="Pesquisar prestador"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onPressEnter={() => setSearch(q.trim())}
             />
+          </Col>
 
-            <Button
-              type="primary"
-              icon={<SearchOutlined />}
-              onClick={() => loadProviders(search)}
-            >
-              Pesquisar
-            </Button>
+          <Col xs={24} md={4}>
+            <Select
+              allowClear
+              showSearch
+              placeholder="Coordenador"
+              value={coordinatorId ?? undefined}
+              options={coordinators.map((item) => ({ value: item.id, label: item.name }))}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
+              onChange={(value) => setCoordinatorId(value ?? null)}
+            />
+          </Col>
 
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => {
-                setSearch('');
-                loadProviders();
-              }}
-            >
-              Atualizar
-            </Button>
-          </Space>
+          <Col xs={24} md={4}>
+            <Select
+              allowClear
+              showSearch
+              placeholder="Supervisor"
+              value={supervisorId ?? undefined}
+              options={supervisors.map((item) => ({ value: item.id, label: item.name }))}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
+              onChange={(value) => setSupervisorId(value ?? null)}
+            />
+          </Col>
 
-          <Table
-            rowKey="id"
-            loading={loading}
-            columns={columns}
-            dataSource={providers}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `${total} prestadores`,
-            }}
-          />
-        </Card>
-      </Space>
-    </div>
+          <Col xs={24} md={4}>
+            <Select
+              allowClear
+              placeholder="Estoque Avançado"
+              value={estoqueAvancadoFilter ?? undefined}
+              options={[
+                { value: true, label: 'Com estoque avançado' },
+                { value: false, label: 'Sem estoque avançado' },
+              ]}
+              style={{ width: '100%' }}
+              onChange={(value) => setEstoqueAvancadoFilter(value ?? null)}
+            />
+          </Col>
+
+          <Col xs={24} md={3}>
+            <Select
+              allowClear
+              placeholder="Auto Inventário"
+              value={autoInventoryFilter ?? undefined}
+              options={[
+                { value: true, label: 'Ativado' },
+                { value: false, label: 'Desativado' },
+              ]}
+              style={{ width: '100%' }}
+              onChange={(value) => setAutoInventoryFilter(value ?? null)}
+            />
+          </Col>
+
+          <Col xs={24} md={3}>
+            <Space wrap>
+              <Button type="primary" icon={<SearchOutlined />} onClick={() => setSearch(q.trim())}>
+                Pesquisar
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={loadProviders}>
+                Atualizar
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+
+        <Space wrap style={{ marginTop: 12 }}>
+          <Tag color="blue">Total: {resumo.total}</Tag>
+          <Tag color="green">Com estoque avançado: {resumo.estoqueAvancado}</Tag>
+          <Tag>Sem estoque avançado: {resumo.semEstoqueAvancado}</Tag>
+          <Tag color="green">Auto inventário ativo: {resumo.autoInventario}</Tag>
+          <Tag>Auto inventário inativo: {resumo.semAutoInventario}</Tag>
+          <Button size="small" onClick={clearFilters}>
+            Limpar filtros
+          </Button>
+        </Space>
+      </Card>
+
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={providers}
+        pagination={{ pageSize: 10, showSizeChanger: true }}
+        size="middle"
+        tableLayout="fixed"
+        scroll={{ x: 900 }}
+      />
+    </Space>
   );
 }

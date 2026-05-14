@@ -42,13 +42,7 @@ const HOVER_BG = 'rgba(31, 113, 184, 0.18)';
 const TEXT_PRIMARY = '#EAF4FF';
 const TEXT_SECONDARY = '#A9C3DA';
 
-const SECTOR_LABELS: Record<string, string> = {
-  OPERACOES: 'Operações',
-  LOGISTICA: 'Logística',
-  SISTEMAS: 'Sistemas',
-  ATENDIMENTO: 'Atendimento',
-  GESTAO: 'Gestão',
-};
+
 
 type AppUser = {
   id?: number;
@@ -79,22 +73,7 @@ const abs = (url?: string | null) => {
   return base ? `${base}/${String(url).replace(/^\/+/, '')}` : url;
 };
 
-function getSectorLabel(sector?: string) {
-  if (!sector) return '';
-  return SECTOR_LABELS[sector] || sector;
-}
 
-function getUserSectors(user: AppUser | null | undefined) {
-  if (!Array.isArray(user?.sectors) || user.sectors.length === 0) {
-    return ['GESTAO'];
-  }
-
-  const arr = user.sectors
-    .map((sector: string) => String(sector || '').trim().toUpperCase())
-    .filter(Boolean);
-
-  return arr.length ? arr : ['GESTAO'];
-}
 
 export function AppLayout() {
   const { user, logout, setUser } = useAuth() as {
@@ -116,16 +95,13 @@ export function AppLayout() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
-  const [isMobileMenuCollapsed, setisMobileMenuCollapsed] = useState(false);
-  const siderWidth = 280;
-  const siderCollapsedWidth = 84;
+  const siderWidth = 260;
+  const siderCollapsedWidth = 72;
 
   const collapsedSidebar = !isMobile && !sidebarHovered;
 
   getUserLevel(user);
 
-  const sectors = getUserSectors(user);
-  const sectorsLabel = sectors.length > 0 ? sectors.map(getSectorLabel).join(' • ') : 'Gestão';
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -467,261 +443,363 @@ export function AppLayout() {
       internalButton.click();
     }
   };
+const sidebarStyles = `
+.brand-sidebar {
+  background: linear-gradient(
+    180deg,
+    ${SIDEBAR_BG} 0%,
+    ${SIDEBAR_BG_2} 100%
+  );
 
-  const sidebarStyles = `
-    .brand-sidebar {
-      background: linear-gradient(180deg, ${SIDEBAR_BG} 0%, ${SIDEBAR_BG_2} 100%);
-      color: ${TEXT_PRIMARY};
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid rgba(255,255,255,0.06);
-      overflow: hidden;
-      transition: all 0.22s ease;
-    }
+  color:${TEXT_PRIMARY};
+  height:100%;
+  display:flex;
+  flex-direction:column;
 
-    .brand-sidebar.is-collapsed .brand-sidebar-logo-text,
-    .brand-sidebar.is-collapsed .brand-sidebar-section-title,
-    .brand-sidebar.is-collapsed .brand-sidebar-footer-text {
-      display: none !important;
-    }
+  border-right:1px solid rgba(255,255,255,.06);
 
-    .brand-sidebar.is-collapsed .brand-sidebar-header {
-      justify-content: center !important;
-      padding-inline: 10px !important;
-    }
+  overflow:hidden;
+}
 
-    .brand-sidebar.is-collapsed .brand-scroll {
-      padding-left: 6px;
-      padding-right: 6px;
-    }
+/* ================= COLAPSADO ================= */
 
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title,
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-item {
-      padding-inline: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
+.brand-sidebar.is-collapsed .brand-sidebar-logo-text,
+.brand-sidebar.is-collapsed .brand-sidebar-section-title,
+.brand-sidebar.is-collapsed .brand-sidebar-footer-text{
+   display:none !important;
+}
 
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-title-content {
-      opacity: 0;
-      width: 0;
-      overflow: hidden;
-      display: none !important;
-    }
+.brand-sidebar.is-collapsed .brand-scroll{
+   padding:4px !important;
+}
 
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-arrow {
-      display: none !important;
-    }
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-item,
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title{
+   width:46px !important;
+   min-width:46px !important;
+   height:46px !important;
 
-    .brand-sidebar.is-collapsed .logout-menu .ant-menu-item {
-      padding-inline: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
+   margin:3px auto !important;
 
-    .brand-sidebar.is-collapsed .logout-menu .ant-menu-title-content {
-      display: none !important;
-    }
+   padding:0 !important;
 
-    .brand-sidebar.is-collapsed .logout-menu .ant-menu-item .ant-menu-item-icon,
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-item .ant-menu-item-icon,
-    .brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
-      margin-inline-end: 0 !important;
-      font-size: 20px !important;
-    }
+   display:flex !important;
+   align-items:center !important;
+   justify-content:center !important;
 
-    .brand-menu .ant-menu-submenu {
-      margin: 6px 0 !important;
-    }
+   border-radius:14px !important;
+}
 
-    .brand-menu .ant-menu-submenu-title {
-      height: 48px !important;
-      line-height: 48px !important;
-      border-radius: 14px !important;
-      color: ${TEXT_PRIMARY} !important;
-      font-weight: 700;
-      font-size: 15px;
-      padding-inline: 14px !important;
-      transition: all 0.2s ease;
-    }
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-item-icon,
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-title .ant-menu-item-icon{
+   margin:0 !important;
 
-    .brand-menu .ant-menu-submenu-title:hover {
-      background: ${HOVER_BG} !important;
-      color: #ffffff !important;
-    }
+   width:18px !important;
+   height:18px !important;
 
-    .brand-menu .ant-menu-sub {
-      background: transparent !important;
-    }
+   display:flex !important;
+   align-items:center !important;
+   justify-content:center !important;
 
-    .brand-menu .ant-menu-sub .ant-menu-item {
-      height: 42px !important;
-      line-height: 42px !important;
-      margin: 4px 0 4px 10px !important;
-      border-radius: 12px !important;
-      font-size: 14px;
-      font-weight: 600;
-    }
+   font-size:18px !important;
+}
 
-    .brand-menu .ant-menu-submenu-arrow {
-      color: ${TEXT_SECONDARY} !important;
-    }
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-title-content,
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-submenu-arrow{
+   display:none !important;
+}
 
-    .brand-menu .ant-menu-submenu-open > .ant-menu-submenu-title {
-      background: rgba(255,255,255,0.05) !important;
-    }
+.brand-sidebar.is-collapsed .brand-menu .ant-menu-item-selected{
+   background:${ACTIVE_BG} !important;
+}
 
-    .brand-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 6px 8px 10px 8px;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(31, 113, 184, 0.75) transparent;
-    }
+/* ================= MENU ================= */
 
-    .brand-scroll::-webkit-scrollbar {
-      width: 8px;
-    }
+.brand-menu.ant-menu{
+   background:transparent !important;
+   border:none !important;
+}
 
-    .brand-scroll::-webkit-scrollbar-track {
-      background: transparent;
-      margin: 10px 0;
-    }
+/* Menus principais */
 
-    .brand-scroll::-webkit-scrollbar-thumb {
-      background: linear-gradient(180deg, rgba(31, 113, 184, 0.85), rgba(31, 113, 184, 0.45));
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.08);
-    }
+.brand-menu .ant-menu-item,
+.brand-menu .ant-menu-submenu-title{
 
-    .brand-scroll::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(180deg, rgba(31, 113, 184, 1), rgba(31, 113, 184, 0.65));
-    }
+   height:46px !important;
+   line-height:46px !important;
 
-    .brand-menu.ant-menu {
-      background: transparent !important;
-      border-inline-end: none !important;
-      color: ${TEXT_SECONDARY} !important;
-      padding: 0 !important;
-    }
+   margin:3px 0 !important;
+   border-radius:14px !important;
 
-    .brand-menu .ant-menu-item {
-      height: 48px;
-      line-height: 48px;
-      margin: 7px 0 !important;
-      border-radius: 14px !important;
-      color: ${TEXT_SECONDARY} !important;
-      font-weight: 600;
-      font-size: 15px;
-      transition: all 0.2s ease;
-      padding-inline: 14px !important;
-    }
+   font-size:14px;
+   font-weight:600;
 
-    .brand-menu .ant-menu-item .ant-menu-title-content a {
-      color: inherit !important;
-    }
+   padding-inline:14px !important;
 
-    .brand-menu .ant-menu-item .ant-menu-item-icon,
-    .brand-menu .ant-menu-submenu-title .ant-menu-item-icon {
-      color: ${TEXT_SECONDARY} !important;
-      font-size: 18px;
-    }
+   transition:.2s;
+}
+.header-bell-wrap {
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #cfe5ff;
+  background: #eef7ff;
 
-    .brand-menu .ant-menu-item:hover {
-      background: ${HOVER_BG} !important;
-      color: ${TEXT_PRIMARY} !important;
-    }
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 
-    .brand-menu .ant-menu-item:hover .ant-menu-item-icon,
-    .brand-menu .ant-menu-submenu-title:hover .ant-menu-item-icon {
-      color: #ffffff !important;
-    }
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
 
-    .brand-menu .ant-menu-item-selected {
-      background: linear-gradient(135deg, ${ACTIVE_BG} 0%, #2f89d8 100%) !important;
-      color: #ffffff !important;
-      box-shadow: 0 10px 24px rgba(31, 113, 184, 0.32);
-    }
+  box-shadow: 0 6px 14px rgba(22, 119, 255, 0.06);
+}
 
-    .brand-menu .ant-menu-item-selected .ant-menu-item-icon {
-      color: #ffffff !important;
-    }
+.header-bell-wrap:hover {
+  background: #e5f1ff;
+  border-color: #9dccff;
+}
 
-    .logout-menu.ant-menu {
-      background: transparent !important;
-      border-inline-end: none !important;
-    }
+.header-bell-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f3d66;
+}
 
-    .logout-menu .ant-menu-item {
-      height: 48px;
-      line-height: 48px;
-      margin: 0 !important;
-      border-radius: 14px !important;
-      color: #fecaca !important;
-      font-weight: 700;
-      padding-inline: 14px !important;
-    }
+.header-profile-btn {
+  height: 46px !important;
+  padding: 0 16px 0 10px !important;
+  border-radius: 999px !important;
 
-    .logout-menu .ant-menu-item:hover {
-      background: rgba(239, 68, 68, 0.16) !important;
-      color: #ffffff !important;
-    }
+  border: 1px solid #cfe5ff !important;
+  background: #ffffff !important;
 
-    .logout-menu .ant-menu-item .ant-menu-item-icon {
-      color: inherit !important;
-    }
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.05);
+}
 
-    .header-bell-wrap {
-      height: 40px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: #f0f7ff;
-      border: 1px solid #d6e8fb;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      user-select: none;
-    }
+.header-profile-btn:hover {
+  border-color: #9dccff !important;
+  background: #f8fcff !important;
+}
 
-    .header-bell-wrap:hover {
-      background: #e5f1ff;
-      border-color: #bdd8f7;
-    }
+.header-profile-btn .ant-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  border: 1px solid #1677ff;
+}
 
-    .header-bell-text {
-      font-size: 13px;
-      font-weight: 700;
-      color: #16324F;
-    }
+.header-logout-btn {
+  height: 46px !important;
+  padding: 0 18px !important;
+  border-radius: 999px !important;
 
-    .header-profile-btn {
-      height: 40px !important;
-      border-radius: 999px !important;
-      border: 1px solid #dbe7f3 !important;
-      background: #ffffff !important;
-      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.04);
-    }
+  background: #ffffff !important;
+  border-color: #ff4d4f !important;
+  color: #ff4d4f !important;
 
-    .header-profile-btn:hover {
-      border-color: #c5d9ec !important;
-      background: #f9fcff !important;
-    }
+  box-shadow: none !important;
+}
 
-    .header-logout-btn {
-      height: 40px !important;
-      border-radius: 999px !important;
-      box-shadow: 0 6px 14px rgba(239, 68, 68, 0.12);
-    }
+.header-logout-btn:hover {
+  background: #fff1f0 !important;
+  border-color: #ff4d4f !important;
+  color: #ff4d4f !important;
+}
+.brand-menu .ant-menu-item{
+   color:${TEXT_SECONDARY} !important;
+}
 
-    .app-layout-content-scroll {
-      min-height: 0;
-    }
-  `;
+.brand-menu .ant-menu-submenu-title{
+   color:${TEXT_PRIMARY} !important;
+   font-weight:700;
+}
+
+.brand-menu .ant-menu-item-icon,
+.brand-menu .ant-menu-submenu-title .ant-menu-item-icon{
+   font-size:18px;
+   color:${TEXT_SECONDARY} !important;
+}
+
+/* Hover */
+
+.brand-menu .ant-menu-item:hover,
+.brand-menu .ant-menu-submenu-title:hover{
+   background:${HOVER_BG} !important;
+}
+
+/* Apenas HOME/PAINEL destacado */
+
+.brand-menu > .ant-menu-item-selected{
+
+   background:linear-gradient(
+      135deg,
+      ${ACTIVE_BG} 0%,
+      #2f89d8 100%
+   ) !important;
+
+   color:white !important;
+
+   box-shadow:
+   0 6px 20px rgba(47,137,216,.25);
+}
+
+.brand-menu > .ant-menu-item-selected .ant-menu-item-icon{
+   color:white !important;
+}
+
+/* ================= SUBMENU ================= */
+
+.brand-menu .ant-menu-sub{
+   background:rgba(0,0,0,.18) !important;
+
+   border-radius:18px !important;
+
+   margin-top:8px;
+   padding:8px;
+
+   overflow:hidden; /* faz respeitar bordas */
+   border:1px solid rgba(255,255,255,.04);
+
+   box-shadow:
+   inset 0 1px 0 rgba(255,255,255,.03),
+   0 6px 18px rgba(0,0,0,.15);
+}
+
+/* Itens internos */
+
+.brand-menu .ant-menu-sub .ant-menu-item{
+
+   height:40px !important;
+   line-height:40px !important;
+
+   margin:2px 0 !important;
+
+   border-radius:10px !important;
+
+   color:${TEXT_SECONDARY} !important;
+
+   padding-left:18px !important;
+}
+
+/* REMOVE azul dos itens internos */
+
+.brand-menu .ant-menu-sub .ant-menu-item-selected{
+   background:transparent !important;
+   color:white !important;
+   box-shadow:none !important;
+}
+
+.brand-menu .ant-menu-sub .ant-menu-item-selected .ant-menu-item-icon{
+   color:white !important;
+}
+
+/* Hover submenu */
+
+.brand-menu .ant-menu-sub .ant-menu-item:hover{
+   background:rgba(255,255,255,.05) !important;
+}
+
+/* Operações aberto */
+
+.brand-menu .ant-menu-submenu-open > .ant-menu-submenu-title{
+   background:rgba(255,255,255,.05) !important;
+}
+
+/* ================= SCROLL ================= */
+
+.brand-scroll{
+   flex:1;
+   overflow-y:auto;
+   overflow-x:hidden;
+   padding:6px;
+}
+
+.brand-scroll::-webkit-scrollbar{
+   width:6px;
+}
+
+.brand-scroll::-webkit-scrollbar-thumb{
+   background:rgba(31,113,184,.5);
+   border-radius:999px;
+}
+
+/* ===== SAIR ===== */
+
+.brand-sidebar-logout{
+  margin:10px 12px 14px;
+  height:44px;
+  border-radius:14px;
+
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  padding:0 14px;
+  cursor:pointer;
+
+  color:#dcefff;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.08);
+
+  transition:all .2s ease;
+}
+
+.brand-sidebar-logout:hover{
+  background:rgba(255,255,255,.09);
+  color:#fff;
+}
+
+.brand-sidebar-logout-icon{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  background:rgba(255,255,255,.06);
+  color:#dcefff;
+  font-size:15px;
+}
+
+.brand-sidebar-logout-title{
+  font-size:14px;
+  font-weight:700;
+}
+
+.brand-sidebar-logout-subtitle{
+  font-size:11px;
+  opacity:.65;
+}
+
+/* colapsado */
+.brand-sidebar.is-collapsed .brand-sidebar-logout{
+  width:44px;
+  height:44px;
+  margin:10px auto 14px;
+  padding:0;
+  justify-content:center;
+  background:rgba(255,255,255,.04);
+  border-radius:14px;
+}
+
+.brand-sidebar.is-collapsed .brand-sidebar-logout-icon{
+  width:30px;
+  height:30px;
+  background:transparent;
+  color:#b9d7ee;
+}
+
+.brand-sidebar.is-collapsed .brand-sidebar-logout-text{
+  display:none;
+}
+
+.brand-sidebar.is-collapsed .brand-sidebar-logout:hover{
+  background:rgba(255,255,255,.08);
+}
+`;
 
   const MenuBlock = (
     <>
@@ -730,11 +808,11 @@ export function AppLayout() {
       <div className={`brand-sidebar ${collapsedSidebar ? 'is-collapsed' : ''}`}>
         <div
           style={{
-            height: collapsedSidebar ? 76 : 104,
+            height: collapsedSidebar ? 64 : 104,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: collapsedSidebar ? '12px 6px' : '18px 20px',
+            padding: collapsedSidebar ? '10px 8px' : '18px 20px',
             overflow: 'hidden',
             transition: 'all 0.25s ease',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
@@ -745,8 +823,8 @@ export function AppLayout() {
             src="/logo_branca.png"
             alt="Omnilink"
             style={{
-              width: collapsedSidebar ? 54 : 190,
-              maxHeight: collapsedSidebar ? 54 : 68,
+              width: collapsedSidebar ? 46 : 180,
+              maxHeight: collapsedSidebar ? 36 : 68,
               minWidth: 0,
               objectFit: 'contain',
               display: 'block',
@@ -782,7 +860,7 @@ export function AppLayout() {
           />
         </div>
 
-        <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: collapsedSidebar ? 8 : 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <div
             className="brand-sidebar-footer-text"
             style={{
@@ -796,20 +874,24 @@ export function AppLayout() {
             Sessão
           </div>
 
-          <Menu
-            className="logout-menu"
-            theme="dark"
-            mode="inline"
-            selectable={false}
-            items={[
-              {
-                key: 'logout',
-                icon: <LogoutOutlined />,
-                label: 'Sair',
-                onClick: handleLogout,
-              },
-            ]}
-          />
+<div
+   className="brand-sidebar-logout"
+   onClick={logout}
+>
+   <div className="brand-sidebar-logout-icon">
+      <LogoutOutlined />
+   </div>
+
+   <div className="brand-sidebar-logout-text">
+      <div className="brand-sidebar-logout-title">
+         Sair
+      </div>
+
+      <div className="brand-sidebar-logout-subtitle">
+         Encerrar sessão
+      </div>
+   </div>
+</div>
         </div>
       </div>
     </>
@@ -862,7 +944,7 @@ export function AppLayout() {
             justifyContent: 'space-between',
             alignItems: 'center',
             paddingInline: isMobile ? 12 : 24,
-            gap: 12,
+            gap: 6,
             borderBottom: '1px solid #E6EEF7',
             boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
           }}
@@ -897,7 +979,7 @@ export function AppLayout() {
             </div>
 
             <Button className="header-profile-btn" onClick={() => setProfileOpen(true)}>
-              <Space size={8} align="center">
+             <Space size={10} align="center">
                 <Avatar
                   size={30}
                   src={abs(user?.avatarUrl)}
