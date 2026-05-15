@@ -462,7 +462,7 @@ export default function AutoInventoryPublicPage() {
             <Row justify="space-between" gutter={[16, 16]} align="middle">
               <Col xs={24} md={14}>
 
-                      <Tag color="blue">
+                 <Tag color="blue">
                   As informações enviadas serão utilizadas pela equipe de Logistica
                   para controle de estoque e acompanhamento mensal.
                 </Tag>
