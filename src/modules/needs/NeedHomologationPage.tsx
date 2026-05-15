@@ -1530,16 +1530,6 @@ export default function NeedHomologationPage() {
                       Copiar link
                     </Button>
                   ) : null,
-                  invite.technicianPhone && invite.publicLink ? (
-                    <Button
-                      key="whatsapp"
-                      type="text"
-                      icon={<WhatsAppOutlined />}
-                      onClick={() => sendWhatsApp(invite)}
-                    >
-                      Reenviar WhatsApp
-                    </Button>
-                  ) : null,
                   invite.technicianEmail ? (
                     <Button
                       key="email"
@@ -1773,6 +1763,7 @@ export default function NeedHomologationPage() {
                 >
                   Enviar por WhatsApp
                 </Button>
+                
               </Space>
             </Space>
           </>
